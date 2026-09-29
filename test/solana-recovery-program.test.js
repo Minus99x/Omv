@@ -12,7 +12,8 @@ import {
   createSolanaTokenRecoveryPhasePlan,
   SOLANA_SYSTEM_PROGRAM_ID,
   SOLANA_TOKEN_MINT_BASE_BYTES, SOLANA_TOKEN_ACCOUNT_BASE_BYTES,
-  createSolanaTransactionLifetimePlan, createSolanaProgramVerificationPlan
+  createSolanaTransactionLifetimePlan, createSolanaRecentBlockhashExecutionGate,
+  createSolanaProgramVerificationPlan
 } from '../src/chains/solana/recovery-program.js';
 import { deriveSolanaAssociatedTokenAddress, SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID } from '../src/chains/solana/program-codec.js';
 
@@ -59,10 +60,32 @@ test('Solana token identity binds mint and token program and token preflight rej
 });
 
 test('Solana transaction-lifetime plan freezes fee payer before signatures and models blockhash/nonce invalidation', () => {
-  const recent = createSolanaTransactionLifetimePlan({ feePayer: owner, blockhash: 'abc', lastValidBlockHeight: 123 });
+  const recent = createSolanaTransactionLifetimePlan({ feePayer: owner, messageIntentDigest: 'a'.repeat(64), blockhash: rawKey(60), lastValidBlockHeight: 123, blockhashContextSlot: 100 });
   assert.equal(recent.rebuildOnExpiry, true);
-  const nonce = createSolanaTransactionLifetimePlan({ mode: 'durable-nonce', feePayer: owner, nonceAccount: a, nonceAuthority: b });
+  assert.equal(recent.skipPreflight, false);
+  assert.equal(recent.blockhashCommitment, 'confirmed');
+  assert.match(recent.intentDigest, /^[0-9a-f]{64}$/);
+  const nonce = createSolanaTransactionLifetimePlan({ mode: 'durable-nonce', feePayer: owner, messageIntentDigest: 'b'.repeat(64), nonceAccount: a, nonceAuthority: b });
   assert.equal(nonce.signaturesInvalidatedIfNonceAdvances, true);
+  assert.match(nonce.intentDigest, /^[0-9a-f]{64}$/);
+});
+
+test('Solana recent-blockhash gate refuses expiry, stale simulation and commitment drift before signing', () => {
+  const lifetimePlan = createSolanaTransactionLifetimePlan({ feePayer: owner, messageIntentDigest: 'c'.repeat(64), blockhash: rawKey(61), lastValidBlockHeight: 200, blockhashContextSlot: 150 });
+  const base = { lifetimePlan, currentBlockHeight: 200, blockhashValid: true, blockhashValidationContextSlot: 151, simulationContextSlot: 152, simulationCommitment: 'confirmed', simulationError: null, replacementBlockhash: null, unitsConsumed: 42_000 };
+  const ready = createSolanaRecentBlockhashExecutionGate(base);
+  assert.equal(ready.readyToSign, true);
+  assert.equal(ready.expired, false);
+  assert.match(ready.executionGateDigest, /^[0-9a-f]{64}$/);
+  assert.equal(createSolanaRecentBlockhashExecutionGate({ ...base, currentBlockHeight: 201, blockhashValid: false }).readyToSign, false);
+  assert.equal(createSolanaRecentBlockhashExecutionGate({ ...base, simulationContextSlot: 149 }).checks.simulationContextNotStale, false);
+  assert.equal(createSolanaRecentBlockhashExecutionGate({ ...base, simulationCommitment: 'processed' }).checks.simulationCommitmentMatches, false);
+  assert.equal(createSolanaRecentBlockhashExecutionGate({ ...base, simulationError: { InstructionError: [0, 'Custom'] } }).checks.simulationSucceeded, false);
+  assert.equal(createSolanaRecentBlockhashExecutionGate({ ...base, replacementBlockhash: rawKey(62) }).checks.simulationKeptFrozenBlockhash, false);
+  assert.throws(() => createSolanaRecentBlockhashExecutionGate({ ...base, lifetimePlan: { ...lifetimePlan, lastValidBlockHeight: 201 } }), /integrity digest/);
+  assert.throws(() => createSolanaTransactionLifetimePlan({ feePayer: owner, messageIntentDigest: 'c'.repeat(64), blockhash: 'abc', lastValidBlockHeight: 200, blockhashContextSlot: 150 }), /canonical 32-byte/);
+  assert.throws(() => createSolanaTransactionLifetimePlan({ feePayer: owner, messageIntentDigest: 'c'.repeat(64), blockhash: rawKey(61), lastValidBlockHeight: 200, blockhashContextSlot: 150, simulationCommitment: 'processed' }), /must both be confirmed/);
+  assert.throws(() => createSolanaTransactionLifetimePlan({ feePayer: owner, messageIntentDigest: 'not-a-digest', blockhash: rawKey(61), lastValidBlockHeight: 200, blockhashContextSlot: 150 }), /messageIntentDigest/);
 });
 
 test('Solana deployment verification plan includes upgrade authority and bytecode provenance gates', () => {

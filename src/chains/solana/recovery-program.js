@@ -511,18 +511,71 @@ export function createSolanaTokenRecoveryPreflight({ asset, sourceTokenAccount, 
   return Object.freeze({ ok: Object.values(checks).every(Boolean), checks, asset: normalized, sourceTokenAccount, rescueTokenAccount });
 }
 
-export function createSolanaTransactionLifetimePlan({ mode = 'recent-blockhash', feePayer, blockhash = null, lastValidBlockHeight = null, nonceAccount = null, nonceAuthority = null }) {
+export function createSolanaTransactionLifetimePlan({ mode = 'recent-blockhash', feePayer, messageIntentDigest, blockhash = null, lastValidBlockHeight = null, blockhashContextSlot = null, blockhashCommitment = 'confirmed', simulationCommitment = 'confirmed', nonceAccount = null, nonceAuthority = null }) {
   assertPubkey(feePayer, 'feePayer');
+  if (!/^[0-9a-f]{64}$/.test(messageIntentDigest ?? '')) throw new TypeError('messageIntentDigest must be a lowercase SHA-256 digest.');
   if (mode === 'recent-blockhash') {
-    if (typeof blockhash !== 'string' || blockhash.length === 0) throw new TypeError('recent-blockhash mode requires blockhash.');
+    canonicalPubkey(blockhash, 'blockhash');
     if (!Number.isSafeInteger(lastValidBlockHeight) || lastValidBlockHeight < 1) throw new TypeError('recent-blockhash mode requires lastValidBlockHeight.');
-    return Object.freeze({ mode, feePayer, blockhash, lastValidBlockHeight, rebuildOnExpiry: true, signaturesInvalidatedByMessageChange: true });
+    if (!Number.isSafeInteger(blockhashContextSlot) || blockhashContextSlot < 0) throw new TypeError('recent-blockhash mode requires a non-negative blockhashContextSlot.');
+    if (blockhashCommitment !== 'confirmed' || simulationCommitment !== blockhashCommitment) throw new TypeError('Blockhash fetch and simulation commitments must both be confirmed.');
+    const intent = Object.freeze({
+      mode, feePayer, messageIntentDigest, blockhash, lastValidBlockHeight, blockhashContextSlot,
+      blockhashCommitment, simulationCommitment,
+      skipPreflight: false,
+      rebuildOnExpiry: true,
+      signaturesInvalidatedByMessageChange: true
+    });
+    return Object.freeze({ ...intent, intentDigest: digestRecord(intent) });
   }
   if (mode === 'durable-nonce') {
     assertPubkey(nonceAccount, 'nonceAccount'); assertPubkey(nonceAuthority, 'nonceAuthority');
-    return Object.freeze({ mode, feePayer, nonceAccount, nonceAuthority, nonceMustRemainUnconsumed: true, signaturesInvalidatedIfNonceAdvances: true });
+    const intent = Object.freeze({ mode, feePayer, messageIntentDigest, nonceAccount, nonceAuthority, nonceMustRemainUnconsumed: true, signaturesInvalidatedIfNonceAdvances: true });
+    return Object.freeze({ ...intent, intentDigest: digestRecord(intent) });
   }
   throw new TypeError('mode must be recent-blockhash or durable-nonce.');
+}
+
+export function createSolanaRecentBlockhashExecutionGate({ lifetimePlan, currentBlockHeight, blockhashValid, blockhashValidationContextSlot, simulationContextSlot, simulationCommitment = 'confirmed', simulationError = null, replacementBlockhash = null, unitsConsumed }) {
+  assertRecordDigest(lifetimePlan, 'intentDigest', 'Solana transaction lifetime plan');
+  if (lifetimePlan.mode !== 'recent-blockhash') throw new TypeError('Recent-blockhash execution gate requires a recent-blockhash lifetime plan.');
+  if (!Number.isSafeInteger(currentBlockHeight) || currentBlockHeight < 0) throw new TypeError('currentBlockHeight must be a non-negative safe integer.');
+  if (typeof blockhashValid !== 'boolean') throw new TypeError('blockhashValid must be boolean RPC evidence.');
+  if (!Number.isSafeInteger(blockhashValidationContextSlot) || blockhashValidationContextSlot < 0 || !Number.isSafeInteger(simulationContextSlot) || simulationContextSlot < 0) {
+    throw new TypeError('Blockhash validation and simulation context slots must be non-negative safe integers.');
+  }
+  if (!['processed', 'confirmed', 'finalized'].includes(simulationCommitment)) throw new TypeError('simulationCommitment is invalid.');
+  if (replacementBlockhash != null) canonicalPubkey(replacementBlockhash, 'replacementBlockhash');
+  if (!Number.isSafeInteger(unitsConsumed) || unitsConsumed < 0) throw new TypeError('unitsConsumed must be a non-negative safe integer.');
+  const checks = Object.freeze({
+    currentHeightWithinValidity: currentBlockHeight <= lifetimePlan.lastValidBlockHeight,
+    rpcReportsBlockhashValid: blockhashValid === true,
+    blockhashValidationContextNotStale: blockhashValidationContextSlot >= lifetimePlan.blockhashContextSlot,
+    simulationCommitmentMatches: simulationCommitment === lifetimePlan.simulationCommitment,
+    simulationContextNotStale: simulationContextSlot >= lifetimePlan.blockhashContextSlot,
+    simulationSucceeded: simulationError == null,
+    simulationKeptFrozenBlockhash: replacementBlockhash == null,
+    unitsConsumedRecorded: unitsConsumed > 0
+  });
+  const evidence = Object.freeze({
+    lifetimeIntentDigest: lifetimePlan.intentDigest,
+    currentBlockHeight,
+    blockhashValid,
+    blockhashValidationContextSlot,
+    simulationContextSlot,
+    simulationCommitment,
+    simulationSucceeded: simulationError == null,
+    replacementBlockhash,
+    unitsConsumed
+  });
+  const result = Object.freeze({
+    readyToSign: Object.values(checks).every(Boolean),
+    checks,
+    evidence,
+    expired: currentBlockHeight > lifetimePlan.lastValidBlockHeight,
+    actionIfNotReady: 'discard the unsigned message, fetch a new confirmed blockhash, rebuild, and re-simulate before requesting signatures'
+  });
+  return Object.freeze({ ...result, executionGateDigest: digestRecord(result) });
 }
 
 export function createSolanaProgramVerificationPlan({ programId }) {

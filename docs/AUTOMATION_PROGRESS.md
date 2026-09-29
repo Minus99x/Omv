@@ -90,3 +90,18 @@ Next offline task: port raw validation, canonical ATA handling, and checked toke
 - Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
 
 Next offline task: implement the same validation and phase binding around Rust/SBF checked-token CPI, then execute finalized ATA creation/refetch and adversarial transfer cases under `solana-program-test` with the pinned toolchain.
+
+## 2026-09-29 — pre-signature blockhash and simulation gate
+
+- Replaced free-form blockhash placeholders with canonical 32-byte blockhash validation and digest-bound transaction lifetime plans.
+- Bound the fee payer and exact recovery-message intent digest to the blockhash, context slot, commitment, and `lastValidBlockHeight`.
+- Added a pre-signature execution gate requiring a still-valid blockhash, non-stale RPC context slots, successful simulation, recorded compute consumption, and matching `confirmed` blockhash/simulation commitments.
+- Kept development preflight enabled and rejected simulation-time blockhash replacement because it would change the frozen message.
+- Marked a transaction expired only after the current block height exceeds `lastValidBlockHeight`; expired or failed gates require rebuilding and re-simulation before signatures.
+- Added adversarial coverage for expiry, stale RPC evidence, commitment drift, simulation errors, blockhash replacement, malformed hashes, and mutated lifetime plans.
+- Verification: 200/200 JavaScript tests passed, including 27/27 focused Solana tests; `npm run check` and `npm run check:solana` passed.
+- Safety boundary: no deployment, transaction, wallet signature, secret access, or main-branch write was performed.
+- Connector status: unchanged. This is an offline transaction-lifecycle gate; SPL Token and Token-2022 remain not live-proof.
+- Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
+
+Next offline task: add a simulation-derived compute-unit/fee budget bound to the recovery-message digest, then port the validated execution path into Rust/SBF and `solana-program-test` when the pinned toolchain is available.
