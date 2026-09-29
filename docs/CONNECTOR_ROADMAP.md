@@ -61,7 +61,7 @@ Candidate mechanisms:
 
 Required tests include recent blockhash expiry, durable nonce choices if used, program upgrade authority, PDA derivation, account ownership, compute budgets, signer ordering, rent/state sizing, and finalized commitment behavior.
 
-Offline RPC evidence now has deterministic fail-closed fixtures for recent-blockhash expiry, monotonic confirmed contexts, simulation/fee/rent/balance observations, finalized ATA creation status, and finalized account refetch. The simulation transaction envelope is decoded so its exact message, fee payer, blockhash and signature count are bound to caller-supplied SHA-256 digests and the byte-identical `getFeeForMessage` payload. This is fixture coverage only; validator-backed integration and Devnet evidence remain required before promotion.
+Offline RPC evidence now has deterministic fail-closed fixtures for recent-blockhash expiry, monotonic confirmed contexts, simulation/fee/rent/balance observations, finalized ATA creation status, and finalized account refetch. Legacy and v0 simulation envelopes are decoded so their exact message, fee payer, blockhash, signature count, compiled-instruction vectors and v0 address-table lookup vectors are structurally checked and bound to caller-supplied SHA-256 digests plus the byte-identical `getFeeForMessage` payload. Other message versions fail closed until separately implemented and tested. This is fixture coverage only; validator-backed integration and Devnet evidence remain required before promotion.
 
 ## Bitcoin — scaffold
 

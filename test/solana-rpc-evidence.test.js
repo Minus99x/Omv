@@ -4,7 +4,9 @@ import { readFileSync } from 'node:fs';
 import { createSolanaRpcEvidenceBundle } from '../src/chains/solana/rpc-evidence.js';
 
 const fixturePath = new URL('./fixtures/solana-rpc-evidence.json', import.meta.url);
+const v0FixturePath = new URL('./fixtures/solana-v0-rpc-payload.json', import.meta.url);
 const loadFixture = () => JSON.parse(readFileSync(fixturePath, 'utf8'));
+const loadV0Fixture = () => JSON.parse(readFileSync(v0FixturePath, 'utf8'));
 const expected = Object.freeze({
   expectedMessageIntentDigest: 'e'.repeat(64),
   expectedSerializedMessageSha256: 'b1c2eb550490885fc1b60ae992cd958bc7f00cd9a7c9f71e40df3d3b0ded2bb3',
@@ -77,4 +79,80 @@ test('Solana RPC evidence rejects substituted simulation or fee-message payloads
   const wrongBlockhashResult = createSolanaRpcEvidenceBundle({ fixture: wrongBlockhash, ...expected });
   assert.equal(wrongBlockhashResult.checks.messageBlockhashMatches, false);
   assert.equal(wrongBlockhashResult.checks.serializedMessageMatchesExpected, false);
+});
+
+test('Solana RPC evidence accepts a digest-bound versioned-v0 message with an empty lookup vector', () => {
+  const fixture = loadFixture();
+  const v0 = loadV0Fixture();
+  fixture.intent.serializedMessageSha256 = v0.serializedMessageSha256;
+  fixture.intent.serializedTransactionSha256 = v0.serializedTransactionSha256;
+  fixture.calls.simulation.request.params[0] = v0.serializedTransactionBase64;
+  fixture.calls.feeQuote.request.params[0] = v0.serializedMessageBase64;
+  const result = createSolanaRpcEvidenceBundle({
+    fixture,
+    ...expected,
+    expectedSerializedMessageSha256: v0.serializedMessageSha256,
+    expectedSerializedTransactionSha256: v0.serializedTransactionSha256
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.evidence.messageVersion, 0);
+  assert.equal(result.evidence.requiredSignatures, 1);
+  assert.equal(result.evidence.instructionCount, 0);
+  assert.equal(result.evidence.addressTableLookupCount, 0);
+  assert.equal(result.evidence.loadedAddressCount, 0);
+});
+
+test('Solana RPC evidence validates a v0 compiled instruction against loaded ALT addresses', () => {
+  const fixture = loadFixture();
+  const payload = loadV0Fixture().withLookup;
+  fixture.intent.serializedMessageSha256 = payload.serializedMessageSha256;
+  fixture.intent.serializedTransactionSha256 = payload.serializedTransactionSha256;
+  fixture.calls.simulation.request.params[0] = payload.serializedTransactionBase64;
+  fixture.calls.feeQuote.request.params[0] = payload.serializedMessageBase64;
+  const result = createSolanaRpcEvidenceBundle({
+    fixture,
+    ...expected,
+    expectedSerializedMessageSha256: payload.serializedMessageSha256,
+    expectedSerializedTransactionSha256: payload.serializedTransactionSha256
+  });
+  assert.equal(result.ok, true);
+  assert.equal(result.evidence.instructionCount, 1);
+  assert.equal(result.evidence.addressTableLookupCount, 1);
+  assert.equal(result.evidence.loadedAddressCount, 1);
+
+  const invalidIndex = loadFixture();
+  const invalidMessage = Buffer.from(payload.serializedMessageBase64, 'base64');
+  invalidMessage[104] = 3;
+  invalidIndex.calls.simulation.request.params[0] = Buffer.concat([Buffer.from([1]), Buffer.alloc(64), invalidMessage]).toString('base64');
+  assert.throws(() => createSolanaRpcEvidenceBundle({ fixture: invalidIndex, ...expected }), /outside the resolved account set/);
+});
+
+test('Solana RPC envelope parsing rejects unsupported versions and malformed compact arrays', () => {
+  const unsupportedVersion = loadFixture();
+  const unsupportedMessage = Buffer.from(loadV0Fixture().serializedMessageBase64, 'base64');
+  unsupportedMessage[0] = 0x81;
+  const unsupportedTransaction = Buffer.concat([Buffer.from([1]), Buffer.alloc(64), unsupportedMessage]);
+  unsupportedVersion.calls.simulation.request.params[0] = unsupportedTransaction.toString('base64');
+  assert.throws(() => createSolanaRpcEvidenceBundle({ fixture: unsupportedVersion, ...expected }), /unsupported message version/);
+
+  const nonCanonicalCount = loadFixture();
+  const validTransaction = Buffer.from(nonCanonicalCount.calls.simulation.request.params[0], 'base64');
+  nonCanonicalCount.calls.simulation.request.params[0] = Buffer.concat([Buffer.from([0x81, 0x00]), validTransaction.subarray(1)]).toString('base64');
+  assert.throws(() => createSolanaRpcEvidenceBundle({ fixture: nonCanonicalCount, ...expected }), /compact-u16 is non-canonical/);
+
+  const truncatedV0 = loadFixture();
+  const v0 = loadV0Fixture();
+  const truncatedMessage = Buffer.from(v0.serializedMessageBase64, 'base64').subarray(0, -1);
+  truncatedV0.calls.simulation.request.params[0] = Buffer.concat([Buffer.from([1]), Buffer.alloc(64), truncatedMessage]).toString('base64');
+  assert.throws(() => createSolanaRpcEvidenceBundle({ fixture: truncatedV0, ...expected }), /address-table lookup count.*truncated/);
+
+  const truncatedLookup = loadFixture();
+  const messageWithMissingLookupKey = Buffer.from(v0.serializedMessageBase64, 'base64');
+  messageWithMissingLookupKey[messageWithMissingLookupKey.length - 1] = 1;
+  truncatedLookup.calls.simulation.request.params[0] = Buffer.concat([Buffer.from([1]), Buffer.alloc(64), messageWithMissingLookupKey]).toString('base64');
+  assert.throws(() => createSolanaRpcEvidenceBundle({ fixture: truncatedLookup, ...expected }), /address-table lookup 0 key is truncated/);
+
+  const oversized = loadFixture();
+  oversized.calls.simulation.request.params[0] = Buffer.alloc(1233).toString('base64');
+  assert.throws(() => createSolanaRpcEvidenceBundle({ fixture: oversized, ...expected }), /1232-byte packet limit/);
 });

@@ -2,16 +2,17 @@
 
 ## Latest verified increment
 
-- Closed an RPC evidence substitution gap by decoding the compact signature vector and serialized Solana message from the `simulateTransaction` payload.
-- Requires caller-supplied SHA-256 digests for both the serialized transaction and serialized message.
-- Verifies that the extracted message and `getFeeForMessage` payload are byte-identical and bind the expected fee payer and recent blockhash.
-- Rejects unsupported message versions, malformed/noncanonical compact-u16 values, truncated signature arrays/messages, signature-count/header drift and payloads above the supported packet limit.
-- Added adversarial fixtures proving signature-only transaction substitution, fee-message substitution and recent-blockhash substitution fail closed.
+- Added checked-in versioned-v0 transaction/message fixtures with deterministic SHA-256 evidence for both empty and populated address-table lookup vectors.
+- Extended the RPC envelope parser across compiled-instruction arrays and v0 address-table lookup vectors instead of accepting bytes after the blockhash without structural validation.
+- Enforced consistent header account counts, canonical compact-u16 arrays, complete static keys/blockhash/instructions/lookups and exact end-of-message consumption.
+- Validated compiled instruction program/account indices against the combined static-plus-loaded account set.
+- Added fail-closed coverage for unsupported versions, noncanonical signature counts, truncated v0 lookup counts, truncated lookup keys, out-of-range loaded-account references and oversized legacy/v0 packets.
+- Other transaction versions remain explicitly unsupported rather than being silently interpreted as v0.
 
 ## Verification results
 
-- Focused Solana suites: 32/32 passed.
-- Full JavaScript suite: 205/205 passed.
+- Focused Solana suites: 35/35 passed.
+- Full JavaScript suite: 208/208 passed.
 - Full syntax/manifest check: passed.
 - Solana source/codec evidence check: passed (`e140b5235505df36f727051adf880f78b8ff7168b4e0269fc2071d4d7f24804e`).
 
@@ -21,4 +22,4 @@ This remains deterministic offline RPC-fixture coverage, not validator-backed in
 
 ## Next offline task
 
-Mirror the reviewed extension allowlist and checked `TransferChecked`/idempotent ATA path into the Rust SBF processor, then compile and run adversarial `solana-program-test` cases when the pinned Rust/Agave toolchain is available.
+Decode and allowlist the exact compiled program IDs/instruction data expected in the recovery message so extra or reordered Compute Budget, ATA, token and recovery instructions fail closed; then mirror the reviewed path into Rust SBF when the pinned toolchain is available.

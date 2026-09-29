@@ -87,6 +87,13 @@ function readCompactU16(bytes, offset, label) {
   throw new Error(`${label} compact-u16 exceeds the supported u16 range.`);
 }
 
+function skipCompactByteArray(bytes, offset, label) {
+  const length = readCompactU16(bytes, offset, `${label} length`);
+  const nextOffset = length.nextOffset + length.value;
+  if (!Number.isSafeInteger(nextOffset) || nextOffset > bytes.length) throw new Error(`${label} is truncated.`);
+  return { length: length.value, dataOffset: length.nextOffset, nextOffset };
+}
+
 function parseMessageIdentity(bytes, label) {
   if (bytes.length < 4) throw new Error(`${label} is truncated before its header.`);
   let offset = 0;
@@ -98,18 +105,60 @@ function parseMessageIdentity(bytes, label) {
   }
   if (offset + 3 > bytes.length) throw new Error(`${label} header is truncated.`);
   const requiredSignatures = bytes[offset];
+  const readonlySignedAccounts = bytes[offset + 1];
+  const readonlyUnsignedAccounts = bytes[offset + 2];
   offset += 3;
   const accountCount = readCompactU16(bytes, offset, `${label} account count`);
   offset = accountCount.nextOffset;
   if (accountCount.value === 0) throw new Error(`${label} has no fee-payer account key.`);
-  const blockhashOffset = offset + accountCount.value * 32;
+  if (requiredSignatures === 0 || requiredSignatures > accountCount.value || readonlySignedAccounts > requiredSignatures || readonlyUnsignedAccounts > accountCount.value - requiredSignatures) {
+    throw new Error(`${label} header account counts are inconsistent.`);
+  }
+  const accountKeysOffset = offset;
+  const blockhashOffset = accountKeysOffset + accountCount.value * 32;
   if (!Number.isSafeInteger(blockhashOffset) || blockhashOffset + 32 > bytes.length) {
     throw new Error(`${label} account keys or recent blockhash are truncated.`);
   }
+  offset = blockhashOffset + 32;
+  const instructionCount = readCompactU16(bytes, offset, `${label} instruction count`);
+  offset = instructionCount.nextOffset;
+  const instructionIndexes = [];
+  for (let index = 0; index < instructionCount.value; index += 1) {
+    if (offset >= bytes.length) throw new Error(`${label} instruction ${index} is truncated before its program index.`);
+    instructionIndexes.push(bytes[offset]);
+    offset += 1;
+    const accountIndexes = skipCompactByteArray(bytes, offset, `${label} instruction ${index} account indices`);
+    instructionIndexes.push(...bytes.subarray(accountIndexes.dataOffset, accountIndexes.nextOffset));
+    offset = accountIndexes.nextOffset;
+    offset = skipCompactByteArray(bytes, offset, `${label} instruction ${index} data`).nextOffset;
+  }
+  let addressTableLookupCount = 0;
+  let loadedAddressCount = 0;
+  if (version === 0) {
+    const lookupCount = readCompactU16(bytes, offset, `${label} address-table lookup count`);
+    addressTableLookupCount = lookupCount.value;
+    offset = lookupCount.nextOffset;
+    for (let index = 0; index < lookupCount.value; index += 1) {
+      if (offset + 32 > bytes.length) throw new Error(`${label} address-table lookup ${index} key is truncated.`);
+      offset += 32;
+      const writableIndexes = skipCompactByteArray(bytes, offset, `${label} address-table lookup ${index} writable indices`);
+      loadedAddressCount += writableIndexes.length;
+      offset = writableIndexes.nextOffset;
+      const readonlyIndexes = skipCompactByteArray(bytes, offset, `${label} address-table lookup ${index} readonly indices`);
+      loadedAddressCount += readonlyIndexes.length;
+      offset = readonlyIndexes.nextOffset;
+    }
+  }
+  if (offset !== bytes.length) throw new Error(`${label} contains trailing bytes.`);
+  const resolvedAccountCount = accountCount.value + loadedAddressCount;
+  if (instructionIndexes.some(index => index >= resolvedAccountCount)) throw new Error(`${label} instruction references an account index outside the resolved account set.`);
   return Object.freeze({
     version,
     requiredSignatures,
-    feePayer: bs58.encode(bytes.subarray(offset, offset + 32)),
+    instructionCount: instructionCount.value,
+    addressTableLookupCount,
+    loadedAddressCount,
+    feePayer: bs58.encode(bytes.subarray(accountKeysOffset, accountKeysOffset + 32)),
     blockhash: bs58.encode(bytes.subarray(blockhashOffset, blockhashOffset + 32))
   });
 }
@@ -257,6 +306,9 @@ export function createSolanaRpcEvidenceBundle({
     serializedTransactionSha256,
     messageVersion: transactionEnvelope.message.version,
     requiredSignatures: transactionEnvelope.message.requiredSignatures,
+    instructionCount: transactionEnvelope.message.instructionCount,
+    addressTableLookupCount: transactionEnvelope.message.addressTableLookupCount,
+    loadedAddressCount: transactionEnvelope.message.loadedAddressCount,
     feePayer,
     associatedTokenAccount,
     tokenProgramId,
