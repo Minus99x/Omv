@@ -119,18 +119,31 @@ function parseMessageIdentity(bytes, label) {
   if (!Number.isSafeInteger(blockhashOffset) || blockhashOffset + 32 > bytes.length) {
     throw new Error(`${label} account keys or recent blockhash are truncated.`);
   }
+  const staticAccountKeys = Object.freeze(Array.from({ length: accountCount.value }, (_unused, index) => {
+    const start = accountKeysOffset + index * 32;
+    return bs58.encode(bytes.subarray(start, start + 32));
+  }));
   offset = blockhashOffset + 32;
   const instructionCount = readCompactU16(bytes, offset, `${label} instruction count`);
   offset = instructionCount.nextOffset;
   const instructionIndexes = [];
+  const instructions = [];
   for (let index = 0; index < instructionCount.value; index += 1) {
     if (offset >= bytes.length) throw new Error(`${label} instruction ${index} is truncated before its program index.`);
-    instructionIndexes.push(bytes[offset]);
+    const programIndex = bytes[offset];
+    instructionIndexes.push(programIndex);
     offset += 1;
     const accountIndexes = skipCompactByteArray(bytes, offset, `${label} instruction ${index} account indices`);
-    instructionIndexes.push(...bytes.subarray(accountIndexes.dataOffset, accountIndexes.nextOffset));
+    const instructionAccounts = Object.freeze([...bytes.subarray(accountIndexes.dataOffset, accountIndexes.nextOffset)]);
+    instructionIndexes.push(...instructionAccounts);
     offset = accountIndexes.nextOffset;
-    offset = skipCompactByteArray(bytes, offset, `${label} instruction ${index} data`).nextOffset;
+    const instructionData = skipCompactByteArray(bytes, offset, `${label} instruction ${index} data`);
+    instructions.push({
+      programIndex,
+      accountIndexes: instructionAccounts,
+      dataHex: bytes.subarray(instructionData.dataOffset, instructionData.nextOffset).toString('hex')
+    });
+    offset = instructionData.nextOffset;
   }
   let addressTableLookupCount = 0;
   let loadedAddressCount = 0;
@@ -152,15 +165,36 @@ function parseMessageIdentity(bytes, label) {
   if (offset !== bytes.length) throw new Error(`${label} contains trailing bytes.`);
   const resolvedAccountCount = accountCount.value + loadedAddressCount;
   if (instructionIndexes.some(index => index >= resolvedAccountCount)) throw new Error(`${label} instruction references an account index outside the resolved account set.`);
+  const resolvedInstructions = Object.freeze(instructions.map(instruction => Object.freeze({
+    ...instruction,
+    programId: instruction.programIndex < staticAccountKeys.length ? staticAccountKeys[instruction.programIndex] : null
+  })));
   return Object.freeze({
     version,
     requiredSignatures,
     instructionCount: instructionCount.value,
     addressTableLookupCount,
     loadedAddressCount,
+    staticAccountKeys,
+    instructions: resolvedInstructions,
     feePayer: bs58.encode(bytes.subarray(accountKeysOffset, accountKeysOffset + 32)),
     blockhash: bs58.encode(bytes.subarray(blockhashOffset, blockhashOffset + 32))
   });
+}
+
+function normalizeExpectedInstructionRoster(value) {
+  if (!Array.isArray(value)) throw new TypeError('expectedInstructionRoster must be an array.');
+  return Object.freeze(value.map((entry, index) => {
+    const item = assertObject(entry, `expectedInstructionRoster[${index}]`);
+    const programId = canonicalBase58(item.programId, 32, `expectedInstructionRoster[${index}].programId`);
+    if (!Array.isArray(item.accountIndexes) || item.accountIndexes.some(accountIndex => !Number.isInteger(accountIndex) || accountIndex < 0 || accountIndex > 255)) {
+      throw new TypeError(`expectedInstructionRoster[${index}].accountIndexes must be an array of byte integers.`);
+    }
+    if (typeof item.dataHex !== 'string' || !/^(?:[0-9a-f]{2})*$/.test(item.dataHex)) {
+      throw new TypeError(`expectedInstructionRoster[${index}].dataHex must be lowercase even-length hexadecimal.`);
+    }
+    return Object.freeze({ programId, accountIndexes: Object.freeze([...item.accountIndexes]), dataHex: item.dataHex });
+  }));
 }
 
 function parseTransactionEnvelope(bytes) {
@@ -178,6 +212,7 @@ export function createSolanaRpcEvidenceBundle({
   expectedMessageIntentDigest,
   expectedSerializedMessageSha256,
   expectedSerializedTransactionSha256,
+  expectedInstructionRoster,
   expectedFeePayer,
   expectedAssociatedTokenAccount,
   expectedTokenProgramId,
@@ -192,6 +227,7 @@ export function createSolanaRpcEvidenceBundle({
   const feePayer = canonicalBase58(expectedFeePayer, 32, 'expectedFeePayer');
   const associatedTokenAccount = canonicalBase58(expectedAssociatedTokenAccount, 32, 'expectedAssociatedTokenAccount');
   const tokenProgramId = canonicalBase58(expectedTokenProgramId, 32, 'expectedTokenProgramId');
+  const instructionRoster = normalizeExpectedInstructionRoster(expectedInstructionRoster);
   safeUnsignedInteger(expectedDestinationDataBytes, 'expectedDestinationDataBytes');
   if (expectedDestinationDataBytes === 0) throw new TypeError('expectedDestinationDataBytes must be positive.');
 
@@ -227,6 +263,11 @@ export function createSolanaRpcEvidenceBundle({
   const feeMessage = parseMessageIdentity(feeMessageBytes, 'fee-quote message');
   const serializedMessageSha256 = digestBytes(transactionEnvelope.messageBytes);
   const serializedTransactionSha256 = digestBytes(serializedTransaction);
+  const observedInstructionRoster = Object.freeze(transactionEnvelope.message.instructions.map(instruction => Object.freeze({
+    programId: instruction.programId,
+    accountIndexes: instruction.accountIndexes,
+    dataHex: instruction.dataHex
+  })));
 
   const slot = rpcPair(calls, 'observationSlot', 'getSlot');
   const slotConfig = configAt(slot.request, 0, 'observationSlot');
@@ -277,6 +318,8 @@ export function createSolanaRpcEvidenceBundle({
     simulationEncodingBase64: simulationConfig.encoding === 'base64',
     serializedTransactionMatchesExpected: serializedTransactionSha256 === expectedSerializedTransactionSha256,
     serializedMessageMatchesExpected: serializedMessageSha256 === expectedSerializedMessageSha256,
+    instructionProgramsResolveStatically: observedInstructionRoster.every(instruction => instruction.programId != null),
+    instructionRosterMatches: JSON.stringify(observedInstructionRoster) === JSON.stringify(instructionRoster),
     simulationAndFeePayloadsMatch: transactionEnvelope.messageBytes.equals(feeMessageBytes),
     messageFeePayerMatches: transactionEnvelope.message.feePayer === feePayer && feeMessage.feePayer === feePayer,
     messageBlockhashMatches: transactionEnvelope.message.blockhash === blockhash && feeMessage.blockhash === blockhash,
@@ -309,6 +352,7 @@ export function createSolanaRpcEvidenceBundle({
     instructionCount: transactionEnvelope.message.instructionCount,
     addressTableLookupCount: transactionEnvelope.message.addressTableLookupCount,
     loadedAddressCount: transactionEnvelope.message.loadedAddressCount,
+    instructionRoster: observedInstructionRoster,
     feePayer,
     associatedTokenAccount,
     tokenProgramId,

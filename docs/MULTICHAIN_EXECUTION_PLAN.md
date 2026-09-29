@@ -107,7 +107,7 @@ Targets: XDC Apothem, Base Sepolia, Arbitrum Sepolia, OP Sepolia, Polygon Amoy, 
 - [x] Format and compile the SBF program; bind the 90 KiB artifact, source, manifest, lockfile, client codec and program-test hashes to versioned evidence.
 - [x] Execute the compiled SBF artifact under Agave 4.3.0 `solana-program-test`, proving initialization, heartbeat, inactivity, contact membership, threshold, immutable rescue, native SOL lamport movement and post-recovery lockout.
 - [ ] SPL Token + Token-2022 recovery, ATA creation/funding policy, extension-aware adversarial tests.
-- [x] Add deterministic legacy and v0 JSON-RPC request/response fixtures that bind the frozen message intent and exact serialized transaction/message digests to confirmed blockhash validity, block-height expiry, simulation, fee, rent and payer-balance observations, then require finalized ATA-creation status and a finalized exact-owner/space/base64 refetch.
+- [x] Add deterministic legacy and v0 JSON-RPC request/response fixtures that bind the frozen message intent and exact serialized transaction/message digests to confirmed blockhash validity, block-height expiry, simulation, fee, rent and payer-balance observations, then require finalized ATA-creation status and a finalized exact-owner/space/base64 refetch. Decode and bind the exact ordered compiled-instruction roster (static program ID, account indexes and data bytes) so inserted, removed, reordered or mutated Compute Budget, ATA, token and planned recovery instructions fail closed.
 - [ ] Compute budget, rent, blockhash-expiry and finalized-commitment integration tests.
 - [ ] Devnet live proof and evidence export.
 

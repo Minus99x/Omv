@@ -1,16 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createSolanaRpcEvidenceBundle } from '../src/chains/solana/rpc-evidence.js';
 
 const fixturePath = new URL('./fixtures/solana-rpc-evidence.json', import.meta.url);
 const v0FixturePath = new URL('./fixtures/solana-v0-rpc-payload.json', import.meta.url);
+const rosterFixturePath = new URL('./fixtures/solana-instruction-roster-payload.json', import.meta.url);
 const loadFixture = () => JSON.parse(readFileSync(fixturePath, 'utf8'));
 const loadV0Fixture = () => JSON.parse(readFileSync(v0FixturePath, 'utf8'));
+const loadRosterFixture = () => JSON.parse(readFileSync(rosterFixturePath, 'utf8'));
+const sha256 = value => createHash('sha256').update(value).digest('hex');
 const expected = Object.freeze({
   expectedMessageIntentDigest: 'e'.repeat(64),
   expectedSerializedMessageSha256: 'b1c2eb550490885fc1b60ae992cd958bc7f00cd9a7c9f71e40df3d3b0ded2bb3',
   expectedSerializedTransactionSha256: 'e994eff284e1ad82d6754141a22573d2cf6793340617738f9e80f0a18ff50b5b',
+  expectedInstructionRoster: Object.freeze([]),
   expectedFeePayer: '5KovAGoer61Vvo1Uv7sod2PpdATt74wUm7ezjKsLpKeF',
   expectedAssociatedTokenAccount: '5bV6jUfhDHCQVA1WfKBUnXUsboJgoKgkzkKcxr3joew5',
   expectedTokenProgramId: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
@@ -113,7 +118,8 @@ test('Solana RPC evidence validates a v0 compiled instruction against loaded ALT
     fixture,
     ...expected,
     expectedSerializedMessageSha256: payload.serializedMessageSha256,
-    expectedSerializedTransactionSha256: payload.serializedTransactionSha256
+    expectedSerializedTransactionSha256: payload.serializedTransactionSha256,
+    expectedInstructionRoster: [{ programId: expected.expectedAssociatedTokenAccount, accountIndexes: [2], dataHex: '00' }]
   });
   assert.equal(result.ok, true);
   assert.equal(result.evidence.instructionCount, 1);
@@ -125,6 +131,50 @@ test('Solana RPC evidence validates a v0 compiled instruction against loaded ALT
   invalidMessage[104] = 3;
   invalidIndex.calls.simulation.request.params[0] = Buffer.concat([Buffer.from([1]), Buffer.alloc(64), invalidMessage]).toString('base64');
   assert.throws(() => createSolanaRpcEvidenceBundle({ fixture: invalidIndex, ...expected }), /outside the resolved account set/);
+});
+
+test('Solana RPC evidence binds the ordered compute, ATA, token and recovery instruction roster', () => {
+  const fixture = loadFixture();
+  const payload = loadRosterFixture();
+  fixture.intent.serializedMessageSha256 = payload.serializedMessageSha256;
+  fixture.intent.serializedTransactionSha256 = payload.serializedTransactionSha256;
+  fixture.calls.simulation.request.params[0] = payload.serializedTransactionBase64;
+  fixture.calls.feeQuote.request.params[0] = payload.serializedMessageBase64;
+  const args = {
+    fixture,
+    ...expected,
+    expectedSerializedMessageSha256: payload.serializedMessageSha256,
+    expectedSerializedTransactionSha256: payload.serializedTransactionSha256,
+    expectedInstructionRoster: payload.instructionRoster
+  };
+  const result = createSolanaRpcEvidenceBundle(args);
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.evidence.instructionRoster, payload.instructionRoster);
+
+  const reordered = createSolanaRpcEvidenceBundle({ ...args, expectedInstructionRoster: [...payload.instructionRoster].reverse() });
+  assert.equal(reordered.checks.instructionRosterMatches, false);
+
+  const messageBytes = Buffer.from(payload.serializedMessageBase64, 'base64');
+  const transactionBytes = Buffer.from(payload.serializedTransactionBase64, 'base64');
+  const limitData = Buffer.from('02d8d60000', 'hex');
+  const messageOffset = messageBytes.indexOf(limitData);
+  const transactionOffset = transactionBytes.indexOf(limitData);
+  assert.ok(messageOffset > 0 && transactionOffset > 0);
+  messageBytes[messageOffset + 1] ^= 1;
+  transactionBytes[transactionOffset + 1] ^= 1;
+  const mutated = loadFixture();
+  mutated.calls.simulation.request.params[0] = transactionBytes.toString('base64');
+  mutated.calls.feeQuote.request.params[0] = messageBytes.toString('base64');
+  mutated.intent.serializedMessageSha256 = sha256(messageBytes);
+  mutated.intent.serializedTransactionSha256 = sha256(transactionBytes);
+  const mutationResult = createSolanaRpcEvidenceBundle({
+    ...args,
+    fixture: mutated,
+    expectedSerializedMessageSha256: mutated.intent.serializedMessageSha256,
+    expectedSerializedTransactionSha256: mutated.intent.serializedTransactionSha256
+  });
+  assert.equal(mutationResult.checks.serializedMessageMatchesExpected, true);
+  assert.equal(mutationResult.checks.instructionRosterMatches, false);
 });
 
 test('Solana RPC envelope parsing rejects unsupported versions and malformed compact arrays', () => {
