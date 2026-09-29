@@ -1,0 +1,17 @@
+{
+  "name": "omegavault-mvp",
+  "version": "0.5.0-dev",
+  "private": true,
+  "type": "module",
+  "description": "Chain-agnostic non-custodial recovery-wallet MVP; Sepolia proof completed, ERC-20/evidence/sponsorship next-phase scaffold.",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test",
+    "check": "node --check src/server.js && node --check src/core/recovery.js && node --check src/core/store.js && node --check src/chains/adapter-interface.js && node --check src/chains/registry.js && node --check src/chains/adapters/ethereum.js && node --check src/chains/adapters/xrpl.js && node --check src/chains/adapters/solana.js && node --check src/chains/adapters/bitcoin.js && node --check src/chains/adapters/xdc.js && node --check src/ethereum/compiler-cache.js && node --check public/app.js && node --check public/solidity-worker.js && node --check public/chains/ethereum.js && node --check public/chains/evm-codec.js && node --check public/chains/index.js && node --check src/core/assets.js && node --check src/core/action-plan.js && node --check src/core/evidence.js && node --check src/chains/evm/erc20.js && node --check src/chains/evm/sponsorship.js && node scripts/verify-contract-manifest.js",
+    "verify:contract": "node scripts/verify-contract-manifest.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

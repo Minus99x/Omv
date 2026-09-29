@@ -1,0 +1,39 @@
+{
+  "name": "OmegaVaultRecoveryVaultV050",
+  "contractVersion": "0.5.0-dev",
+  "adapterVersion": "0.5.0-dev",
+  "adapterVersionNumber": 500,
+  "status": "development-test-proof-only",
+  "productionValueAllowed": false,
+  "network": {
+    "name": "Sepolia",
+    "chainIdHex": "0xaa36a7",
+    "chainIdDecimal": 11155111
+  },
+  "compiler": {
+    "version": "0.8.24+commit.e11b9ed9",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    },
+    "evmVersion": "compiler-default",
+    "compilerArtifactSha256": null,
+    "compilerArtifactHashStatus": "not-yet-pinned"
+  },
+  "source": {
+    "path": "contracts/OmegaVaultRecoveryVaultV050.sol",
+    "sha256": "a8141fc0f712fe8779aa8558f6c6258ffb4cfdb1792aff0c401712a1d6465bcb"
+  },
+  "features": {
+    "nativeRecovery": true,
+    "erc20PostRecoverySweep": true,
+    "sponsoredApprovalExecution": false
+  },
+  "deploymentPolicy": {
+    "browserWalletSigns": true,
+    "serverReceivesPrivateKeys": false,
+    "runtimeBytecodeVerificationRequired": true,
+    "configurationVerificationRequired": true,
+    "independentRpcVerificationRequiredForProduction": true
+  }
+}
