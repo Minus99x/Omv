@@ -8,6 +8,7 @@
 - [x] Add adversarial tests for unknown future extension names.
 - [x] Preserve the distinction between known-danger extensions and unreviewed/unknown extensions in evidence output.
 - [x] Parse raw Token-2022 mint/account TLV data client-side and reject malformed, duplicate, or unknown extension types before execution assessment.
+- [x] Decode mint decimals plus token-account mint, authority, balance, and state from raw account bytes; reject caller-supplied metadata drift.
 
 ## Remaining ordered Solana token tasks
 

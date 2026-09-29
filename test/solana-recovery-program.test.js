@@ -1,11 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import bs58 from 'bs58';
 import {
   SOLANA_TOKEN_PROGRAM_ID, SOLANA_TOKEN_2022_PROGRAM_ID,
   createSolanaVaultState, heartbeatSolanaVault, approveSolanaRecovery, executeSolanaRecovery,
   solanaRecoveryEligible, createSolanaPdaPlan, normalizeSolanaTokenAsset,
   createSolanaTokenRecoveryPreflight, createSolanaToken2022SafetyAssessment,
   createSolanaTokenSafetyAssessmentFromAccountData, parseSolanaToken2022Extensions,
+  parseSolanaTokenMintBase, parseSolanaTokenAccountBase,
   SOLANA_TOKEN_MINT_BASE_BYTES, SOLANA_TOKEN_ACCOUNT_BASE_BYTES,
   createSolanaTransactionLifetimePlan, createSolanaProgramVerificationPlan
 } from '../src/chains/solana/recovery-program.js';
@@ -163,6 +165,31 @@ function token2022Data({ accountKind, extensions = [] }) {
   return Buffer.concat([base.subarray(0, Math.max(baseBytes, SOLANA_TOKEN_ACCOUNT_BASE_BYTES)), accountType, ...entries]);
 }
 
+const rawKey = byte => bs58.encode(Buffer.alloc(32, byte));
+
+function mintBaseData({ decimals = 6, initialized = true } = {}) {
+  const data = Buffer.alloc(SOLANA_TOKEN_MINT_BASE_BYTES);
+  data.writeBigUInt64LE(1000n, 36);
+  data[44] = decimals;
+  data[45] = initialized ? 1 : 0;
+  return data;
+}
+
+function tokenAccountBaseData({ mintAddress, authority, amount = 10n, state = 1 }) {
+  const data = Buffer.alloc(SOLANA_TOKEN_ACCOUNT_BASE_BYTES);
+  Buffer.from(bs58.decode(mintAddress)).copy(data, 0);
+  Buffer.from(bs58.decode(authority)).copy(data, 32);
+  data.writeBigUInt64LE(amount, 64);
+  data[108] = state;
+  return data;
+}
+
+function token2022StateData({ accountKind, baseData, extensions = [] }) {
+  const data = token2022Data({ accountKind, extensions });
+  baseData.copy(data, 0);
+  return data;
+}
+
 test('Solana raw Token-2022 parser accepts canonical ImmutableOwner ATAs and rejects unknown types', () => {
   const canonicalAta = token2022Data({ accountKind: 'account', extensions: [{ type: 7 }] });
   const parsed = parseSolanaToken2022Extensions({ data: canonicalAta, accountKind: 'account' });
@@ -177,35 +204,88 @@ test('Solana raw Token-2022 parser accepts canonical ImmutableOwner ATAs and rej
 });
 
 test('Solana raw Token-2022 safety assessment derives extensions from bytes and fails closed', () => {
-  const mintData = token2022Data({ accountKind: 'mint' });
-  const canonicalAta = token2022Data({ accountKind: 'account', extensions: [{ type: 7 }] });
+  const rawMint = rawKey(11), rawSourceAuthority = rawKey(12), rawDestinationAuthority = rawKey(13);
+  const mintData = token2022StateData({ accountKind: 'mint', baseData: mintBaseData() });
+  const sourceAta = token2022StateData({ accountKind: 'account', baseData: tokenAccountBaseData({ mintAddress: rawMint, authority: rawSourceAuthority }), extensions: [{ type: 7 }] });
+  const destinationAta = token2022StateData({ accountKind: 'account', baseData: tokenAccountBaseData({ mintAddress: rawMint, authority: rawDestinationAuthority }), extensions: [{ type: 7 }] });
   const safe = createSolanaTokenSafetyAssessmentFromAccountData({
     tokenProgramId: SOLANA_TOKEN_2022_PROGRAM_ID,
+    mintAddress: rawMint,
+    expectedSourceAuthority: rawSourceAuthority,
+    expectedDestinationAuthority: rawDestinationAuthority,
     mintData,
-    sourceAccountData: canonicalAta,
-    destinationAccountData: canonicalAta,
-    mintDecimals: 6,
+    sourceAccountData: sourceAta,
+    destinationAccountData: destinationAta,
     checkedDecimals: 6,
-    sourceAmount: 10n,
     transferAmount: 10n,
     destinationIsCanonicalAta: true
   });
   assert.equal(safe.ok, true);
+  assert.equal(safe.decodedAccountData.mint.decimals, 6);
+  assert.equal(safe.decodedAccountData.source.amount, 10n);
 
-  const unknownMint = token2022Data({ accountKind: 'mint', extensions: [{ type: 65535 }] });
+  const unknownMint = token2022StateData({ accountKind: 'mint', baseData: mintBaseData(), extensions: [{ type: 65535 }] });
   const blocked = createSolanaTokenSafetyAssessmentFromAccountData({
     tokenProgramId: SOLANA_TOKEN_2022_PROGRAM_ID,
+    mintAddress: rawMint,
+    expectedSourceAuthority: rawSourceAuthority,
+    expectedDestinationAuthority: rawDestinationAuthority,
     mintData: unknownMint,
-    sourceAccountData: canonicalAta,
-    destinationAccountData: canonicalAta,
-    mintDecimals: 6,
+    sourceAccountData: sourceAta,
+    destinationAccountData: destinationAta,
     checkedDecimals: 6,
-    sourceAmount: 10n,
     transferAmount: 10n,
     destinationIsCanonicalAta: true
   });
   assert.equal(blocked.ok, false);
   assert.deepEqual(blocked.blockedExtensions, ['UnknownExtension(65535)']);
+});
+
+test('Solana raw account assessment derives base fields and rejects identity or state drift', () => {
+  const rawMint = rawKey(21), otherMint = rawKey(22), sourceAuthority = rawKey(23), destinationAuthority = rawKey(24);
+  const mintData = mintBaseData({ decimals: 9 });
+  const source = tokenAccountBaseData({ mintAddress: rawMint, authority: sourceAuthority, amount: 25n });
+  const destination = tokenAccountBaseData({ mintAddress: rawMint, authority: destinationAuthority });
+  assert.deepEqual(parseSolanaTokenMintBase({ data: mintData }), { supply: 1000n, decimals: 9, isInitialized: true });
+  assert.equal(parseSolanaTokenAccountBase({ data: source }).owner, sourceAuthority);
+
+  const mismatch = createSolanaTokenSafetyAssessmentFromAccountData({
+    tokenProgramId: SOLANA_TOKEN_PROGRAM_ID,
+    mintAddress: otherMint,
+    expectedSourceAuthority: sourceAuthority,
+    expectedDestinationAuthority: destinationAuthority,
+    mintData,
+    sourceAccountData: source,
+    destinationAccountData: destination,
+    checkedDecimals: 9,
+    transferAmount: 25n,
+    destinationIsCanonicalAta: true
+  });
+  assert.equal(mismatch.ok, false);
+  assert.equal(mismatch.checks.sourceMintMatches, false);
+  assert.equal(mismatch.checks.destinationMintMatches, false);
+
+  const spoofedBalance = createSolanaTokenSafetyAssessmentFromAccountData({
+    tokenProgramId: SOLANA_TOKEN_PROGRAM_ID,
+    mintAddress: rawMint,
+    expectedSourceAuthority: sourceAuthority,
+    expectedDestinationAuthority: destinationAuthority,
+    mintData,
+    sourceAccountData: source,
+    destinationAccountData: destination,
+    checkedDecimals: 9,
+    transferAmount: 26n,
+    sourceAmount: 999n,
+    sourceFrozen: false,
+    destinationIsCanonicalAta: true
+  });
+  assert.equal(spoofedBalance.ok, false);
+  assert.equal(spoofedBalance.checks.amountWithinSourceBalance, false);
+
+  const frozen = tokenAccountBaseData({ mintAddress: rawMint, authority: sourceAuthority, state: 2 });
+  assert.equal(parseSolanaTokenAccountBase({ data: frozen }).isFrozen, true);
+  assert.throws(() => parseSolanaTokenMintBase({ data: mintBaseData({ initialized: false }) }), /not initialized/);
+  assert.throws(() => parseSolanaTokenAccountBase({ data: tokenAccountBaseData({ mintAddress: rawMint, authority: sourceAuthority, state: 0 }) }), /not initialized/);
 });
 
 test('Solana raw Token-2022 parser rejects malformed TLV and account-kind confusion', () => {

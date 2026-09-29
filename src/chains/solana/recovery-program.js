@@ -1,3 +1,5 @@
+import bs58 from 'bs58';
+
 export const SOLANA_TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 export const SOLANA_TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
 export const SOLANA_TOKEN_MINT_BASE_BYTES = 82;
@@ -45,6 +47,42 @@ function accountBytes(value, label) {
     throw new TypeError(`${label} must be a Buffer or Uint8Array.`);
   }
   return Buffer.from(value);
+}
+
+function unpackCOptionTag(bytes, offset, label) {
+  const tag = bytes.readUInt32LE(offset);
+  if (tag !== 0 && tag !== 1) throw new Error(`${label} has an invalid COption tag.`);
+  return tag === 1;
+}
+
+export function parseSolanaTokenMintBase({ data }) {
+  const bytes = accountBytes(data, 'data');
+  if (bytes.length < SOLANA_TOKEN_MINT_BASE_BYTES) throw new Error('Solana token mint data is truncated.');
+  unpackCOptionTag(bytes, 0, 'mintAuthority');
+  unpackCOptionTag(bytes, 46, 'freezeAuthority');
+  if (bytes[45] !== 1) throw new Error('Solana token mint is not initialized.');
+  return Object.freeze({
+    supply: bytes.readBigUInt64LE(36),
+    decimals: bytes[44],
+    isInitialized: true
+  });
+}
+
+export function parseSolanaTokenAccountBase({ data }) {
+  const bytes = accountBytes(data, 'data');
+  if (bytes.length < SOLANA_TOKEN_ACCOUNT_BASE_BYTES) throw new Error('Solana token account data is truncated.');
+  unpackCOptionTag(bytes, 72, 'delegate');
+  unpackCOptionTag(bytes, 109, 'isNative');
+  unpackCOptionTag(bytes, 129, 'closeAuthority');
+  const state = bytes[108];
+  if (state !== 1 && state !== 2) throw new Error('Solana token account is not initialized or has an invalid state.');
+  return Object.freeze({
+    mint: bs58.encode(bytes.subarray(0, 32)),
+    owner: bs58.encode(bytes.subarray(32, 64)),
+    amount: bytes.readBigUInt64LE(64),
+    state: state === 2 ? 'frozen' : 'initialized',
+    isFrozen: state === 2
+  });
 }
 
 export function parseSolanaToken2022Extensions({ data, accountKind }) {
@@ -141,27 +179,50 @@ export function createSolanaToken2022SafetyAssessment({ tokenProgramId, mintDeci
   });
 }
 
-export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramId, mintData, sourceAccountData, destinationAccountData, ...assessment }) {
+export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramId, mintAddress, expectedSourceAuthority, expectedDestinationAuthority, mintData, sourceAccountData, destinationAccountData, ...assessment }) {
   assertPubkey(tokenProgramId, 'tokenProgramId');
+  assertPubkey(mintAddress, 'mintAddress');
+  assertPubkey(expectedSourceAuthority, 'expectedSourceAuthority');
+  assertPubkey(expectedDestinationAuthority, 'expectedDestinationAuthority');
   const mintBytes = accountBytes(mintData, 'mintData');
   const sourceBytes = accountBytes(sourceAccountData, 'sourceAccountData');
   const destinationBytes = accountBytes(destinationAccountData, 'destinationAccountData');
+  const mintBase = parseSolanaTokenMintBase({ data: mintBytes });
+  const sourceBase = parseSolanaTokenAccountBase({ data: sourceBytes });
+  const destinationBase = parseSolanaTokenAccountBase({ data: destinationBytes });
+  const identityChecks = Object.freeze({
+    sourceMintMatches: sourceBase.mint === mintAddress,
+    destinationMintMatches: destinationBase.mint === mintAddress,
+    sourceAuthorityMatches: sourceBase.owner === expectedSourceAuthority,
+    destinationAuthorityMatches: destinationBase.owner === expectedDestinationAuthority
+  });
   if (tokenProgramId === SOLANA_TOKEN_PROGRAM_ID) {
     if (mintBytes.length !== SOLANA_TOKEN_MINT_BASE_BYTES || sourceBytes.length !== SOLANA_TOKEN_ACCOUNT_BASE_BYTES || destinationBytes.length !== SOLANA_TOKEN_ACCOUNT_BASE_BYTES) {
       throw new Error('Legacy SPL Token accounts must use the exact base mint/account layouts.');
     }
-    return createSolanaToken2022SafetyAssessment({ tokenProgramId, ...assessment });
+  } else if (tokenProgramId !== SOLANA_TOKEN_2022_PROGRAM_ID) {
+    throw new TypeError('Unsupported Solana token program.');
   }
-  if (tokenProgramId !== SOLANA_TOKEN_2022_PROGRAM_ID) throw new TypeError('Unsupported Solana token program.');
-  const mint = parseSolanaToken2022Extensions({ data: mintBytes, accountKind: 'mint' });
-  const source = parseSolanaToken2022Extensions({ data: sourceBytes, accountKind: 'account' });
-  const destination = parseSolanaToken2022Extensions({ data: destinationBytes, accountKind: 'account' });
-  return createSolanaToken2022SafetyAssessment({
+  const mint = tokenProgramId === SOLANA_TOKEN_2022_PROGRAM_ID ? parseSolanaToken2022Extensions({ data: mintBytes, accountKind: 'mint' }) : { extensionNames: [] };
+  const source = tokenProgramId === SOLANA_TOKEN_2022_PROGRAM_ID ? parseSolanaToken2022Extensions({ data: sourceBytes, accountKind: 'account' }) : { extensionNames: [] };
+  const destination = tokenProgramId === SOLANA_TOKEN_2022_PROGRAM_ID ? parseSolanaToken2022Extensions({ data: destinationBytes, accountKind: 'account' }) : { extensionNames: [] };
+  const baseAssessment = createSolanaToken2022SafetyAssessment({
     tokenProgramId,
     ...assessment,
+    mintDecimals: mintBase.decimals,
+    sourceAmount: sourceBase.amount,
+    sourceFrozen: sourceBase.isFrozen,
+    destinationFrozen: destinationBase.isFrozen,
     mintExtensions: mint.extensionNames,
     sourceExtensions: source.extensionNames,
     destinationExtensions: destination.extensionNames
+  });
+  const checks = Object.freeze({ ...baseAssessment.checks, ...identityChecks });
+  return Object.freeze({
+    ...baseAssessment,
+    ok: Object.values(checks).every(Boolean),
+    checks,
+    decodedAccountData: Object.freeze({ mint: mintBase, source: sourceBase, destination: destinationBase })
   });
 }
 

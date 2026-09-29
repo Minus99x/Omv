@@ -23,3 +23,15 @@ Next offline task: implement Rust-side Token-2022 extension parsing and fail-clo
 - Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain, so Rust/SBF parsing and CPI changes remain pending.
 
 Next offline task: implement the same raw extension parsing and fail-closed allowlist in Rust/SBF, then add checked SPL Token/Token-2022 CPI and adversarial `solana-program-test` coverage with the pinned toolchain.
+
+## 2026-09-29 — raw Solana token base-state decoding
+
+- Added canonical base-layout decoding for initialized SPL Token and Token-2022 mint/token accounts.
+- Raw-data safety assessment now derives decimals, source balance, frozen state, mint identity, and source/destination authorities from account bytes.
+- Added fail-closed checks for invalid COption tags, uninitialized/invalid state, mint mismatch, authority mismatch, and caller-supplied balance/state drift.
+- Verification: 193/193 JavaScript tests passed, including 15/15 focused Solana tests; `npm run check` and `npm run check:solana` passed.
+- Safety boundary: no deployment, transaction, wallet signature, secret access, or main-branch write was performed.
+- Connector status: unchanged. This closes another client-side preflight prerequisite only; SPL Token and Token-2022 execution remain not live-proof.
+- Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
+
+Next offline task: port the verified raw base/TLV decoding and fail-closed policy into Rust/SBF, then implement checked SPL Token/Token-2022 CPI with adversarial `solana-program-test` coverage.
