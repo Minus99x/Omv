@@ -14,6 +14,7 @@
 - [x] Freeze a digest-bound `CreateIdempotent` rescue-ATA plan with exact funding/account roles and mandatory post-creation raw-data verification.
 - [x] Bind ATA creation, finalized post-creation account evidence, raw safety assessment, and `TransferChecked` into a tamper-evident two-phase recovery coordinator.
 - [x] Bind each unsigned recovery message to a canonical blockhash, context slot, expiry height, matching confirmed simulation, and fail-closed pre-signature freshness gate.
+- [x] Bind the exact 10%-margin compute limit, priority-fee calculation, fresh total-fee quote, and user fee cap to the recovery-message digest.
 
 ## Remaining ordered Solana token tasks
 
@@ -22,5 +23,5 @@
 - [ ] Add Token-2022 `TransferChecked` CPI for extension-safe mints/accounts.
 - [ ] Execute canonical associated-token-account creation/funding under program-test and verify the post-creation account snapshot.
 - [ ] Compile SBF and execute adversarial program-test coverage.
-- [ ] Add compute-budget, rent, and RPC integration tests for blockhash expiry and finalized commitments.
+- [ ] Add rent and RPC integration tests for blockhash expiry, fee quotes, and finalized commitments.
 - [ ] Execute Devnet proof only after every offline gate passes.

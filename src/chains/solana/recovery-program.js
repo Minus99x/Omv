@@ -5,6 +5,7 @@ import { deriveSolanaAssociatedTokenAddress, SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID 
 export const SOLANA_TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 export const SOLANA_TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
 export const SOLANA_SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
+export const SOLANA_COMPUTE_BUDGET_PROGRAM_ID = 'ComputeBudget111111111111111111111111111111';
 export const SOLANA_TOKEN_MINT_BASE_BYTES = 82;
 export const SOLANA_TOKEN_ACCOUNT_BASE_BYTES = 165;
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -576,6 +577,76 @@ export function createSolanaRecentBlockhashExecutionGate({ lifetimePlan, current
     actionIfNotReady: 'discard the unsigned message, fetch a new confirmed blockhash, rebuild, and re-simulate before requesting signatures'
   });
   return Object.freeze({ ...result, executionGateDigest: digestRecord(result) });
+}
+
+export function createSolanaComputeBudgetFeeGate({ lifetimePlan, executionGate, computeUnitLimit, computeUnitLimitInstructionCount, computeUnitPriceInstructionCount, microLamportsPerComputeUnit, feeQuoteLamports, maximumTotalFeeLamports, feeQuoteContextSlot, feeQuoteCommitment = 'confirmed' }) {
+  assertRecordDigest(lifetimePlan, 'intentDigest', 'Solana transaction lifetime plan');
+  assertRecordDigest(executionGate, 'executionGateDigest', 'Solana recent-blockhash execution gate');
+  if (lifetimePlan.mode !== 'recent-blockhash' || executionGate.evidence?.lifetimeIntentDigest !== lifetimePlan.intentDigest) {
+    throw new Error('Compute-budget evidence does not match the frozen recent-blockhash lifetime intent.');
+  }
+  if (!Number.isSafeInteger(computeUnitLimit) || computeUnitLimit < 1 || computeUnitLimit > 1_400_000) {
+    throw new TypeError('computeUnitLimit must be a positive safe integer no greater than 1,400,000.');
+  }
+  if (!Number.isSafeInteger(computeUnitLimitInstructionCount) || !Number.isSafeInteger(computeUnitPriceInstructionCount)) {
+    throw new TypeError('Compute-budget instruction counts must be safe integers.');
+  }
+  const U64_MAX = (1n << 64n) - 1n;
+  for (const [value, label] of [[microLamportsPerComputeUnit, 'microLamportsPerComputeUnit'], [feeQuoteLamports, 'feeQuoteLamports'], [maximumTotalFeeLamports, 'maximumTotalFeeLamports']]) {
+    if (typeof value !== 'bigint' || value < 0n || value > U64_MAX) throw new TypeError(`${label} must be an unsigned u64 bigint.`);
+  }
+  if (maximumTotalFeeLamports < 1n) throw new TypeError('maximumTotalFeeLamports must be positive.');
+  if (!Number.isSafeInteger(feeQuoteContextSlot) || feeQuoteContextSlot < 0) throw new TypeError('feeQuoteContextSlot must be a non-negative safe integer.');
+  if (!['processed', 'confirmed', 'finalized'].includes(feeQuoteCommitment)) throw new TypeError('feeQuoteCommitment is invalid.');
+
+  const unitsConsumed = executionGate.evidence.unitsConsumed;
+  const requiredComputeUnitLimit = (BigInt(unitsConsumed) * 11n + 9n) / 10n;
+  const priorityFeeLamports = (BigInt(computeUnitLimit) * microLamportsPerComputeUnit + 999_999n) / 1_000_000n;
+  const observedBaseFeeLamports = feeQuoteLamports >= priorityFeeLamports ? feeQuoteLamports - priorityFeeLamports : null;
+  const limitData = Buffer.alloc(5);
+  limitData[0] = 2;
+  limitData.writeUInt32LE(computeUnitLimit, 1);
+  const priceData = Buffer.alloc(9);
+  priceData[0] = 3;
+  priceData.writeBigUInt64LE(microLamportsPerComputeUnit, 1);
+  const checks = Object.freeze({
+    blockhashAndSimulationGateReady: executionGate.readyToSign === true,
+    exactlyOneComputeUnitLimitInstruction: computeUnitLimitInstructionCount === 1,
+    exactlyOneComputeUnitPriceInstruction: computeUnitPriceInstructionCount === 1,
+    simulationMarginIsExact: BigInt(computeUnitLimit) === requiredComputeUnitLimit,
+    simulationMarginWithinTransactionMaximum: requiredComputeUnitLimit <= 1_400_000n,
+    feeQuoteCommitmentMatches: feeQuoteCommitment === lifetimePlan.simulationCommitment,
+    feeQuoteContextNotStale: feeQuoteContextSlot >= executionGate.evidence.simulationContextSlot,
+    feeQuoteCoversPriorityFee: observedBaseFeeLamports !== null,
+    totalFeeWithinUserMaximum: feeQuoteLamports <= maximumTotalFeeLamports
+  });
+  const evidence = Object.freeze({
+    lifetimeIntentDigest: lifetimePlan.intentDigest,
+    messageIntentDigest: lifetimePlan.messageIntentDigest,
+    executionGateDigest: executionGate.executionGateDigest,
+    unitsConsumed,
+    requiredComputeUnitLimit,
+    computeUnitLimit,
+    microLamportsPerComputeUnit,
+    priorityFeeLamports,
+    feeQuoteLamports,
+    observedBaseFeeLamports,
+    maximumTotalFeeLamports,
+    feeQuoteContextSlot,
+    feeQuoteCommitment
+  });
+  const result = Object.freeze({
+    readyToSign: Object.values(checks).every(Boolean),
+    checks,
+    evidence,
+    expectedComputeBudgetInstructions: Object.freeze([
+      Object.freeze({ programId: SOLANA_COMPUTE_BUDGET_PROGRAM_ID, instruction: 'SetComputeUnitLimit', dataHex: limitData.toString('hex') }),
+      Object.freeze({ programId: SOLANA_COMPUTE_BUDGET_PROGRAM_ID, instruction: 'SetComputeUnitPrice', dataHex: priceData.toString('hex') })
+    ]),
+    feePolicy: 'use a fresh confirmed getFeeForMessage quote for the exact unsigned message and never exceed the user-approved total fee cap',
+    actionIfNotReady: 'do not request signatures; rebuild the exact message, re-simulate, refresh the fee quote, and re-run every gate'
+  });
+  return Object.freeze({ ...result, computeBudgetFeeGateDigest: digestRecord(result) });
 }
 
 export function createSolanaProgramVerificationPlan({ programId }) {

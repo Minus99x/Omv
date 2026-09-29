@@ -105,3 +105,17 @@ Next offline task: implement the same validation and phase binding around Rust/S
 - Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
 
 Next offline task: add a simulation-derived compute-unit/fee budget bound to the recovery-message digest, then port the validated execution path into Rust/SBF and `solana-program-test` when the pinned toolchain is available.
+
+## 2026-09-29 — digest-bound compute and fee ceiling
+
+- Added a fail-closed compute-budget/fee gate bound to the exact recovery-message, lifetime-plan, and successful simulation-gate digests.
+- Required exactly one `SetComputeUnitLimit` and one `SetComputeUnitPrice` instruction and emitted their canonical byte encodings for independent message verification.
+- Required the compute-unit limit to equal the simulated consumption plus the documented 10% safety margin and remain within Solana's 1,400,000-CU transaction maximum.
+- Calculated the priority fee with exact integer ceiling arithmetic from the requested CU limit and micro-lamport price.
+- Required a fresh confirmed `getFeeForMessage` quote for the exact message, derived rather than hardcoded the base-fee portion, and enforced an explicit user-approved total-fee ceiling before signatures.
+- Verification: 201/201 JavaScript tests passed, including 28/28 focused Solana tests; `npm run check` and `npm run check:solana` passed.
+- Safety boundary: no deployment, transaction, wallet signature, secret access, or main-branch write was performed.
+- Connector status: unchanged. This is an offline fee-safety gate; SPL Token and Token-2022 remain not live-proof.
+- Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
+
+Next offline task: add rent and RPC fixture coverage for ATA funding, blockhash expiry, fee-quote freshness, and finalized commitments, then port the validated path into Rust/SBF and `solana-program-test` when the pinned toolchain is available.

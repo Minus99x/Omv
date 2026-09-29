@@ -13,6 +13,7 @@ import {
   SOLANA_SYSTEM_PROGRAM_ID,
   SOLANA_TOKEN_MINT_BASE_BYTES, SOLANA_TOKEN_ACCOUNT_BASE_BYTES,
   createSolanaTransactionLifetimePlan, createSolanaRecentBlockhashExecutionGate,
+  createSolanaComputeBudgetFeeGate, SOLANA_COMPUTE_BUDGET_PROGRAM_ID,
   createSolanaProgramVerificationPlan
 } from '../src/chains/solana/recovery-program.js';
 import { deriveSolanaAssociatedTokenAddress, SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID } from '../src/chains/solana/program-codec.js';
@@ -86,6 +87,43 @@ test('Solana recent-blockhash gate refuses expiry, stale simulation and commitme
   assert.throws(() => createSolanaTransactionLifetimePlan({ feePayer: owner, messageIntentDigest: 'c'.repeat(64), blockhash: 'abc', lastValidBlockHeight: 200, blockhashContextSlot: 150 }), /canonical 32-byte/);
   assert.throws(() => createSolanaTransactionLifetimePlan({ feePayer: owner, messageIntentDigest: 'c'.repeat(64), blockhash: rawKey(61), lastValidBlockHeight: 200, blockhashContextSlot: 150, simulationCommitment: 'processed' }), /must both be confirmed/);
   assert.throws(() => createSolanaTransactionLifetimePlan({ feePayer: owner, messageIntentDigest: 'not-a-digest', blockhash: rawKey(61), lastValidBlockHeight: 200, blockhashContextSlot: 150 }), /messageIntentDigest/);
+});
+
+test('Solana compute-budget fee gate binds exact simulation margin and fresh total-fee quote to the message', () => {
+  const lifetimePlan = createSolanaTransactionLifetimePlan({ feePayer: owner, messageIntentDigest: 'd'.repeat(64), blockhash: rawKey(63), lastValidBlockHeight: 300, blockhashContextSlot: 250 });
+  const executionGate = createSolanaRecentBlockhashExecutionGate({ lifetimePlan, currentBlockHeight: 275, blockhashValid: true, blockhashValidationContextSlot: 276, simulationContextSlot: 277, unitsConsumed: 42_000 });
+  const base = {
+    lifetimePlan,
+    executionGate,
+    computeUnitLimit: 46_200,
+    computeUnitLimitInstructionCount: 1,
+    computeUnitPriceInstructionCount: 1,
+    microLamportsPerComputeUnit: 100n,
+    feeQuoteLamports: 5_005n,
+    maximumTotalFeeLamports: 6_000n,
+    feeQuoteContextSlot: 278
+  };
+  const gate = createSolanaComputeBudgetFeeGate(base);
+  assert.equal(gate.readyToSign, true);
+  assert.equal(gate.evidence.messageIntentDigest, lifetimePlan.messageIntentDigest);
+  assert.equal(gate.evidence.requiredComputeUnitLimit, 46_200n);
+  assert.equal(gate.evidence.priorityFeeLamports, 5n);
+  assert.equal(gate.evidence.observedBaseFeeLamports, 5_000n);
+  assert.deepEqual(gate.expectedComputeBudgetInstructions, [
+    { programId: SOLANA_COMPUTE_BUDGET_PROGRAM_ID, instruction: 'SetComputeUnitLimit', dataHex: '0278b40000' },
+    { programId: SOLANA_COMPUTE_BUDGET_PROGRAM_ID, instruction: 'SetComputeUnitPrice', dataHex: '036400000000000000' }
+  ]);
+  assert.match(gate.computeBudgetFeeGateDigest, /^[0-9a-f]{64}$/);
+
+  assert.equal(createSolanaComputeBudgetFeeGate({ ...base, computeUnitLimit: 46_201 }).checks.simulationMarginIsExact, false);
+  assert.equal(createSolanaComputeBudgetFeeGate({ ...base, computeUnitLimitInstructionCount: 2 }).checks.exactlyOneComputeUnitLimitInstruction, false);
+  assert.equal(createSolanaComputeBudgetFeeGate({ ...base, feeQuoteContextSlot: 276 }).checks.feeQuoteContextNotStale, false);
+  assert.equal(createSolanaComputeBudgetFeeGate({ ...base, maximumTotalFeeLamports: 5_004n }).checks.totalFeeWithinUserMaximum, false);
+  assert.equal(createSolanaComputeBudgetFeeGate({ ...base, feeQuoteLamports: 4n }).checks.feeQuoteCoversPriorityFee, false);
+  const oversizedSimulation = createSolanaRecentBlockhashExecutionGate({ lifetimePlan, currentBlockHeight: 275, blockhashValid: true, blockhashValidationContextSlot: 276, simulationContextSlot: 277, unitsConsumed: Number.MAX_SAFE_INTEGER });
+  assert.equal(createSolanaComputeBudgetFeeGate({ ...base, executionGate: oversizedSimulation }).checks.simulationMarginWithinTransactionMaximum, false);
+  assert.throws(() => createSolanaComputeBudgetFeeGate({ ...base, executionGate: { ...executionGate, readyToSign: false } }), /integrity digest/);
+  assert.throws(() => createSolanaComputeBudgetFeeGate({ ...base, microLamportsPerComputeUnit: -1n }), /unsigned u64/);
 });
 
 test('Solana deployment verification plan includes upgrade authority and bytecode provenance gates', () => {
