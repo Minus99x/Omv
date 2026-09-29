@@ -9,6 +9,7 @@
 - [x] Preserve the distinction between known-danger extensions and unreviewed/unknown extensions in evidence output.
 - [x] Parse raw Token-2022 mint/account TLV data client-side and reject malformed, duplicate, or unknown extension types before execution assessment.
 - [x] Decode mint decimals plus token-account mint, authority, balance, and state from raw account bytes; reject caller-supplied metadata drift.
+- [x] Freeze a digest-bound `TransferChecked` instruction plan from a passing raw-account assessment, including exact account roles and PDA signer intent.
 
 ## Remaining ordered Solana token tasks
 

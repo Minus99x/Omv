@@ -35,3 +35,16 @@ Next offline task: implement the same raw extension parsing and fail-closed allo
 - Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
 
 Next offline task: port the verified raw base/TLV decoding and fail-closed policy into Rust/SBF, then implement checked SPL Token/Token-2022 CPI with adversarial `solana-program-test` coverage.
+
+## 2026-09-29 — deterministic TransferChecked CPI fixture
+
+- Added a deterministic client-side `TransferChecked` instruction plan gated on a passing raw-account safety assessment.
+- Encoded the official 10-byte instruction shape: tag `12`, little-endian `u64` amount, and `u8` decimals.
+- Froze the exact source, mint, destination, custody-PDA signer roles, token-program identity, and SHA-256 intent digest.
+- Added fail-closed rejection for unsafe assessments, mint/authority drift, noncanonical public keys, and amounts outside `u64`.
+- Verification: 194/194 JavaScript tests passed, including 16/16 focused Solana tests; `npm run check` and `npm run check:solana` passed.
+- Safety boundary: no deployment, transaction, wallet signature, secret access, or main-branch write was performed.
+- Connector status: unchanged. This is an offline CPI fixture; SPL Token and Token-2022 execution remain not live-proof.
+- Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
+
+Next offline task: use this exact fixture while porting base/TLV validation and checked transfer CPI into Rust/SBF, then compile and execute adversarial `solana-program-test` coverage with the pinned toolchain.

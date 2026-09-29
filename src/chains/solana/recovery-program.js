@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import bs58 from 'bs58';
 
 export const SOLANA_TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
@@ -47,6 +48,16 @@ function accountBytes(value, label) {
     throw new TypeError(`${label} must be a Buffer or Uint8Array.`);
   }
   return Buffer.from(value);
+}
+
+function canonicalPubkey(value, label) {
+  try {
+    const bytes = Buffer.from(bs58.decode(value));
+    if (bytes.length !== 32 || bs58.encode(bytes) !== value) throw new Error('non-canonical');
+    return value;
+  } catch {
+    throw new TypeError(`${label} must be a canonical 32-byte Solana public key.`);
+  }
 }
 
 function unpackCOptionTag(bytes, offset, label) {
@@ -223,6 +234,48 @@ export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramI
     ok: Object.values(checks).every(Boolean),
     checks,
     decodedAccountData: Object.freeze({ mint: mintBase, source: sourceBase, destination: destinationBase })
+  });
+}
+
+export function createSolanaTransferCheckedInstructionPlan({ assessment, sourceTokenAccount, mintAccount, destinationTokenAccount, custodyAuthority }) {
+  if (assessment == null || typeof assessment !== 'object' || assessment.ok !== true || assessment.decodedAccountData == null) {
+    throw new Error('A passing raw-account Solana token safety assessment is required.');
+  }
+  const programId = canonicalPubkey(assessment.tokenProgramId, 'assessment.tokenProgramId');
+  if (![SOLANA_TOKEN_PROGRAM_ID, SOLANA_TOKEN_2022_PROGRAM_ID].includes(programId)) throw new TypeError('Unsupported Solana token program.');
+  const source = canonicalPubkey(sourceTokenAccount, 'sourceTokenAccount');
+  const mint = canonicalPubkey(mintAccount, 'mintAccount');
+  const destination = canonicalPubkey(destinationTokenAccount, 'destinationTokenAccount');
+  const authority = canonicalPubkey(custodyAuthority, 'custodyAuthority');
+  const decoded = assessment.decodedAccountData;
+  if (decoded.source.mint !== mint || decoded.destination.mint !== mint) throw new Error('Instruction mint does not match the assessed token accounts.');
+  if (decoded.source.owner !== authority) throw new Error('Custody authority does not match the assessed source owner.');
+  if (typeof assessment.transferAmount !== 'bigint' || assessment.transferAmount <= 0n || assessment.transferAmount > 0xffffffffffffffffn) {
+    throw new TypeError('TransferChecked amount must fit an unsigned 64-bit integer.');
+  }
+  if (!Number.isInteger(assessment.mintDecimals) || assessment.mintDecimals < 0 || assessment.mintDecimals > 255) {
+    throw new TypeError('TransferChecked decimals must fit an unsigned byte.');
+  }
+  const data = Buffer.alloc(10);
+  data[0] = 12;
+  data.writeBigUInt64LE(assessment.transferAmount, 1);
+  data[9] = assessment.mintDecimals;
+  const intent = Object.freeze({
+    programId,
+    dataHex: data.toString('hex'),
+    keys: Object.freeze([
+      Object.freeze({ pubkey: source, isSigner: false, isWritable: true }),
+      Object.freeze({ pubkey: mint, isSigner: false, isWritable: false }),
+      Object.freeze({ pubkey: destination, isSigner: false, isWritable: true }),
+      Object.freeze({ pubkey: authority, isSigner: true, isWritable: false })
+    ]),
+    authorityMode: 'pda-invoke-signed',
+    amount: assessment.transferAmount.toString(),
+    decimals: assessment.mintDecimals
+  });
+  return Object.freeze({
+    ...intent,
+    intentDigest: createHash('sha256').update(JSON.stringify(intent)).digest('hex')
   });
 }
 
