@@ -301,6 +301,7 @@ export function createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAcco
       rentLamportsInput: null,
       policy: 'Associated Token Program computes rent exemption at execution; preflight payer balance from current cluster state.'
     }),
+    expectedDestinationDataBytes: programId === SOLANA_TOKEN_2022_PROGRAM_ID ? 170 : SOLANA_TOKEN_ACCOUNT_BASE_BYTES,
     expectedDestinationExtensions: Object.freeze(programId === SOLANA_TOKEN_2022_PROGRAM_ID ? ['ImmutableOwner'] : []),
     postCreationGate: Object.freeze({
       mustRefetchAccountData: true,
@@ -647,6 +648,72 @@ export function createSolanaComputeBudgetFeeGate({ lifetimePlan, executionGate, 
     actionIfNotReady: 'do not request signatures; rebuild the exact message, re-simulate, refresh the fee quote, and re-run every gate'
   });
   return Object.freeze({ ...result, computeBudgetFeeGateDigest: digestRecord(result) });
+}
+
+export function createSolanaRescueAtaFundingGate({ ataCreationPlan, lifetimePlan, computeBudgetFeeGate, rentExemptionDataBytes, minimumRentExemptLamports, payerBalanceLamports, rentObservationSlot, balanceContextSlot, rentCommitment = 'confirmed', balanceCommitment = 'confirmed' }) {
+  assertRecordDigest(ataCreationPlan, 'intentDigest', 'Solana rescue ATA creation plan');
+  assertRecordDigest(lifetimePlan, 'intentDigest', 'Solana transaction lifetime plan');
+  assertRecordDigest(computeBudgetFeeGate, 'computeBudgetFeeGateDigest', 'Solana compute-budget fee gate');
+  if (lifetimePlan.mode !== 'recent-blockhash' || computeBudgetFeeGate.evidence?.lifetimeIntentDigest !== lifetimePlan.intentDigest) {
+    throw new Error('ATA funding evidence does not match the frozen recent-blockhash lifetime intent.');
+  }
+  if (ataCreationPlan.funding?.payer !== lifetimePlan.feePayer) {
+    throw new Error('ATA funding payer does not match the exact transaction fee payer.');
+  }
+  if (!Number.isSafeInteger(rentExemptionDataBytes) || rentExemptionDataBytes < 1) throw new TypeError('rentExemptionDataBytes must be a positive safe integer.');
+  if (!Number.isSafeInteger(rentObservationSlot) || rentObservationSlot < 0 || !Number.isSafeInteger(balanceContextSlot) || balanceContextSlot < 0) {
+    throw new TypeError('Rent and balance observation slots must be non-negative safe integers.');
+  }
+  if (!['processed', 'confirmed', 'finalized'].includes(rentCommitment) || !['processed', 'confirmed', 'finalized'].includes(balanceCommitment)) {
+    throw new TypeError('Rent and balance commitments are invalid.');
+  }
+  const U64_MAX = (1n << 64n) - 1n;
+  for (const [value, label] of [[minimumRentExemptLamports, 'minimumRentExemptLamports'], [payerBalanceLamports, 'payerBalanceLamports']]) {
+    if (typeof value !== 'bigint' || value < 0n || value > U64_MAX) throw new TypeError(`${label} must be an unsigned u64 bigint.`);
+  }
+  const transactionFeeLamports = computeBudgetFeeGate.evidence.feeQuoteLamports;
+  const worstCaseRequiredLamports = minimumRentExemptLamports + transactionFeeLamports;
+  const minimumEvidenceSlot = Math.max(lifetimePlan.blockhashContextSlot, computeBudgetFeeGate.evidence.feeQuoteContextSlot);
+  const checks = Object.freeze({
+    computeBudgetFeeGateReady: computeBudgetFeeGate.readyToSign === true,
+    rentSizeMatchesFrozenDestinationLayout: rentExemptionDataBytes === ataCreationPlan.expectedDestinationDataBytes,
+    rentCommitmentMatches: rentCommitment === lifetimePlan.blockhashCommitment,
+    balanceCommitmentMatches: balanceCommitment === lifetimePlan.blockhashCommitment,
+    rentObservationNotStale: rentObservationSlot >= minimumEvidenceSlot,
+    payerBalanceNotStale: balanceContextSlot >= minimumEvidenceSlot,
+    worstCaseRequirementFitsU64: worstCaseRequiredLamports <= U64_MAX,
+    payerCanFundWorstCaseCreationAndFee: payerBalanceLamports >= worstCaseRequiredLamports
+  });
+  const evidence = Object.freeze({
+    ataCreationIntentDigest: ataCreationPlan.intentDigest,
+    lifetimeIntentDigest: lifetimePlan.intentDigest,
+    messageIntentDigest: lifetimePlan.messageIntentDigest,
+    computeBudgetFeeGateDigest: computeBudgetFeeGate.computeBudgetFeeGateDigest,
+    payer: ataCreationPlan.funding.payer,
+    tokenProgramId: ataCreationPlan.tokenProgramId,
+    associatedTokenAccount: ataCreationPlan.associatedTokenAccount,
+    rentExemptionDataBytes,
+    minimumRentExemptLamports,
+    transactionFeeLamports,
+    worstCaseRequiredLamports,
+    payerBalanceLamports,
+    rentObservationSlot,
+    balanceContextSlot,
+    rentCommitment,
+    balanceCommitment
+  });
+  const result = Object.freeze({
+    readyToSign: Object.values(checks).every(Boolean),
+    checks,
+    evidence,
+    rpcPolicy: Object.freeze({
+      rent: 'call getMinimumBalanceForRentExemption for the exact destination data size at confirmed commitment, paired with a confirmed getSlot observation',
+      balance: 'call getBalance for the frozen payer at confirmed commitment and minContextSlot equal to the freshest prior evidence slot'
+    }),
+    fundingAssumption: 'reserve the worst case in which the idempotent ATA instruction must create and rent-fund the destination account',
+    actionIfNotReady: 'do not request signatures; refresh rent, fee, and payer-balance evidence at matching confirmed commitments and rebuild if the message changes'
+  });
+  return Object.freeze({ ...result, ataFundingGateDigest: digestRecord(result) });
 }
 
 export function createSolanaProgramVerificationPlan({ programId }) {

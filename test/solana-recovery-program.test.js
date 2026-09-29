@@ -14,6 +14,7 @@ import {
   SOLANA_TOKEN_MINT_BASE_BYTES, SOLANA_TOKEN_ACCOUNT_BASE_BYTES,
   createSolanaTransactionLifetimePlan, createSolanaRecentBlockhashExecutionGate,
   createSolanaComputeBudgetFeeGate, SOLANA_COMPUTE_BUDGET_PROGRAM_ID,
+  createSolanaRescueAtaFundingGate,
   createSolanaProgramVerificationPlan
 } from '../src/chains/solana/recovery-program.js';
 import { deriveSolanaAssociatedTokenAddress, SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID } from '../src/chains/solana/program-codec.js';
@@ -124,6 +125,49 @@ test('Solana compute-budget fee gate binds exact simulation margin and fresh tot
   assert.equal(createSolanaComputeBudgetFeeGate({ ...base, executionGate: oversizedSimulation }).checks.simulationMarginWithinTransactionMaximum, false);
   assert.throws(() => createSolanaComputeBudgetFeeGate({ ...base, executionGate: { ...executionGate, readyToSign: false } }), /integrity digest/);
   assert.throws(() => createSolanaComputeBudgetFeeGate({ ...base, microLamportsPerComputeUnit: -1n }), /unsigned u64/);
+});
+
+test('Solana ATA funding gate binds exact rent layout and fresh payer capacity to the message', () => {
+  const payer = rawKey(64), rescueOwner = rawKey(65), rawMint = rawKey(66);
+  const destinationTokenAccount = deriveSolanaAssociatedTokenAddress({ owner: rescueOwner, mint: rawMint, tokenProgramId: SOLANA_TOKEN_2022_PROGRAM_ID }).address;
+  const ataCreationPlan = createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount: rawMint, tokenProgramId: SOLANA_TOKEN_2022_PROGRAM_ID, destinationTokenAccount });
+  assert.equal(ataCreationPlan.expectedDestinationDataBytes, 170);
+  const lifetimePlan = createSolanaTransactionLifetimePlan({ feePayer: payer, messageIntentDigest: 'e'.repeat(64), blockhash: rawKey(67), lastValidBlockHeight: 400, blockhashContextSlot: 350 });
+  const executionGate = createSolanaRecentBlockhashExecutionGate({ lifetimePlan, currentBlockHeight: 375, blockhashValid: true, blockhashValidationContextSlot: 376, simulationContextSlot: 377, unitsConsumed: 50_000 });
+  const computeBudgetFeeGate = createSolanaComputeBudgetFeeGate({
+    lifetimePlan,
+    executionGate,
+    computeUnitLimit: 55_000,
+    computeUnitLimitInstructionCount: 1,
+    computeUnitPriceInstructionCount: 1,
+    microLamportsPerComputeUnit: 100n,
+    feeQuoteLamports: 5_006n,
+    maximumTotalFeeLamports: 6_000n,
+    feeQuoteContextSlot: 378
+  });
+  const base = {
+    ataCreationPlan,
+    lifetimePlan,
+    computeBudgetFeeGate,
+    rentExemptionDataBytes: 170,
+    minimumRentExemptLamports: 2_039_280n,
+    payerBalanceLamports: 2_050_000n,
+    rentObservationSlot: 379,
+    balanceContextSlot: 380
+  };
+  const gate = createSolanaRescueAtaFundingGate(base);
+  assert.equal(gate.readyToSign, true);
+  assert.equal(gate.evidence.worstCaseRequiredLamports, 2_044_286n);
+  assert.equal(gate.evidence.messageIntentDigest, lifetimePlan.messageIntentDigest);
+  assert.match(gate.ataFundingGateDigest, /^[0-9a-f]{64}$/);
+
+  assert.equal(createSolanaRescueAtaFundingGate({ ...base, rentExemptionDataBytes: 165 }).checks.rentSizeMatchesFrozenDestinationLayout, false);
+  assert.equal(createSolanaRescueAtaFundingGate({ ...base, payerBalanceLamports: 2_044_285n }).checks.payerCanFundWorstCaseCreationAndFee, false);
+  assert.equal(createSolanaRescueAtaFundingGate({ ...base, rentObservationSlot: 377 }).checks.rentObservationNotStale, false);
+  assert.equal(createSolanaRescueAtaFundingGate({ ...base, balanceCommitment: 'processed' }).checks.balanceCommitmentMatches, false);
+  assert.throws(() => createSolanaRescueAtaFundingGate({ ...base, computeBudgetFeeGate: { ...computeBudgetFeeGate, readyToSign: false } }), /integrity digest/);
+  const wrongPayerLifetime = createSolanaTransactionLifetimePlan({ feePayer: rawKey(68), messageIntentDigest: 'e'.repeat(64), blockhash: rawKey(67), lastValidBlockHeight: 400, blockhashContextSlot: 350 });
+  assert.throws(() => createSolanaRescueAtaFundingGate({ ...base, lifetimePlan: wrongPayerLifetime }), /lifetime intent|fee payer/);
 });
 
 test('Solana deployment verification plan includes upgrade authority and bytecode provenance gates', () => {
@@ -436,6 +480,7 @@ test('Solana rescue ATA plan freezes idempotent creation, funding roles and post
     ]);
     assert.equal(plan.funding.rescueOwnerMustSign, false);
     assert.equal(plan.funding.rentLamportsInput, null);
+    assert.equal(plan.expectedDestinationDataBytes, tokenProgramId === SOLANA_TOKEN_2022_PROGRAM_ID ? 170 : SOLANA_TOKEN_ACCOUNT_BASE_BYTES);
     assert.equal(plan.postCreationGate.transferPlanBlockedUntilVerified, true);
     assert.deepEqual(plan.expectedDestinationExtensions, tokenProgramId === SOLANA_TOKEN_2022_PROGRAM_ID ? ['ImmutableOwner'] : []);
     assert.match(plan.intentDigest, /^[0-9a-f]{64}$/);

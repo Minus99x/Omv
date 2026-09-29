@@ -15,6 +15,7 @@
 - [x] Bind ATA creation, finalized post-creation account evidence, raw safety assessment, and `TransferChecked` into a tamper-evident two-phase recovery coordinator.
 - [x] Bind each unsigned recovery message to a canonical blockhash, context slot, expiry height, matching confirmed simulation, and fail-closed pre-signature freshness gate.
 - [x] Bind the exact 10%-margin compute limit, priority-fee calculation, fresh total-fee quote, and user fee cap to the recovery-message digest.
+- [x] Bind exact legacy/Token-2022 ATA rent size, current rent exemption, and fresh payer capacity to the recovery-message and fee-gate digests.
 
 ## Remaining ordered Solana token tasks
 
@@ -23,5 +24,5 @@
 - [ ] Add Token-2022 `TransferChecked` CPI for extension-safe mints/accounts.
 - [ ] Execute canonical associated-token-account creation/funding under program-test and verify the post-creation account snapshot.
 - [ ] Compile SBF and execute adversarial program-test coverage.
-- [ ] Add rent and RPC integration tests for blockhash expiry, fee quotes, and finalized commitments.
+- [ ] Add RPC integration fixtures for blockhash expiry, fee/rent quote freshness, and finalized commitments.
 - [ ] Execute Devnet proof only after every offline gate passes.

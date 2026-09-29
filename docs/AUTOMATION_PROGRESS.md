@@ -119,3 +119,17 @@ Next offline task: add a simulation-derived compute-unit/fee budget bound to the
 - Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
 
 Next offline task: add rent and RPC fixture coverage for ATA funding, blockhash expiry, fee-quote freshness, and finalized commitments, then port the validated path into Rust/SBF and `solana-program-test` when the pinned toolchain is available.
+
+## 2026-09-29 — digest-bound ATA rent and payer-capacity gate
+
+- Bound the legacy 165-byte ATA layout and the Token-2022 170-byte `ImmutableOwner` ATA layout into the idempotent creation-plan digest.
+- Added a funding gate that combines the exact-size `getMinimumBalanceForRentExemption` result, transaction fee quote, and current payer balance using bigint-only lamport arithmetic.
+- Required confirmed rent and balance observations at context slots no older than the blockhash/simulation/fee evidence already bound to the transaction.
+- Required the frozen ATA funding payer to equal the exact transaction fee payer and reserved the worst case where the idempotent instruction must create the account.
+- Added fail-closed coverage for wrong account size, stale evidence, commitment drift, payer substitution, insufficient balance, and tampered fee evidence.
+- Verification: 202/202 JavaScript tests passed, including 29/29 focused Solana tests; `npm run check` and `npm run check:solana` passed.
+- Safety boundary: no deployment, transaction, wallet signature, secret access, or main-branch write was performed.
+- Connector status: unchanged. This is an offline funding gate; SPL Token and Token-2022 remain not live-proof.
+- Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
+
+Next offline task: add RPC response fixtures for blockhash expiry, fee/rent quote freshness, and finalized ATA creation/refetch commitments, then port the validated path into Rust/SBF and `solana-program-test` when the pinned toolchain is available.
