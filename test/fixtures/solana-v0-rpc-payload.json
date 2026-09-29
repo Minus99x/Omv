@@ -4,10 +4,26 @@
   "serializedMessageSha256": "00c94291afcd8eca44a7c4aa01585f87bd615dc098fc8abdaa96848ca6c16473",
   "serializedTransactionBase64": "AUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUWAAQAAAUBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0MAAA==",
   "serializedTransactionSha256": "35ef247a04bf6a771cc2d9e121f9717a6d6a880146aeb05a4c695f87e2682641",
+  "addressTableLookups": [],
+  "accountRoster": [
+    { "publicKey": "5KovAGoer61Vvo1Uv7sod2PpdATt74wUm7ezjKsLpKeF", "isSigner": true, "isWritable": true }
+  ],
   "withLookup": {
     "serializedMessageBase64": "gAEAAQJAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEREREREREREREREREREREREREREREREREREREREREREQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0MBAQECAQABRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkYBAAA=",
     "serializedMessageSha256": "9f73ca1e6b37ef153f71574be4b2003e061e2820dc13f083c79b2a0bc09dddb2",
     "serializedTransactionBase64": "AUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUWAAQABAkBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBARERERERERERERERERERERERERERERERERERERERERERDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQwEBAQIBAAFGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRgEAAA==",
-    "serializedTransactionSha256": "ee2a25d19996e04ef54756f8325b3478442586f2afad4866016f7639e32b94e7"
+    "serializedTransactionSha256": "ee2a25d19996e04ef54756f8325b3478442586f2afad4866016f7639e32b94e7",
+    "addressTableLookups": [
+      {
+        "tableId": "5jKh25biPsnrmLWXXuqKNH2Q67j69T4Q7Zew5c8wJKaV",
+        "writable": [{ "index": 0, "publicKey": "5oEzAP4izB65uRm2yDAEf9oALGwHpWkDfyKb8zBY3euC" }],
+        "readonly": []
+      }
+    ],
+    "accountRoster": [
+      { "publicKey": "5KovAGoer61Vvo1Uv7sod2PpdATt74wUm7ezjKsLpKeF", "isSigner": true, "isWritable": true },
+      { "publicKey": "5bV6jUfhDHCQVA1WfKBUnXUsboJgoKgkzkKcxr3joew5", "isSigner": false, "isWritable": false },
+      { "publicKey": "5oEzAP4izB65uRm2yDAEf9oALGwHpWkDfyKb8zBY3euC", "isSigner": false, "isWritable": true }
+    ]
   }
 }

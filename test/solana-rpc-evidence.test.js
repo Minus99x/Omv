@@ -16,6 +16,10 @@ const expected = Object.freeze({
   expectedSerializedMessageSha256: 'b1c2eb550490885fc1b60ae992cd958bc7f00cd9a7c9f71e40df3d3b0ded2bb3',
   expectedSerializedTransactionSha256: 'e994eff284e1ad82d6754141a22573d2cf6793340617738f9e80f0a18ff50b5b',
   expectedInstructionRoster: Object.freeze([]),
+  expectedAddressTableLookups: Object.freeze([]),
+  expectedAccountRoster: Object.freeze([
+    Object.freeze({ publicKey: '5KovAGoer61Vvo1Uv7sod2PpdATt74wUm7ezjKsLpKeF', isSigner: true, isWritable: true })
+  ]),
   expectedFeePayer: '5KovAGoer61Vvo1Uv7sod2PpdATt74wUm7ezjKsLpKeF',
   expectedAssociatedTokenAccount: '5bV6jUfhDHCQVA1WfKBUnXUsboJgoKgkzkKcxr3joew5',
   expectedTokenProgramId: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb',
@@ -97,7 +101,9 @@ test('Solana RPC evidence accepts a digest-bound versioned-v0 message with an em
     fixture,
     ...expected,
     expectedSerializedMessageSha256: v0.serializedMessageSha256,
-    expectedSerializedTransactionSha256: v0.serializedTransactionSha256
+    expectedSerializedTransactionSha256: v0.serializedTransactionSha256,
+    expectedAddressTableLookups: v0.addressTableLookups,
+    expectedAccountRoster: v0.accountRoster
   });
   assert.equal(result.ok, true);
   assert.equal(result.evidence.messageVersion, 0);
@@ -114,17 +120,45 @@ test('Solana RPC evidence validates a v0 compiled instruction against loaded ALT
   fixture.intent.serializedTransactionSha256 = payload.serializedTransactionSha256;
   fixture.calls.simulation.request.params[0] = payload.serializedTransactionBase64;
   fixture.calls.feeQuote.request.params[0] = payload.serializedMessageBase64;
-  const result = createSolanaRpcEvidenceBundle({
+  const args = {
     fixture,
     ...expected,
     expectedSerializedMessageSha256: payload.serializedMessageSha256,
     expectedSerializedTransactionSha256: payload.serializedTransactionSha256,
-    expectedInstructionRoster: [{ programId: expected.expectedAssociatedTokenAccount, accountIndexes: [2], dataHex: '00' }]
-  });
+    expectedInstructionRoster: [{ programId: expected.expectedAssociatedTokenAccount, accountIndexes: [2], dataHex: '00' }],
+    expectedAddressTableLookups: payload.addressTableLookups,
+    expectedAccountRoster: payload.accountRoster
+  };
+  const result = createSolanaRpcEvidenceBundle(args);
   assert.equal(result.ok, true);
   assert.equal(result.evidence.instructionCount, 1);
   assert.equal(result.evidence.addressTableLookupCount, 1);
   assert.equal(result.evidence.loadedAddressCount, 1);
+  assert.deepEqual(result.evidence.addressTableLookups, payload.addressTableLookups);
+  assert.deepEqual(result.evidence.accountRoster, payload.accountRoster);
+  assert.deepEqual(result.evidence.instructionAccounts[0].accounts, [
+    { accountIndex: 2, publicKey: payload.accountRoster[2].publicKey, isSigner: false, isWritable: true }
+  ]);
+
+  const readonlyLoaded = loadFixture();
+  const readonlyMessage = Buffer.from(payload.serializedMessageBase64, 'base64');
+  const readonlyTransaction = Buffer.from(payload.serializedTransactionBase64, 'base64');
+  readonlyMessage.set([0, 1, 0], readonlyMessage.length - 3);
+  readonlyTransaction.set([0, 1, 0], readonlyTransaction.length - 3);
+  readonlyLoaded.calls.simulation.request.params[0] = readonlyTransaction.toString('base64');
+  readonlyLoaded.calls.feeQuote.request.params[0] = readonlyMessage.toString('base64');
+  readonlyLoaded.intent.serializedMessageSha256 = sha256(readonlyMessage);
+  readonlyLoaded.intent.serializedTransactionSha256 = sha256(readonlyTransaction);
+  const readonlyResult = createSolanaRpcEvidenceBundle({
+    ...args,
+    fixture: readonlyLoaded,
+    expectedSerializedMessageSha256: readonlyLoaded.intent.serializedMessageSha256,
+    expectedSerializedTransactionSha256: readonlyLoaded.intent.serializedTransactionSha256
+  });
+  assert.equal(readonlyResult.checks.instructionRosterMatches, true);
+  assert.equal(readonlyResult.checks.addressTableLookupsMatch, false);
+  assert.equal(readonlyResult.checks.accountRosterFullyResolved, false);
+  assert.equal(readonlyResult.checks.accountRosterMatches, false);
 
   const invalidIndex = loadFixture();
   const invalidMessage = Buffer.from(payload.serializedMessageBase64, 'base64');
@@ -145,14 +179,35 @@ test('Solana RPC evidence binds the ordered compute, ATA, token and recovery ins
     ...expected,
     expectedSerializedMessageSha256: payload.serializedMessageSha256,
     expectedSerializedTransactionSha256: payload.serializedTransactionSha256,
-    expectedInstructionRoster: payload.instructionRoster
+    expectedInstructionRoster: payload.instructionRoster,
+    expectedAddressTableLookups: payload.addressTableLookups,
+    expectedAccountRoster: payload.accountRoster
   };
   const result = createSolanaRpcEvidenceBundle(args);
   assert.equal(result.ok, true);
   assert.deepEqual(result.evidence.instructionRoster, payload.instructionRoster);
+  assert.deepEqual(result.evidence.accountRoster, payload.accountRoster);
 
   const reordered = createSolanaRpcEvidenceBundle({ ...args, expectedInstructionRoster: [...payload.instructionRoster].reverse() });
   assert.equal(reordered.checks.instructionRosterMatches, false);
+
+  const privilegeDrift = loadFixture();
+  const privilegeMessage = Buffer.from(payload.serializedMessageBase64, 'base64');
+  const privilegeTransaction = Buffer.from(payload.serializedTransactionBase64, 'base64');
+  privilegeMessage[2] = 3;
+  privilegeTransaction[67] = 3;
+  privilegeDrift.calls.simulation.request.params[0] = privilegeTransaction.toString('base64');
+  privilegeDrift.calls.feeQuote.request.params[0] = privilegeMessage.toString('base64');
+  privilegeDrift.intent.serializedMessageSha256 = sha256(privilegeMessage);
+  privilegeDrift.intent.serializedTransactionSha256 = sha256(privilegeTransaction);
+  const privilegeResult = createSolanaRpcEvidenceBundle({
+    ...args,
+    fixture: privilegeDrift,
+    expectedSerializedMessageSha256: privilegeDrift.intent.serializedMessageSha256,
+    expectedSerializedTransactionSha256: privilegeDrift.intent.serializedTransactionSha256
+  });
+  assert.equal(privilegeResult.checks.instructionRosterMatches, true);
+  assert.equal(privilegeResult.checks.accountRosterMatches, false);
 
   const messageBytes = Buffer.from(payload.serializedMessageBase64, 'base64');
   const transactionBytes = Buffer.from(payload.serializedTransactionBase64, 'base64');

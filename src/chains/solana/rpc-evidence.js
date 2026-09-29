@@ -123,6 +123,13 @@ function parseMessageIdentity(bytes, label) {
     const start = accountKeysOffset + index * 32;
     return bs58.encode(bytes.subarray(start, start + 32));
   }));
+  const staticAccountRoster = Object.freeze(staticAccountKeys.map((publicKey, index) => Object.freeze({
+    publicKey,
+    isSigner: index < requiredSignatures,
+    isWritable: index < requiredSignatures
+      ? index < requiredSignatures - readonlySignedAccounts
+      : index < accountCount.value - readonlyUnsignedAccounts
+  })));
   offset = blockhashOffset + 32;
   const instructionCount = readCompactU16(bytes, offset, `${label} instruction count`);
   offset = instructionCount.nextOffset;
@@ -147,19 +154,28 @@ function parseMessageIdentity(bytes, label) {
   }
   let addressTableLookupCount = 0;
   let loadedAddressCount = 0;
+  let loadedWritableCount = 0;
+  let loadedReadonlyCount = 0;
+  const addressTableLookups = [];
   if (version === 0) {
     const lookupCount = readCompactU16(bytes, offset, `${label} address-table lookup count`);
     addressTableLookupCount = lookupCount.value;
     offset = lookupCount.nextOffset;
     for (let index = 0; index < lookupCount.value; index += 1) {
       if (offset + 32 > bytes.length) throw new Error(`${label} address-table lookup ${index} key is truncated.`);
+      const tableId = bs58.encode(bytes.subarray(offset, offset + 32));
       offset += 32;
       const writableIndexes = skipCompactByteArray(bytes, offset, `${label} address-table lookup ${index} writable indices`);
       loadedAddressCount += writableIndexes.length;
+      loadedWritableCount += writableIndexes.length;
+      const writable = Object.freeze([...bytes.subarray(writableIndexes.dataOffset, writableIndexes.nextOffset)]);
       offset = writableIndexes.nextOffset;
       const readonlyIndexes = skipCompactByteArray(bytes, offset, `${label} address-table lookup ${index} readonly indices`);
       loadedAddressCount += readonlyIndexes.length;
+      loadedReadonlyCount += readonlyIndexes.length;
+      const readonly = Object.freeze([...bytes.subarray(readonlyIndexes.dataOffset, readonlyIndexes.nextOffset)]);
       offset = readonlyIndexes.nextOffset;
+      addressTableLookups.push(Object.freeze({ tableId, writable, readonly }));
     }
   }
   if (offset !== bytes.length) throw new Error(`${label} contains trailing bytes.`);
@@ -175,11 +191,52 @@ function parseMessageIdentity(bytes, label) {
     instructionCount: instructionCount.value,
     addressTableLookupCount,
     loadedAddressCount,
+    loadedWritableCount,
+    loadedReadonlyCount,
     staticAccountKeys,
+    staticAccountRoster,
+    addressTableLookups: Object.freeze(addressTableLookups),
     instructions: resolvedInstructions,
     feePayer: bs58.encode(bytes.subarray(accountKeysOffset, accountKeysOffset + 32)),
     blockhash: bs58.encode(bytes.subarray(blockhashOffset, blockhashOffset + 32))
   });
+}
+
+function normalizeExpectedAddressTableLookups(value) {
+  if (!Array.isArray(value)) throw new TypeError('expectedAddressTableLookups must be an array.');
+  return Object.freeze(value.map((entry, lookupIndex) => {
+    const item = assertObject(entry, `expectedAddressTableLookups[${lookupIndex}]`);
+    const tableId = canonicalBase58(item.tableId, 32, `expectedAddressTableLookups[${lookupIndex}].tableId`);
+    const normalizeEntries = (entries, kind) => {
+      if (!Array.isArray(entries)) throw new TypeError(`expectedAddressTableLookups[${lookupIndex}].${kind} must be an array.`);
+      return Object.freeze(entries.map((address, addressIndex) => {
+        const resolved = assertObject(address, `expectedAddressTableLookups[${lookupIndex}].${kind}[${addressIndex}]`);
+        if (!Number.isInteger(resolved.index) || resolved.index < 0 || resolved.index > 255) {
+          throw new TypeError(`expectedAddressTableLookups[${lookupIndex}].${kind}[${addressIndex}].index must be a byte integer.`);
+        }
+        return Object.freeze({
+          index: resolved.index,
+          publicKey: canonicalBase58(resolved.publicKey, 32, `expectedAddressTableLookups[${lookupIndex}].${kind}[${addressIndex}].publicKey`)
+        });
+      }));
+    };
+    return Object.freeze({ tableId, writable: normalizeEntries(item.writable, 'writable'), readonly: normalizeEntries(item.readonly, 'readonly') });
+  }));
+}
+
+function normalizeExpectedAccountRoster(value) {
+  if (!Array.isArray(value)) throw new TypeError('expectedAccountRoster must be an array.');
+  return Object.freeze(value.map((entry, index) => {
+    const item = assertObject(entry, `expectedAccountRoster[${index}]`);
+    if (typeof item.isSigner !== 'boolean' || typeof item.isWritable !== 'boolean') {
+      throw new TypeError(`expectedAccountRoster[${index}] signer/writable flags must be booleans.`);
+    }
+    return Object.freeze({
+      publicKey: canonicalBase58(item.publicKey, 32, `expectedAccountRoster[${index}].publicKey`),
+      isSigner: item.isSigner,
+      isWritable: item.isWritable
+    });
+  }));
 }
 
 function normalizeExpectedInstructionRoster(value) {
@@ -213,6 +270,8 @@ export function createSolanaRpcEvidenceBundle({
   expectedSerializedMessageSha256,
   expectedSerializedTransactionSha256,
   expectedInstructionRoster,
+  expectedAddressTableLookups,
+  expectedAccountRoster,
   expectedFeePayer,
   expectedAssociatedTokenAccount,
   expectedTokenProgramId,
@@ -228,6 +287,8 @@ export function createSolanaRpcEvidenceBundle({
   const associatedTokenAccount = canonicalBase58(expectedAssociatedTokenAccount, 32, 'expectedAssociatedTokenAccount');
   const tokenProgramId = canonicalBase58(expectedTokenProgramId, 32, 'expectedTokenProgramId');
   const instructionRoster = normalizeExpectedInstructionRoster(expectedInstructionRoster);
+  const addressTableLookups = normalizeExpectedAddressTableLookups(expectedAddressTableLookups);
+  const accountRoster = normalizeExpectedAccountRoster(expectedAccountRoster);
   safeUnsignedInteger(expectedDestinationDataBytes, 'expectedDestinationDataBytes');
   if (expectedDestinationDataBytes === 0) throw new TypeError('expectedDestinationDataBytes must be positive.');
 
@@ -267,6 +328,39 @@ export function createSolanaRpcEvidenceBundle({
     programId: instruction.programId,
     accountIndexes: instruction.accountIndexes,
     dataHex: instruction.dataHex
+  })));
+  const observedAddressTableLookups = Object.freeze(transactionEnvelope.message.addressTableLookups.map((lookup, lookupIndex) => Object.freeze({
+    tableId: lookup.tableId,
+    writable: Object.freeze(lookup.writable.map((index, addressIndex) => Object.freeze({
+      index,
+      publicKey: addressTableLookups[lookupIndex]?.writable[addressIndex]?.publicKey ?? null
+    }))),
+    readonly: Object.freeze(lookup.readonly.map((index, addressIndex) => Object.freeze({
+      index,
+      publicKey: addressTableLookups[lookupIndex]?.readonly[addressIndex]?.publicKey ?? null
+    })))
+  })));
+  const loadedWritableRoster = observedAddressTableLookups.flatMap(lookup => lookup.writable.map(address => Object.freeze({
+    publicKey: address.publicKey,
+    isSigner: false,
+    isWritable: true
+  })));
+  const loadedReadonlyRoster = observedAddressTableLookups.flatMap(lookup => lookup.readonly.map(address => Object.freeze({
+    publicKey: address.publicKey,
+    isSigner: false,
+    isWritable: false
+  })));
+  const observedAccountRoster = Object.freeze([
+    ...transactionEnvelope.message.staticAccountRoster,
+    ...loadedWritableRoster,
+    ...loadedReadonlyRoster
+  ]);
+  const observedInstructionAccounts = Object.freeze(transactionEnvelope.message.instructions.map(instruction => Object.freeze({
+    programId: instruction.programId,
+    accounts: Object.freeze(instruction.accountIndexes.map(accountIndex => Object.freeze({
+      accountIndex,
+      ...observedAccountRoster[accountIndex]
+    })))
   })));
 
   const slot = rpcPair(calls, 'observationSlot', 'getSlot');
@@ -320,6 +414,9 @@ export function createSolanaRpcEvidenceBundle({
     serializedMessageMatchesExpected: serializedMessageSha256 === expectedSerializedMessageSha256,
     instructionProgramsResolveStatically: observedInstructionRoster.every(instruction => instruction.programId != null),
     instructionRosterMatches: JSON.stringify(observedInstructionRoster) === JSON.stringify(instructionRoster),
+    addressTableLookupsMatch: JSON.stringify(observedAddressTableLookups) === JSON.stringify(addressTableLookups),
+    accountRosterFullyResolved: observedAccountRoster.every(account => account.publicKey != null),
+    accountRosterMatches: JSON.stringify(observedAccountRoster) === JSON.stringify(accountRoster),
     simulationAndFeePayloadsMatch: transactionEnvelope.messageBytes.equals(feeMessageBytes),
     messageFeePayerMatches: transactionEnvelope.message.feePayer === feePayer && feeMessage.feePayer === feePayer,
     messageBlockhashMatches: transactionEnvelope.message.blockhash === blockhash && feeMessage.blockhash === blockhash,
@@ -353,6 +450,9 @@ export function createSolanaRpcEvidenceBundle({
     addressTableLookupCount: transactionEnvelope.message.addressTableLookupCount,
     loadedAddressCount: transactionEnvelope.message.loadedAddressCount,
     instructionRoster: observedInstructionRoster,
+    addressTableLookups: observedAddressTableLookups,
+    accountRoster: observedAccountRoster,
+    instructionAccounts: observedInstructionAccounts,
     feePayer,
     associatedTokenAccount,
     tokenProgramId,

@@ -2,11 +2,10 @@
 
 ## Latest verified increment
 
-- Added a deterministic, explicitly non-deployable Solana message fixture covering ordered Compute Budget limit/price, idempotent associated-token-account creation, Token-2022 `TransferChecked` and planned recovery-program instructions.
-- Extended the RPC envelope decoder to expose every compiled instruction's static program ID, ordered account indexes and exact data bytes.
-- Required callers to supply the complete expected instruction roster; inserted, removed, reordered or byte-mutated instructions now fail closed even when a substituted payload's SHA-256 digests are supplied by the caller.
-- Required all instruction program indexes to resolve from static account keys. Address-table-loaded program IDs remain rejected until separately reviewed and implemented.
-- Preserved legacy/v0 structural checks, byte-identical simulation/fee-message binding and explicit rejection of unsupported transaction versions.
+- Derived the exact static-account signer/writable roster from the Solana message header and bound it to caller-supplied expected public keys and privileges.
+- Decoded each v0 address-table lookup's table ID plus ordered writable/readonly indexes, resolved loaded addresses in runtime account-key order, and exposed the resolved account metadata used by every compiled instruction.
+- Added fail-closed cases for static privilege escalation and writable-to-read-only lookup drift after recomputing the substituted payload's SHA-256 digests.
+- Retained the static-program-ID restriction, exact ordered instruction roster, byte-identical simulation/fee-message binding and legacy/v0 structural checks.
 
 ## Verification results
 
@@ -17,8 +16,8 @@
 
 ## Promotion boundary
 
-This remains deterministic, synthetic, non-deployable RPC-fixture coverage, not Token/Token-2022 SBF execution, validator-backed integration or a live-network proof. The planned recovery instruction byte in the roster fixture is structural test data only and is not implemented by the current native-SOL Rust program. SPL Token/Token-2022 remain unpromoted; no deployment, broadcast or wallet signature was performed. Rust/Agave/Solana SBF tooling is unavailable in this environment, so the existing native-SOL artifact remains the latest compiled execution proof.
+This remains deterministic, synthetic, non-deployable RPC-fixture coverage, not Token/Token-2022 SBF execution, validator-backed integration or a live-network proof. Address-table-loaded public keys are bound to caller-supplied expected resolution but are not yet independently decoded from a fetched lookup-table account. The planned recovery instruction byte in the roster fixture is structural test data only and is not implemented by the current native-SOL Rust program. SPL Token/Token-2022 remain unpromoted; no deployment, broadcast or wallet signature was performed. Rust/Agave/Solana SBF tooling is unavailable in this environment, so the existing native-SOL artifact remains the latest compiled execution proof.
 
 ## Next offline task
 
-Bind each compiled account index to its expected public key plus signer/writable role derived from the message header, so account substitution and privilege drift fail closed before the reviewed token path is mirrored into Rust SBF with the pinned toolchain.
+Add deterministic lookup-table account-state evidence: verify the table owner and lifecycle metadata, decode its stored addresses, and prove every v0 writable/readonly lookup index resolves to the expected public key at a fresh confirmed context.

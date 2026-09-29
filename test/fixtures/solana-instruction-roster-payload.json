@@ -4,6 +4,14 @@
   "serializedMessageSha256": "a22f9c6bdd3438efb6d46083edd2360d40b987c60865f1957f3433873d7ba07f",
   "serializedTransactionBase64": "AUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUUBAAQFQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEADBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAIyXJY9OJInxuz0QKRSODYMLWhOZ2v8QhASOe9jb6fhZBt324e51j94YQl285GzN2rYa/E2DuQ0n/r35KNihi/yKiOPddAnxlf1S2y08ul1yymcJvx2UEhvzdIgBtA9vXENDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDBQEABQLY1gAAAQAJA2QAAAAAAAAAAgABAQMACgwyAAAAAAAAAAYEAAEE",
   "serializedTransactionSha256": "7047a4838a0d4a1527c78acc283db4cf568fc99f216f223c990ed71c514fae2d",
+  "addressTableLookups": [],
+  "accountRoster": [
+    { "publicKey": "5KovAGoer61Vvo1Uv7sod2PpdATt74wUm7ezjKsLpKeF", "isSigner": true, "isWritable": true },
+    { "publicKey": "ComputeBudget111111111111111111111111111111", "isSigner": false, "isWritable": false },
+    { "publicKey": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL", "isSigner": false, "isWritable": false },
+    { "publicKey": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb", "isSigner": false, "isWritable": false },
+    { "publicKey": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9", "isSigner": false, "isWritable": false }
+  ],
   "instructionRoster": [
     { "programId": "ComputeBudget111111111111111111111111111111", "accountIndexes": [], "dataHex": "02d8d60000" },
     { "programId": "ComputeBudget111111111111111111111111111111", "accountIndexes": [], "dataHex": "036400000000000000" },
