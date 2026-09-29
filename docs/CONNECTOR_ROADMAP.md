@@ -61,6 +61,8 @@ Candidate mechanisms:
 
 Required tests include recent blockhash expiry, durable nonce choices if used, program upgrade authority, PDA derivation, account ownership, compute budgets, signer ordering, rent/state sizing, and finalized commitment behavior.
 
+Offline RPC evidence now has deterministic fail-closed fixtures for recent-blockhash expiry, monotonic confirmed contexts, simulation/fee/rent/balance observations, finalized ATA creation status, and finalized account refetch. This is fixture coverage only; validator-backed integration and Devnet evidence remain required before promotion.
+
 ## Bitcoin — scaffold
 
 Bitcoin should be designed from UTXO/script primitives.

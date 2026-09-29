@@ -1,26 +1,24 @@
 # OmegaVault 0.6.19-dev Progress
 
-## Concrete progress
+## Latest verified increment
 
-- Reverified current Solana Token-2022 extension behavior before changing the recovery preflight.
-- Closed a fail-closed gap in the 0.6.18 client model: Token-2022 extensions that were neither explicitly blocked nor reviewed could previously pass the extension check.
-- Replaced the blocklist-only decision with an allowlist gate. At this stage, no mint extensions are execution-approved and the only account extension allowed is `ImmutableOwner`.
-- `ImmutableOwner` is retained because canonical Token-2022 associated token accounts initialize it automatically and its documented behavior is to prevent later AccountOwner authority changes.
-- Unknown/future extension names and currently unreviewed extensions such as `MintCloseAuthority`, `InterestBearingConfig`, and `ScaledUiAmount` now fail closed.
-- Kept `knownBlockedExtensions` separate from the broader `blockedExtensions` result so evidence can distinguish known-danger classes from unreviewed/unknown classes.
+- Added `src/chains/solana/rpc-evidence.js`, a fail-closed normalizer for realistic Solana JSON-RPC request/response evidence.
+- Bound the frozen message intent, fee payer, ATA and token program to confirmed `getLatestBlockhash`, `isBlockhashValid`, `getBlockHeight`, `simulateTransaction`, `getFeeForMessage`, `getSlot`, rent and balance observations.
+- Required monotonic context slots, an unexpired/valid blockhash, successful frozen-blockhash simulation, exact Token-2022 ATA rent sizing and sufficient payer capacity.
+- Required successful finalized ATA-creation status followed by a finalized `getAccountInfo` refetch with the exact address, token-program owner, account size, base64 data length and rent floor.
+- Added a checked-in JSON fixture plus adversarial cases for expiry, stale fee context, non-finalized creation, wrong account owner, truncated data and mismatched JSON-RPC IDs.
 
 ## Verification results
 
-- JavaScript syntax check for `src/chains/solana/recovery-program.js`: passed.
-- Focused Solana model suite: 11/11 passed.
-- New adversarial coverage proves unknown mint/account extensions are rejected while the canonical Token-2022 ATA `ImmutableOwner` shape remains eligible when every other safety check passes.
-- Full JavaScript suite attempted: 106 passed / 13 failed, with every failure caused by the same unavailable npm dependencies (`@stellar/stellar-sdk`, `@noble/curves`, `@emurgo/cardano-serialization-lib-nodejs`, `bs58`, `xrpl`). No new functional-test failure was introduced.
-- A dependency-backed full-suite pass is therefore not claimed in this environment; Rust/Agave compilation is also unavailable here.
+- Focused Solana suites: 31/31 passed.
+- Full JavaScript suite: 204/204 passed.
+- Full syntax/manifest check: passed.
+- Solana source/codec evidence check: passed (`e140b5235505df36f727051adf880f78b8ff7168b4e0269fc2071d4d7f24804e`).
 
 ## Promotion boundary
 
-This increment hardens the client/preflight policy only. It does not claim Token-2022 SBF execution proof, SPL token CPI proof, Devnet proof, or production readiness. The existing native-SOL SBF artifact remains the last compiled Solana execution proof.
+This is deterministic offline RPC-fixture coverage, not validator-backed integration or a live-network proof. SPL Token/Token-2022 remain unpromoted; no deployment, transaction or signature was performed. Rust/Agave/Solana SBF tooling is unavailable in this environment, so the existing native-SOL artifact remains the latest compiled execution proof.
 
 ## Next offline task
 
-Mirror the same allowlist/fail-closed extension policy inside the Rust/SBF program, add checked SPL/Token-2022 CPI using the custody PDA authority, compile with the pinned toolchain, and run adversarial `solana-program-test` cases before any Devnet interaction.
+Mirror the reviewed extension allowlist and checked `TransferChecked`/idempotent ATA path into the Rust SBF processor, then compile and run adversarial `solana-program-test` cases when the pinned Rust/Agave toolchain is available.
