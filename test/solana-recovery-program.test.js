@@ -9,6 +9,7 @@ import {
   createSolanaTokenSafetyAssessmentFromAccountData, parseSolanaToken2022Extensions,
   parseSolanaTokenMintBase, parseSolanaTokenAccountBase,
   createSolanaRescueAtaCreationPlan, createSolanaTransferCheckedInstructionPlan,
+  createSolanaTokenRecoveryPhasePlan,
   SOLANA_SYSTEM_PROGRAM_ID,
   SOLANA_TOKEN_MINT_BASE_BYTES, SOLANA_TOKEN_ACCOUNT_BASE_BYTES,
   createSolanaTransactionLifetimePlan, createSolanaProgramVerificationPlan
@@ -349,10 +350,11 @@ test('Solana TransferChecked plan freezes assessed accounts, PDA authority and c
   ]);
   assert.equal(plan.authorityMode, 'pda-invoke-signed');
   assert.match(plan.intentDigest, /^[0-9a-f]{64}$/);
+  assert.match(assessment.assessmentDigest, /^[0-9a-f]{64}$/);
 
   assert.throws(() => createSolanaTransferCheckedInstructionPlan({ assessment: { ...assessment, ok: false }, sourceTokenAccount, mintAccount: rawMint, destinationTokenAccount, custodyAuthority: sourceAuthority }), /passing raw-account/);
   assert.throws(() => createSolanaTransferCheckedInstructionPlan({ assessment, sourceTokenAccount, mintAccount: rawKey(36), destinationTokenAccount, custodyAuthority: sourceAuthority }), /mint does not match/);
-  assert.throws(() => createSolanaTransferCheckedInstructionPlan({ assessment: { ...assessment, transferAmount: 1n << 64n }, sourceTokenAccount, mintAccount: rawMint, destinationTokenAccount, custodyAuthority: sourceAuthority }), /unsigned 64-bit/);
+  assert.throws(() => createSolanaTransferCheckedInstructionPlan({ assessment: { ...assessment, transferAmount: 1n << 64n }, sourceTokenAccount, mintAccount: rawMint, destinationTokenAccount, custodyAuthority: sourceAuthority }), /integrity digest/);
 });
 
 test('Solana rescue ATA plan freezes idempotent creation, funding roles and post-creation verification', () => {
@@ -383,6 +385,51 @@ test('Solana rescue ATA plan rejects redirection and unsupported token programs'
   const payer = rawKey(44), rescueOwner = rawKey(45), rawMint = rawKey(46);
   assert.throws(() => createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount: rawMint, tokenProgramId: SOLANA_TOKEN_PROGRAM_ID, destinationTokenAccount: rawKey(47) }), /not the canonical/);
   assert.throws(() => createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount: rawMint, tokenProgramId: rawKey(48), destinationTokenAccount: rawKey(49) }), /Unsupported/);
+});
+
+test('Solana token recovery coordinator requires creation verification before transfer', () => {
+  const payer = rawKey(51), rescueOwner = rawKey(52), rawMint = rawKey(53), sourceAuthority = rawKey(54), sourceTokenAccount = rawKey(55);
+  const destinationTokenAccount = deriveSolanaAssociatedTokenAddress({ owner: rescueOwner, mint: rawMint, tokenProgramId: SOLANA_TOKEN_PROGRAM_ID }).address;
+  const ataCreationPlan = createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount: rawMint, tokenProgramId: SOLANA_TOKEN_PROGRAM_ID, destinationTokenAccount });
+  const creationPhase = createSolanaTokenRecoveryPhasePlan({ ataCreationPlan });
+  assert.equal(creationPhase.phase, 'create-and-verify-rescue-ata');
+  assert.equal(creationPhase.readyForTransfer, false);
+  assert.equal(creationPhase.instructions.length, 1);
+  assert.deepEqual(creationPhase.confirmationPolicy, { creationCommitment: 'finalized', accountReadCommitment: 'finalized', accountReadMinContextSlot: 'creationFinalizedSlot' });
+  assert.deepEqual(creationPhase.requiredNextEvidence, ['finalized creation result', 'refetched destination account bytes', 'passing digest-bound raw safety assessment']);
+
+  const assessment = createSolanaTokenSafetyAssessmentFromAccountData({
+    tokenProgramId: SOLANA_TOKEN_PROGRAM_ID,
+    mintAddress: rawMint,
+    sourceAccountAddress: sourceTokenAccount,
+    destinationAccountAddress: destinationTokenAccount,
+    expectedSourceAuthority: sourceAuthority,
+    expectedDestinationAuthority: rescueOwner,
+    mintData: mintBaseData({ decimals: 6 }),
+    sourceAccountData: tokenAccountBaseData({ mintAddress: rawMint, authority: sourceAuthority, amount: 50n }),
+    destinationAccountData: tokenAccountBaseData({ mintAddress: rawMint, authority: rescueOwner }),
+    checkedDecimals: 6,
+    transferAmount: 50n
+  });
+  assert.throws(() => createSolanaTokenRecoveryPhasePlan({ ataCreationPlan, assessment, creationFinalizedSlot: 100, assessmentContextSlot: 99 }), /non-stale finalized/);
+  const transferPhase = createSolanaTokenRecoveryPhasePlan({ ataCreationPlan, assessment, creationFinalizedSlot: 100, assessmentContextSlot: 101 });
+  assert.equal(transferPhase.phase, 'transfer-verified-token-balance');
+  assert.equal(transferPhase.readyForTransfer, true);
+  assert.equal(transferPhase.instructions[0].dataHex, '0c320000000000000006');
+  assert.equal(transferPhase.creationIntentDigest, ataCreationPlan.intentDigest);
+  assert.equal(transferPhase.assessmentDigest, assessment.assessmentDigest);
+  assert.equal(transferPhase.creationFinalizedSlot, 100);
+  assert.equal(transferPhase.assessmentContextSlot, 101);
+  assert.match(transferPhase.intentDigest, /^[0-9a-f]{64}$/);
+  assert.throws(() => createSolanaTokenRecoveryPhasePlan({ ataCreationPlan, assessment: { ...assessment, transferAmount: 49n }, creationFinalizedSlot: 100, assessmentContextSlot: 101 }), /integrity digest/);
+});
+
+test('Solana token recovery coordinator rejects tampered or cross-intent evidence', () => {
+  const payer = rawKey(56), rescueOwner = rawKey(57), rawMint = rawKey(58);
+  const destinationTokenAccount = deriveSolanaAssociatedTokenAddress({ owner: rescueOwner, mint: rawMint, tokenProgramId: SOLANA_TOKEN_PROGRAM_ID }).address;
+  const ataCreationPlan = createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount: rawMint, tokenProgramId: SOLANA_TOKEN_PROGRAM_ID, destinationTokenAccount });
+  assert.throws(() => createSolanaTokenRecoveryPhasePlan({ ataCreationPlan: { ...ataCreationPlan, associatedTokenAccount: rawKey(59) } }), /integrity digest/);
+  assert.throws(() => createSolanaTokenRecoveryPhasePlan({ ataCreationPlan: { ...ataCreationPlan, intentDigest: '0'.repeat(64) } }), /integrity digest/);
 });
 
 test('Solana raw Token-2022 parser rejects malformed TLV and account-kind confusion', () => {

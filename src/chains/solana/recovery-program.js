@@ -62,6 +62,18 @@ function canonicalPubkey(value, label) {
   }
 }
 
+function digestRecord(record) {
+  return createHash('sha256').update(JSON.stringify(record, (_key, value) => typeof value === 'bigint' ? { $bigint: value.toString() } : value)).digest('hex');
+}
+
+function assertRecordDigest(record, digestField, label) {
+  if (record == null || typeof record !== 'object' || !/^[0-9a-f]{64}$/.test(record[digestField] ?? '')) {
+    throw new Error(`${label} is missing its integrity digest.`);
+  }
+  const payload = Object.fromEntries(Object.entries(record).filter(([key]) => key !== digestField));
+  if (digestRecord(payload) !== record[digestField]) throw new Error(`${label} integrity digest does not match its contents.`);
+}
+
 function unpackCOptionTag(bytes, offset, label) {
   const tag = bytes.readUInt32LE(offset);
   if (tag !== 0 && tag !== 1) throw new Error(`${label} has an invalid COption tag.`);
@@ -237,7 +249,7 @@ export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramI
     destinationExtensions: destination.extensionNames
   });
   const checks = Object.freeze({ ...baseAssessment.checks, ...identityChecks });
-  return Object.freeze({
+  const result = Object.freeze({
     ...baseAssessment,
     ok: Object.values(checks).every(Boolean),
     checks,
@@ -247,6 +259,7 @@ export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramI
       destination: Object.freeze({ ...destinationBase, address: destinationAccountAddress, canonicalBump: canonicalDestination.bump })
     })
   });
+  return Object.freeze({ ...result, assessmentDigest: digestRecord(result) });
 }
 
 export function createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount, tokenProgramId, destinationTokenAccount }) {
@@ -296,7 +309,7 @@ export function createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAcco
   });
   return Object.freeze({
     ...intent,
-    intentDigest: createHash('sha256').update(JSON.stringify(intent)).digest('hex')
+    intentDigest: digestRecord(intent)
   });
 }
 
@@ -304,6 +317,7 @@ export function createSolanaTransferCheckedInstructionPlan({ assessment, sourceT
   if (assessment == null || typeof assessment !== 'object' || assessment.ok !== true || assessment.decodedAccountData == null) {
     throw new Error('A passing raw-account Solana token safety assessment is required.');
   }
+  assertRecordDigest(assessment, 'assessmentDigest', 'Solana token safety assessment');
   const programId = canonicalPubkey(assessment.tokenProgramId, 'assessment.tokenProgramId');
   if (![SOLANA_TOKEN_PROGRAM_ID, SOLANA_TOKEN_2022_PROGRAM_ID].includes(programId)) throw new TypeError('Unsupported Solana token program.');
   const source = canonicalPubkey(sourceTokenAccount, 'sourceTokenAccount');
@@ -339,8 +353,57 @@ export function createSolanaTransferCheckedInstructionPlan({ assessment, sourceT
   });
   return Object.freeze({
     ...intent,
-    intentDigest: createHash('sha256').update(JSON.stringify(intent)).digest('hex')
+    intentDigest: digestRecord(intent)
   });
+}
+
+export function createSolanaTokenRecoveryPhasePlan({ ataCreationPlan, assessment = null, creationFinalizedSlot = null, assessmentContextSlot = null }) {
+  assertRecordDigest(ataCreationPlan, 'intentDigest', 'Solana rescue ATA creation plan');
+  const instruction = ataCreationPlan.instruction;
+  if (instruction?.programId !== SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID || instruction?.instruction !== 'CreateIdempotent' || instruction?.dataHex !== '01' || instruction?.keys?.length !== 6) {
+    throw new Error('Solana rescue ATA creation plan does not contain the canonical CreateIdempotent instruction shape.');
+  }
+  const [payer, destination, rescueOwner, mint, systemProgram, tokenProgram] = instruction.keys;
+  if (payer.isSigner !== true || payer.isWritable !== true || destination.pubkey !== ataCreationPlan.associatedTokenAccount || destination.isWritable !== true || rescueOwner.isSigner !== false || mint.isSigner !== false || systemProgram.pubkey !== SOLANA_SYSTEM_PROGRAM_ID || tokenProgram.pubkey !== ataCreationPlan.tokenProgramId) {
+    throw new Error('Solana rescue ATA creation plan account roles do not match the frozen intent.');
+  }
+  if (assessment == null) {
+    const intent = Object.freeze({
+      phase: 'create-and-verify-rescue-ata',
+      readyForTransfer: false,
+      creationIntentDigest: ataCreationPlan.intentDigest,
+      instructions: Object.freeze([instruction]),
+      confirmationPolicy: Object.freeze({ creationCommitment: 'finalized', accountReadCommitment: 'finalized', accountReadMinContextSlot: 'creationFinalizedSlot' }),
+      requiredNextEvidence: Object.freeze(['finalized creation result', 'refetched destination account bytes', 'passing digest-bound raw safety assessment'])
+    });
+    return Object.freeze({ ...intent, intentDigest: digestRecord(intent) });
+  }
+  if (assessment.ok !== true || assessment.decodedAccountData == null) throw new Error('A passing raw-account Solana token safety assessment is required for the transfer phase.');
+  if (!Number.isSafeInteger(creationFinalizedSlot) || creationFinalizedSlot < 0 || !Number.isSafeInteger(assessmentContextSlot) || assessmentContextSlot < creationFinalizedSlot) {
+    throw new Error('Transfer phase requires a finalized creation slot and a non-stale finalized account-read context slot.');
+  }
+  const decoded = assessment.decodedAccountData;
+  if (assessment.tokenProgramId !== tokenProgram.pubkey || decoded.destination.address !== destination.pubkey || decoded.destination.owner !== rescueOwner.pubkey || decoded.destination.mint !== mint.pubkey || decoded.source.mint !== mint.pubkey || assessment.checks?.canonicalRescueAta !== true) {
+    throw new Error('Post-creation assessment does not match the frozen ATA creation intent.');
+  }
+  const transfer = createSolanaTransferCheckedInstructionPlan({
+    assessment,
+    sourceTokenAccount: decoded.source.address,
+    mintAccount: mint.pubkey,
+    destinationTokenAccount: destination.pubkey,
+    custodyAuthority: decoded.source.owner
+  });
+  const intent = Object.freeze({
+    phase: 'transfer-verified-token-balance',
+    readyForTransfer: true,
+    creationIntentDigest: ataCreationPlan.intentDigest,
+    assessmentDigest: assessment.assessmentDigest,
+    transferIntentDigest: transfer.intentDigest,
+    creationFinalizedSlot,
+    assessmentContextSlot,
+    instructions: Object.freeze([transfer])
+  });
+  return Object.freeze({ ...intent, intentDigest: digestRecord(intent) });
 }
 
 function assertPubkey(value, label) {

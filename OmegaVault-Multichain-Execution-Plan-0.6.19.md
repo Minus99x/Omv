@@ -12,6 +12,7 @@
 - [x] Freeze a digest-bound `TransferChecked` instruction plan from a passing raw-account assessment, including exact account roles and PDA signer intent.
 - [x] Derive the rescue associated-token-account PDA from owner, token-program ID, and mint; reject caller-asserted canonicality and bind assessed account addresses into `TransferChecked`.
 - [x] Freeze a digest-bound `CreateIdempotent` rescue-ATA plan with exact funding/account roles and mandatory post-creation raw-data verification.
+- [x] Bind ATA creation, finalized post-creation account evidence, raw safety assessment, and `TransferChecked` into a tamper-evident two-phase recovery coordinator.
 
 ## Remaining ordered Solana token tasks
 

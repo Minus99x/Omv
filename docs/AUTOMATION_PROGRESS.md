@@ -76,3 +76,17 @@ Next offline task: port raw base/TLV validation, deterministic ATA verification,
 - Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
 
 Next offline task: port raw validation, canonical ATA handling, and checked token CPI into Rust/SBF, then execute ATA creation plus adversarial transfer cases under `solana-program-test` with the pinned toolchain.
+
+## 2026-09-29 — digest-bound two-phase token recovery
+
+- Added integrity digests to raw SPL Token/Token-2022 account safety assessments and made `TransferChecked` planning reject any mutated or fabricated assessment contents.
+- Added a two-phase recovery coordinator that emits only `CreateIdempotent` until the destination ATA is re-fetched and independently validated.
+- Bound the creation-plan digest, account-assessment digest, and transfer-plan digest into the final transfer-phase intent.
+- Required the ATA creation result at `finalized` commitment and a finalized account read whose context slot is not older than the finalized creation slot.
+- Rejected stale account snapshots, cross-mint/program/owner evidence, modified transfer amounts, and tampered creation plans.
+- Verification: 199/199 JavaScript tests passed, including 26/26 focused Solana tests; `npm run check` and `npm run check:solana` passed.
+- Safety boundary: no deployment, transaction, wallet signature, secret access, or main-branch write was performed.
+- Connector status: unchanged. This is an offline orchestration gate; SPL Token and Token-2022 remain not live-proof.
+- Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
+
+Next offline task: implement the same validation and phase binding around Rust/SBF checked-token CPI, then execute finalized ATA creation/refetch and adversarial transfer cases under `solana-program-test` with the pinned toolchain.
