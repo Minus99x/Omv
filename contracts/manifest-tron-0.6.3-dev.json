@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "contractName": "OmegaVaultRecoveryVaultTRONV063",
+  "source": "contracts/OmegaVaultRecoveryVaultTRONV063.sol",
+  "artifact": "contracts/OmegaVaultRecoveryVaultTRONV063.compiled.json",
+  "buildInput": "contracts/OmegaVaultRecoveryVaultTRONV063.build-input.json",
+  "buildOutput": "contracts/OmegaVaultRecoveryVaultTRONV063.build-output.json",
+  "compiler": {
+    "tool": "TronBox",
+    "toolVersion": "4.11.0",
+    "distribution": "tronprotocol/solidity",
+    "version": "0.8.31+commit.c2812a3d.Emscripten.clang",
+    "binarySha256": "d0f2092759c99c3e983cf3dce38f75eb32377bf4cfc904cf34c2a6f8b04356b8",
+    "optimizer": {
+      "enabled": true,
+      "runs": 200
+    }
+  },
+  "hashes": {
+    "sourceSha256": "3d4c5d3e7e2fe454640f87ac1c24ae6f00bfb182af9dc3d1a62ee778b1d802d8",
+    "artifactSha256": "9aafd3430dabe13659a1c2f1edf7e98b704ed664a12afe294a8cdc3f15852121",
+    "buildInputSha256": "ab4295f49c1a1cf1f8fa2716b2f37ae4a6921869f5875d68a171920e9420533b",
+    "buildOutputSha256": "750df9743a2613de226735725a371d3c6ea71947f9541281c78a33b889dc790f",
+    "creationBytecodeSha256": "328db6309cc61377389fbc5a28d4ecde6950f15d4d1da2cf5994e104e4c055a5",
+    "runtimeBytecodeSha256": "e064c4f32498f184bbbb32adbe89722de714e4f1cdffd096371d8e3a5f18b78c"
+  },
+  "status": "offline-compiled-not-deployed",
+  "networkRef": "tron:shasta"
+}

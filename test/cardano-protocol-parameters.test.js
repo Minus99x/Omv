@@ -1,0 +1,41 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import {
+  calculateCardanoExecutionFee,
+  calculateCardanoMinimumFee,
+  calculateCardanoRequiredCollateral,
+  createCardanoProtocolParameterGate,
+  normalizeCardanoProtocolParameterSnapshot
+} from '../src/chains/cardano/protocol-parameters.js';
+
+const evidence = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
+const parameters = normalizeCardanoProtocolParameterSnapshot(evidence);
+
+test('Cardano protocol snapshot binds epoch, provenance and complete Plutus V3 cost model', () => {
+  assert.equal(parameters.epoch, 316);
+  assert.equal(parameters.plutusV3CostModel.length, 350);
+  assert.equal(parameters.plutusV3CostModelSha256, '6b74a19b00bcca178a4c723c0ce871d41fc5c5a417d738798faea60930961b4e');
+});
+
+test('Cardano parameter gate refuses a single current provider for live construction', () => {
+  const gate = createCardanoProtocolParameterGate([parameters]);
+  assert.equal(gate.liveConstructionReady, false);
+  assert.match(gate.reason, /two independent/);
+});
+
+test('Cardano execution fee uses exact rational arithmetic', () => {
+  assert.equal(calculateCardanoExecutionFee({ memory: 494618, steps: 158755371, parameters }).toString(), '39986');
+});
+
+test('Cardano minimum fee combines serialized size and execution units', () => {
+  const result = calculateCardanoMinimumFee({ transactionBytes: 480, memory: 494618, steps: 158755371, parameters });
+  assert.deepEqual(result, { linearFee: '176501', executionFee: '39986', minimumFee: '216487', transactionBytes: 480, exactForProvidedSizeAndExUnits: true });
+  assert.throws(() => calculateCardanoMinimumFee({ transactionBytes: 20000, parameters }), /maxTxSize/);
+});
+
+test('Cardano collateral rounds upward and rejects token-bearing or excess inputs', () => {
+  assert.equal(calculateCardanoRequiredCollateral({ feeLovelace: '216495', parameters }).requiredCollateral, '324743');
+  assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: '216495', parameters, collateralIsAdaOnly: false }), /ADA only/);
+  assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: '216495', parameters, collateralInputCount: 4 }), /protocol limits/);
+});

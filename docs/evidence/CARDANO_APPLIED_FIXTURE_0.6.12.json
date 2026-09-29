@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "purpose": "offline-reproducibility-only",
+  "deployable": false,
+  "network": "preprod",
+  "networkId": 0,
+  "toolchain": {
+    "aiken": "v1.1.24+bacbeb3",
+    "stdlib": "v4.0.0",
+    "plutus": "v3",
+    "cardanoSerializationLib": "17.0.0"
+  },
+  "parameters": {
+    "seedTxId": "abababababababababababababababababababababababababababababababab",
+    "seedOutputIndex": 0,
+    "assetNameHex": "4f56"
+  },
+  "stateBeacon": {
+    "policyId": "3c298bd60240d5d6d89811dc9fcffd9f37c6d60df8f74562cc01fcd6",
+    "testnetEnterpriseAddress": "addr_test1wq7znz7kqfqdt4kcnqgae870lk0n03kkphu0w3tzesqle4sz25mla",
+    "appliedBlueprintSha256": "c11ac7a3b5edf1ee4645062bfa1dc6d494c33466aaf0622b85d2657ad47f4ab7",
+    "compiledCodeSha256": "1f72bb8870adb02fa6dd923cdb56552193a555d9f8be3a8229677aabead50d3d"
+  },
+  "recoveryVault": {
+    "scriptHash": "2f59df4cdf1199ef68d705b6a30f6738cf31075d361692cb8a58c4b4",
+    "preprodAddress": "addr_test1wqh4nh6vmugenmmg6uzmdgc0vuuv7vg8t5mpdykt3fvvfdqp2ftmw",
+    "appliedBlueprintSha256": "becb346def44f24db1f13f44b13ca8e0946969c4ce51a304c86527cb706ccdc7",
+    "compiledCodeSha256": "dc1490976c9cf4398f1863bf9e0c288b52ead4980f98f85215e805c16237dffe"
+  },
+  "transactionBodies": {
+    "initialize": { "blake2b256": "9465592197824c0a0372ceb46f9ee1cc2e84505c63f1173c7dcc8b6371ff03b1", "bytes": 517 },
+    "heartbeat": { "blake2b256": "afdff5babf714719b0511677c98bde023a20096e581cfd9cd0c14e523ccb3e77", "bytes": 480 },
+    "approve": { "blake2b256": "a6738344ceef767a0bb9481850d6f9e6f5e1e9f48bc363fac53d1efbcbd717f2", "bytes": 511 },
+    "execute": { "blake2b256": "bfc3cb4b3bc7c4fb319efda29717c9da1bbe53544bb7ac52a06d3535fb56d816", "bytes": 289 }
+  },
+  "limitations": [
+    "The seed transaction id is synthetic and cannot identify a live UTxO.",
+    "Fee and collateral quantities are fixture values, not current protocol-parameter calculations.",
+    "The script-data hash is a fixture marker pending live cost models, redeemers and execution budgets.",
+    "No fixture transaction is submit-ready and no connector promotion is implied."
+  ]
+}

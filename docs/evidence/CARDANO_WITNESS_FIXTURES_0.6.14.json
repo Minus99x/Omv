@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 2,
+  "network": "preprod",
+  "protocolParameterEvidence": "CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json",
+  "costModelSourceCount": 1,
+  "liveConstructionReady": false,
+  "keyWitnesses": "deterministic synthetic sizing witnesses; never deployable",
+  "fixtures": {
+    "initialize": {
+      "scriptDataHash": "05371fa460a912d9b9a581c256323d3e2d333053dd1acd1f124b0cab1d34c7e0",
+      "witnessSetBytes": 537,
+      "witnessSetSha256": "457b1838c6a36961c8d9f6b7d7ce2c41e08c38153c4639ea873cd0c3c830ed03",
+      "transactionBytes": 1163,
+      "transactionSha256": "17da92250f588b9dae0b7c2b2173dd2e9c5690d3f53408ab3ca2f4347962c331",
+      "minimumFee": "213876",
+      "memory": "91970",
+      "steps": "27959404",
+      "keyWitnessCount": 1,
+      "feeConvergenceIterations": 2,
+      "minimumAda": [{"index":0,"outputBytes":230,"actualLovelace":"10000000","minimumLovelace":"1680900","satisfied":true},{"index":1,"outputBytes":37,"actualLovelace":"3000000","minimumLovelace":"849070","satisfied":true}],
+      "collateral": {"declaredCollateral":"5000000","requiredCollateral":"320814","satisfied":true},
+      "evaluationTransactionBodyHash": "27ec34cf9963f74f5ed4af0eeeff84827fcc8a0178f5d67df43603937d7689fd",
+      "evaluationValidators": ["mint:0"]
+    },
+    "heartbeat": {
+      "scriptDataHash": "39736885ddcfa72c6ddec405fca64e4c5bab5c6c40e227ceca5b7c0efdad823f",
+      "witnessSetBytes": 3058,
+      "witnessSetSha256": "a42c13aa40e73c04a447eda1443993febf4f20c90df6cb17f39500f8e434a805",
+      "transactionBytes": 3647,
+      "transactionSha256": "2fc964d54d36739dd57cbe450251c14ab2544aadfe07f299cdabcb61606ebee7",
+      "minimumFee": "355835",
+      "memory": "494618",
+      "steps": "158755371",
+      "keyWitnessCount": 1,
+      "feeConvergenceIterations": 2,
+      "minimumAda": [{"index":0,"outputBytes":230,"actualLovelace":"10000000","minimumLovelace":"1680900","satisfied":true},{"index":1,"outputBytes":37,"actualLovelace":"3000000","minimumLovelace":"849070","satisfied":true}],
+      "collateral": {"declaredCollateral":"5000000","requiredCollateral":"533753","satisfied":true},
+      "evaluationTransactionBodyHash": "a6cf873d109c19f19f33b16f62f647f7ed9956b8bed77841dcdc8a1ad3176900",
+      "evaluationValidators": ["spend:0"]
+    },
+    "approve": {
+      "scriptDataHash": "db5a08c8c3e003525307f0df53eae83df14eaa0e7619f6e188afc2d491a43ef7",
+      "witnessSetBytes": 3089,
+      "witnessSetSha256": "7a32b82f7b0421984f3b949b1da3e1f0300251c841014ddc73eec660fb30f641",
+      "transactionBytes": 3810,
+      "transactionSha256": "b11484984a63dd7664763584140c582e652cb6c3be5dbfd6792a6c9fdd9779c7",
+      "minimumFee": "368688",
+      "memory": "566905",
+      "steps": "179701350",
+      "keyWitnessCount": 2,
+      "feeConvergenceIterations": 2,
+      "minimumAda": [{"index":0,"outputBytes":261,"actualLovelace":"10000000","minimumLovelace":"1814510","satisfied":true},{"index":1,"outputBytes":37,"actualLovelace":"3000000","minimumLovelace":"849070","satisfied":true}],
+      "collateral": {"declaredCollateral":"5000000","requiredCollateral":"553032","satisfied":true},
+      "evaluationTransactionBodyHash": "d8d9774f424e7591dbc61ed919bf38ac66d3d4e76460a372703461557cbdf8f6",
+      "evaluationValidators": ["spend:0"]
+    },
+    "execute": {
+      "scriptDataHash": "8231e3fb88268be5219fd7fb426abd4a6420dea411553350919054d2c58f70c6",
+      "witnessSetBytes": 3587,
+      "witnessSetSha256": "097f6ac83e629df401569d62e2404edf1b701c0ffcd568e944a7af569185ad83",
+      "transactionBytes": 3985,
+      "transactionSha256": "8c1c63b1a7bc6ba34606d925745215a19c26a53555497ad160ed7ea71530896b",
+      "minimumFee": "372070",
+      "memory": "515024",
+      "steps": "161326907",
+      "keyWitnessCount": 1,
+      "feeConvergenceIterations": 2,
+      "minimumAda": [{"index":0,"outputBytes":37,"actualLovelace":"10000000","minimumLovelace":"849070","satisfied":true},{"index":1,"outputBytes":37,"actualLovelace":"3000000","minimumLovelace":"849070","satisfied":true}],
+      "collateral": {"declaredCollateral":"5000000","requiredCollateral":"558105","satisfied":true},
+      "evaluationTransactionBodyHash": "a47c6741b7835bffd4fe1e0e192afa511f72a986b871860524c84dd4787fafe2",
+      "evaluationValidators": ["mint:0","spend:0"]
+    }
+  },
+  "limitations": [
+    "Execution units are Aiken fixture measurements and require independent node evaluation against zero-budget evaluation candidates.",
+    "Synthetic key witnesses are included only to produce exact final-size and fee evidence; they are not user or deployment keys.",
+    "Ogmios evaluateTransaction does not perform complete phase-1 ledger validation, so a separate synchronized phase-1 gate is mandatory.",
+    "The full Plutus V3 cost model has only one machine-readable source in this capture.",
+    "These fixtures are not submit-ready and do not promote the connector."
+  ]
+}

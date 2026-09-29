@@ -1,0 +1,10 @@
+[package]
+name = "omegavault-recovery"
+version = "0.1.0-dev"
+edition = "2021"
+publish = false
+
+# Intentionally no dependency versions are pinned here yet. The build environment in this
+# package does not contain a Rust/Solana toolchain, so dependency resolution and lockfile
+# generation are deferred until the exact Solana/Agave toolchain is selected and verified.
+[dependencies]

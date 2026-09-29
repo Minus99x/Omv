@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 2,
+  "fixture": "synthetic-non-deployable",
+  "toolchain": {
+    "rustc": "1.98.1",
+    "cargo": "1.98.1",
+    "agaveCli": "4.3.0",
+    "cargoBuildSbf": "4.3.0",
+    "platformTools": "1.57",
+    "solanaProgramCrate": "5.1.0",
+    "solanaSystemInterfaceCrate": "3.3.0",
+    "solanaProgramTestCrate": "4.3.0",
+    "compilationVerified": true,
+    "sbfProgramTestVerified": true
+  },
+  "sources": {
+    "rustSha256": "2bdde9efa5692caf8c8b41b4cae40c6002d646bad69abdc33aa70a6a0a1e1d5c",
+    "cargoTomlSha256": "5ab4f09afc78ee65760eded7d08b366df82a089ed9b73bd39c7cd2f605d78058",
+    "cargoLockSha256": "fd3edf79bd841362a2a377e0efc6879773c0f962c5de2e371344ee1be4b9c066",
+    "clientCodecSha256": "94136f3163a7163264b836dd1df25538764e4a9fb729ff9e4483d38bb9b1c4f2",
+    "programTestSha256": "aa156c290c09fa15d60e81ead1bd6e621d45bab3e71d41daec86ffc8fe37f52d"
+  },
+  "artifact": {
+    "path": "artifacts/solana/omegavault_solana_recovery.so",
+    "bytes": 92120,
+    "sha256": "e140b5235505df36f727051adf880f78b8ff7168b4e0269fc2071d4d7f24804e"
+  },
+  "offlineTests": {
+    "framework": "solana-program-test",
+    "loadsCompiledSbf": true,
+    "passed": 2,
+    "failed": 0,
+    "coveredInstructions": [
+      "initialize",
+      "heartbeat",
+      "approve",
+      "execute-native"
+    ],
+    "adversarialGates": [
+      "inactivity-pending",
+      "unknown-contact",
+      "threshold-pending",
+      "wrong-rescue",
+      "heartbeat-approval-reset",
+      "post-recovery-lockout"
+    ],
+    "nativeLamportMovementVerified": true
+  },
+  "programId": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
+  "payer": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu",
+  "owner": "GyGKxMyg1p9SsHfm15MkNUu1u9TN2JtTspcdmrtGUdse",
+  "rescueDestination": "EdmxWPmx2WH6WgFfTdu9xfkYf3k1g5wD1zccTVySEEh1",
+  "contacts": [
+    "8SFqwqnq4whPhs8icwHA2hQg3hUoN1qrCLK1SBx3WKwe",
+    "AKkzLhjhyFtM9j7WAhbaqYpFe49cXeJBg2kzLRC2PnNa"
+  ],
+  "vaultId": "fixture-1",
+  "threshold": 2,
+  "inactivitySeconds": 2592000,
+  "statePda": "AAKsbpxVg583aPhKyU5cMUSdAM83ur5h2Ee82kz3YTNH",
+  "stateBump": 252,
+  "custodyPda": "8Pb8ZmHGMEPp56tF79DDcJjzUpSG7jBm4i1s6KMGiU5s",
+  "custodyBump": 254,
+  "stateBytes": 642,
+  "initializeDataHex": "0009666978747572652d310202008d270000000000ca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c6e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf18a875fff1eb38451577acd5afee405456568dd7c89e090863a0557bc7af49f17",
+  "initializeDataSha256": "871d663b94ef89d2235835a29dd00f4781eed9f487874ae67fc880103f8af519",
+  "accountRoles": [
+    { "pubkey": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu", "isSigner": true, "isWritable": true },
+    { "pubkey": "GyGKxMyg1p9SsHfm15MkNUu1u9TN2JtTspcdmrtGUdse", "isSigner": true, "isWritable": false },
+    { "pubkey": "AAKsbpxVg583aPhKyU5cMUSdAM83ur5h2Ee82kz3YTNH", "isSigner": false, "isWritable": true },
+    { "pubkey": "8Pb8ZmHGMEPp56tF79DDcJjzUpSG7jBm4i1s6KMGiU5s", "isSigner": false, "isWritable": true },
+    { "pubkey": "11111111111111111111111111111111", "isSigner": false, "isWritable": false }
+  ],
+  "liveSubmissionReady": false
+}

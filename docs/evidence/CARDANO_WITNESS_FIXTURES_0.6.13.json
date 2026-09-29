@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "network": "preprod",
+  "protocolParameterEvidence": "CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json",
+  "costModelSourceCount": 1,
+  "liveConstructionReady": false,
+  "fixtures": {
+    "initialize": {
+      "scriptDataHash": "05371fa460a912d9b9a581c256323d3e2d333053dd1acd1f124b0cab1d34c7e0",
+      "witnessSetBytes": 537,
+      "witnessSetSha256": "457b1838c6a36961c8d9f6b7d7ce2c41e08c38153c4639ea873cd0c3c830ed03",
+      "transactionBytes": 1057,
+      "transactionSha256": "e8ee9a8df1a519817181e06101e9a449a6acf0f6126dff834686de3f1b73ce25",
+      "minimumFee": "209212",
+      "memory": "91970",
+      "steps": "27959404"
+    },
+    "heartbeat": {
+      "scriptDataHash": "39736885ddcfa72c6ddec405fca64e4c5bab5c6c40e227ceca5b7c0efdad823f",
+      "witnessSetBytes": 3058,
+      "witnessSetSha256": "a42c13aa40e73c04a447eda1443993febf4f20c90df6cb17f39500f8e434a805",
+      "transactionBytes": 3541,
+      "transactionSha256": "7c992ec50b5b008b9f87749b98d7baf8c0663eaff63346d651d94324fbe8e0ca",
+      "minimumFee": "351171",
+      "memory": "494618",
+      "steps": "158755371"
+    },
+    "approve": {
+      "scriptDataHash": "db5a08c8c3e003525307f0df53eae83df14eaa0e7619f6e188afc2d491a43ef7",
+      "witnessSetBytes": 3089,
+      "witnessSetSha256": "7a32b82f7b0421984f3b949b1da3e1f0300251c841014ddc73eec660fb30f641",
+      "transactionBytes": 3603,
+      "transactionSha256": "9f022c94dfc740632d61963f93202768f315f1adf82355a921f6c9d94367486e",
+      "minimumFee": "359580",
+      "memory": "566905",
+      "steps": "179701350"
+    },
+    "execute": {
+      "scriptDataHash": "8231e3fb88268be5219fd7fb426abd4a6420dea411553350919054d2c58f70c6",
+      "witnessSetBytes": 3587,
+      "witnessSetSha256": "097f6ac83e629df401569d62e2404edf1b701c0ffcd568e944a7af569185ad83",
+      "transactionBytes": 3879,
+      "transactionSha256": "e33edb106375772416be1b147570a3b5bdbb8ef22e26e0f236601e1f8e2fa03b",
+      "minimumFee": "367406",
+      "memory": "515024",
+      "steps": "161326907"
+    }
+  },
+  "limitations": [
+    "Execution units are Aiken fixture measurements and require independent node evaluation against the exact transactions.",
+    "Key witnesses are intentionally absent; final signed size and fee must be recomputed after wallet signing.",
+    "The full Plutus V3 cost model has only one machine-readable source in this capture.",
+    "These fixtures are not submit-ready and do not promote the connector."
+  ]
+}

@@ -1,0 +1,31 @@
+[package]
+name = "omegavault-solana-recovery"
+version = "0.6.17"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+solana-program = "=5.1.0"
+solana-system-interface = { version = "=3.3.0", features = ["bincode"] }
+
+[dev-dependencies]
+solana-clock = "=3.2.0"
+solana-instruction = "=3.5.1"
+solana-keypair = "=3.1.2"
+solana-program-test = { version = "=4.3.0", features = ["agave-unstable-api"] }
+solana-pubkey = "=4.4.0"
+solana-signer = "=3.0.1"
+solana-transaction = "=4.2.0"
+solana-transaction-error = "=3.4.0"
+tokio = { version = "=1.53.1", features = ["macros", "rt-multi-thread"] }
+
+[profile.release]
+overflow-checks = true
+lto = "fat"
+codegen-units = 1
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))', 'cfg(target_arch, values("sbf"))', 'cfg(feature, values("custom-heap", "custom-panic"))'] }

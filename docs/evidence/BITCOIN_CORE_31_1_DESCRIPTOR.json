@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-28T06:41:00Z",
+  "tool": {
+    "name": "Bitcoin Core",
+    "version": "v31.1.0",
+    "archive": "bitcoin-31.1-x86_64-linux-gnu.tar.gz",
+    "archiveSha256": "b80d9c3e04da78fb6f0569685673418cf686fadba9042d926d13fb87ff503f9e",
+    "checksumVerifiedAgainst": "https://bitcoincore.org/bin/bitcoin-core-31.1/SHA256SUMS"
+  },
+  "execution": {
+    "network": "signet",
+    "networkConnectionsDisabled": true,
+    "daemonFlags": ["-signet", "-connect=0", "-listen=0"],
+    "privateKeysDisabled": true
+  },
+  "policy": {
+    "ownerPath": "immediate",
+    "recoveryPath": "2-of-2 after 144 blocks",
+    "immutableRescueOutput": false,
+    "checkedDescriptor": "wsh(or_d(pk(0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798),and_v(v:older(144),multi(2,02c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5,02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9))))#r4lfukrv",
+    "address": "tb1qfcj4r3egr084d9ul6e0yw50gc7ax0r4hetkp6zy2q32p6csvf7aqzy28m9",
+    "scriptPubKey": "00204e2551c7281bcf56979fd65e4751e8c7ba678eb7caec1d088a04541d620c4fba",
+    "witnessScript": "210279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798ac7364029000b269522102c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee52102f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f952ae68"
+  },
+  "coreResults": {
+    "descriptorIsRange": false,
+    "descriptorIsSolvable": true,
+    "descriptorHasPrivateKeys": false,
+    "importDescriptorsSuccess": true,
+    "backupWalletSuccess": true,
+    "restoreWalletSuccess": true,
+    "restoredAddressIsMine": true,
+    "restoredAddressSolvable": true
+  },
+  "psbtV2": {
+    "unsignedFixtureSha256": "2a8811f7ab4c6d3be786ae39e711ee733591bcaff2f357306dac165ead0f3779",
+    "transactionVersion": 2,
+    "inputsModifiable": false,
+    "outputsModifiable": false,
+    "signatureHash": "SIGHASH_ALL",
+    "signatureAlgorithm": "ECDSA/secp256k1, strict DER, low-S",
+    "sighashConstruction": "BIP 143 witness-v0"
+  }
+}
