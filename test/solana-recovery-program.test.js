@@ -12,6 +12,7 @@ import {
   SOLANA_TOKEN_MINT_BASE_BYTES, SOLANA_TOKEN_ACCOUNT_BASE_BYTES,
   createSolanaTransactionLifetimePlan, createSolanaProgramVerificationPlan
 } from '../src/chains/solana/recovery-program.js';
+import { deriveSolanaAssociatedTokenAddress } from '../src/chains/solana/program-codec.js';
 
 const key = n => `${String(n).repeat(32)}`;
 const owner = key(1), rescue = key(2), a = key(3), b = key(4), program = key(5), mint = key(6), sourceAta = key(7), rescueAta = key(8);
@@ -206,12 +207,16 @@ test('Solana raw Token-2022 parser accepts canonical ImmutableOwner ATAs and rej
 
 test('Solana raw Token-2022 safety assessment derives extensions from bytes and fails closed', () => {
   const rawMint = rawKey(11), rawSourceAuthority = rawKey(12), rawDestinationAuthority = rawKey(13);
+  const sourceAccountAddress = rawKey(14);
+  const destinationAccountAddress = deriveSolanaAssociatedTokenAddress({ owner: rawDestinationAuthority, mint: rawMint, tokenProgramId: SOLANA_TOKEN_2022_PROGRAM_ID }).address;
   const mintData = token2022StateData({ accountKind: 'mint', baseData: mintBaseData() });
   const sourceAta = token2022StateData({ accountKind: 'account', baseData: tokenAccountBaseData({ mintAddress: rawMint, authority: rawSourceAuthority }), extensions: [{ type: 7 }] });
   const destinationAta = token2022StateData({ accountKind: 'account', baseData: tokenAccountBaseData({ mintAddress: rawMint, authority: rawDestinationAuthority }), extensions: [{ type: 7 }] });
   const safe = createSolanaTokenSafetyAssessmentFromAccountData({
     tokenProgramId: SOLANA_TOKEN_2022_PROGRAM_ID,
     mintAddress: rawMint,
+    sourceAccountAddress,
+    destinationAccountAddress,
     expectedSourceAuthority: rawSourceAuthority,
     expectedDestinationAuthority: rawDestinationAuthority,
     mintData,
@@ -229,6 +234,8 @@ test('Solana raw Token-2022 safety assessment derives extensions from bytes and 
   const blocked = createSolanaTokenSafetyAssessmentFromAccountData({
     tokenProgramId: SOLANA_TOKEN_2022_PROGRAM_ID,
     mintAddress: rawMint,
+    sourceAccountAddress,
+    destinationAccountAddress,
     expectedSourceAuthority: rawSourceAuthority,
     expectedDestinationAuthority: rawDestinationAuthority,
     mintData: unknownMint,
@@ -244,6 +251,9 @@ test('Solana raw Token-2022 safety assessment derives extensions from bytes and 
 
 test('Solana raw account assessment derives base fields and rejects identity or state drift', () => {
   const rawMint = rawKey(21), otherMint = rawKey(22), sourceAuthority = rawKey(23), destinationAuthority = rawKey(24);
+  const sourceAccountAddress = rawKey(25);
+  const rawDestinationAta = deriveSolanaAssociatedTokenAddress({ owner: destinationAuthority, mint: rawMint, tokenProgramId: SOLANA_TOKEN_PROGRAM_ID }).address;
+  const otherDestinationAta = deriveSolanaAssociatedTokenAddress({ owner: destinationAuthority, mint: otherMint, tokenProgramId: SOLANA_TOKEN_PROGRAM_ID }).address;
   const mintData = mintBaseData({ decimals: 9 });
   const source = tokenAccountBaseData({ mintAddress: rawMint, authority: sourceAuthority, amount: 25n });
   const destination = tokenAccountBaseData({ mintAddress: rawMint, authority: destinationAuthority });
@@ -253,6 +263,8 @@ test('Solana raw account assessment derives base fields and rejects identity or 
   const mismatch = createSolanaTokenSafetyAssessmentFromAccountData({
     tokenProgramId: SOLANA_TOKEN_PROGRAM_ID,
     mintAddress: otherMint,
+    sourceAccountAddress,
+    destinationAccountAddress: otherDestinationAta,
     expectedSourceAuthority: sourceAuthority,
     expectedDestinationAuthority: destinationAuthority,
     mintData,
@@ -269,6 +281,8 @@ test('Solana raw account assessment derives base fields and rejects identity or 
   const spoofedBalance = createSolanaTokenSafetyAssessmentFromAccountData({
     tokenProgramId: SOLANA_TOKEN_PROGRAM_ID,
     mintAddress: rawMint,
+    sourceAccountAddress,
+    destinationAccountAddress: rawDestinationAta,
     expectedSourceAuthority: sourceAuthority,
     expectedDestinationAuthority: destinationAuthority,
     mintData,
@@ -283,6 +297,22 @@ test('Solana raw account assessment derives base fields and rejects identity or 
   assert.equal(spoofedBalance.ok, false);
   assert.equal(spoofedBalance.checks.amountWithinSourceBalance, false);
 
+  const nonCanonicalDestination = createSolanaTokenSafetyAssessmentFromAccountData({
+    tokenProgramId: SOLANA_TOKEN_PROGRAM_ID,
+    mintAddress: rawMint,
+    sourceAccountAddress,
+    destinationAccountAddress: rawKey(26),
+    expectedSourceAuthority: sourceAuthority,
+    expectedDestinationAuthority: destinationAuthority,
+    mintData,
+    sourceAccountData: source,
+    destinationAccountData: destination,
+    checkedDecimals: 9,
+    transferAmount: 25n
+  });
+  assert.equal(nonCanonicalDestination.ok, false);
+  assert.equal(nonCanonicalDestination.checks.canonicalRescueAta, false);
+
   const frozen = tokenAccountBaseData({ mintAddress: rawMint, authority: sourceAuthority, state: 2 });
   assert.equal(parseSolanaTokenAccountBase({ data: frozen }).isFrozen, true);
   assert.throws(() => parseSolanaTokenMintBase({ data: mintBaseData({ initialized: false }) }), /not initialized/);
@@ -291,10 +321,13 @@ test('Solana raw account assessment derives base fields and rejects identity or 
 
 test('Solana TransferChecked plan freezes assessed accounts, PDA authority and canonical instruction bytes', () => {
   const rawMint = rawKey(31), sourceAuthority = rawKey(32), destinationAuthority = rawKey(33);
-  const sourceTokenAccount = rawKey(34), destinationTokenAccount = rawKey(35);
+  const sourceTokenAccount = rawKey(34);
+  const destinationTokenAccount = deriveSolanaAssociatedTokenAddress({ owner: destinationAuthority, mint: rawMint, tokenProgramId: SOLANA_TOKEN_PROGRAM_ID }).address;
   const assessment = createSolanaTokenSafetyAssessmentFromAccountData({
     tokenProgramId: SOLANA_TOKEN_PROGRAM_ID,
     mintAddress: rawMint,
+    sourceAccountAddress: sourceTokenAccount,
+    destinationAccountAddress: destinationTokenAccount,
     expectedSourceAuthority: sourceAuthority,
     expectedDestinationAuthority: destinationAuthority,
     mintData: mintBaseData({ decimals: 9 }),

@@ -10,7 +10,7 @@
   "sources": {
     "rustSha256": "10373ac73505e792fd3dc127ef5cf83083e75a0d10faadf49ba7ef069edfa44c",
     "cargoTomlSha256": "b96997733fae0f808ff973df1fb7bf98614e0d9ba3e4390b7e1b3e6b2eec2f19",
-    "clientCodecSha256": "94136f3163a7163264b836dd1df25538764e4a9fb729ff9e4483d38bb9b1c4f2"
+    "clientCodecSha256": "63f8bad14a0bc2f5d7baea2a41b19f8f92906492552cffbdd670aba187250af4"
   },
   "programId": "AKnL4NNf3DGWZJS6cPknBuEGnVsV4A4m5tgebLHaRSZ9",
   "payer": "9hSR6S7WPtxmTojgo6GG3k4yDPecgJY292j7xrsUGWBu",

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import bs58 from 'bs58';
+import { deriveSolanaAssociatedTokenAddress } from './program-codec.js';
 
 export const SOLANA_TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 export const SOLANA_TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
@@ -190,22 +191,26 @@ export function createSolanaToken2022SafetyAssessment({ tokenProgramId, mintDeci
   });
 }
 
-export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramId, mintAddress, expectedSourceAuthority, expectedDestinationAuthority, mintData, sourceAccountData, destinationAccountData, ...assessment }) {
+export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramId, mintAddress, sourceAccountAddress, destinationAccountAddress, expectedSourceAuthority, expectedDestinationAuthority, mintData, sourceAccountData, destinationAccountData, ...assessment }) {
   assertPubkey(tokenProgramId, 'tokenProgramId');
-  assertPubkey(mintAddress, 'mintAddress');
-  assertPubkey(expectedSourceAuthority, 'expectedSourceAuthority');
-  assertPubkey(expectedDestinationAuthority, 'expectedDestinationAuthority');
+  canonicalPubkey(mintAddress, 'mintAddress');
+  canonicalPubkey(sourceAccountAddress, 'sourceAccountAddress');
+  canonicalPubkey(destinationAccountAddress, 'destinationAccountAddress');
+  canonicalPubkey(expectedSourceAuthority, 'expectedSourceAuthority');
+  canonicalPubkey(expectedDestinationAuthority, 'expectedDestinationAuthority');
   const mintBytes = accountBytes(mintData, 'mintData');
   const sourceBytes = accountBytes(sourceAccountData, 'sourceAccountData');
   const destinationBytes = accountBytes(destinationAccountData, 'destinationAccountData');
   const mintBase = parseSolanaTokenMintBase({ data: mintBytes });
   const sourceBase = parseSolanaTokenAccountBase({ data: sourceBytes });
   const destinationBase = parseSolanaTokenAccountBase({ data: destinationBytes });
+  const canonicalDestination = deriveSolanaAssociatedTokenAddress({ owner: expectedDestinationAuthority, mint: mintAddress, tokenProgramId });
   const identityChecks = Object.freeze({
     sourceMintMatches: sourceBase.mint === mintAddress,
     destinationMintMatches: destinationBase.mint === mintAddress,
     sourceAuthorityMatches: sourceBase.owner === expectedSourceAuthority,
-    destinationAuthorityMatches: destinationBase.owner === expectedDestinationAuthority
+    destinationAuthorityMatches: destinationBase.owner === expectedDestinationAuthority,
+    canonicalRescueAta: destinationAccountAddress === canonicalDestination.address
   });
   if (tokenProgramId === SOLANA_TOKEN_PROGRAM_ID) {
     if (mintBytes.length !== SOLANA_TOKEN_MINT_BASE_BYTES || sourceBytes.length !== SOLANA_TOKEN_ACCOUNT_BASE_BYTES || destinationBytes.length !== SOLANA_TOKEN_ACCOUNT_BASE_BYTES) {
@@ -224,6 +229,8 @@ export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramI
     sourceAmount: sourceBase.amount,
     sourceFrozen: sourceBase.isFrozen,
     destinationFrozen: destinationBase.isFrozen,
+    destinationAddressPolicy: 'associated-token-account',
+    destinationIsCanonicalAta: identityChecks.canonicalRescueAta,
     mintExtensions: mint.extensionNames,
     sourceExtensions: source.extensionNames,
     destinationExtensions: destination.extensionNames
@@ -233,7 +240,11 @@ export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramI
     ...baseAssessment,
     ok: Object.values(checks).every(Boolean),
     checks,
-    decodedAccountData: Object.freeze({ mint: mintBase, source: sourceBase, destination: destinationBase })
+    decodedAccountData: Object.freeze({
+      mint: mintBase,
+      source: Object.freeze({ ...sourceBase, address: sourceAccountAddress }),
+      destination: Object.freeze({ ...destinationBase, address: destinationAccountAddress, canonicalBump: canonicalDestination.bump })
+    })
   });
 }
 
@@ -248,6 +259,7 @@ export function createSolanaTransferCheckedInstructionPlan({ assessment, sourceT
   const destination = canonicalPubkey(destinationTokenAccount, 'destinationTokenAccount');
   const authority = canonicalPubkey(custodyAuthority, 'custodyAuthority');
   const decoded = assessment.decodedAccountData;
+  if (decoded.source.address !== source || decoded.destination.address !== destination) throw new Error('Instruction token-account addresses do not match the assessed accounts.');
   if (decoded.source.mint !== mint || decoded.destination.mint !== mint) throw new Error('Instruction mint does not match the assessed token accounts.');
   if (decoded.source.owner !== authority) throw new Error('Custody authority does not match the assessed source owner.');
   if (typeof assessment.transferAmount !== 'bigint' || assessment.transferAmount <= 0n || assessment.transferAmount > 0xffffffffffffffffn) {

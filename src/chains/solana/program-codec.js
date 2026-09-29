@@ -4,6 +4,7 @@ import { ed25519 } from '@noble/curves/ed25519.js';
 
 export const SOLANA_PROGRAM_STATE_BYTES = 642;
 export const SOLANA_PROGRAM_INSTRUCTION = Object.freeze({ initialize: 0, heartbeat: 1, approve: 2, executeNative: 3 });
+export const SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID = 'ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL';
 const MAX_CONTACTS = 16;
 const SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
 const PDA_MARKER = Buffer.from('ProgramDerivedAddress');
@@ -48,6 +49,15 @@ export function deriveSolanaVaultPdas({ programId, owner, vaultId }) {
   const [statePda, stateBump] = findProgramAddress([Buffer.from('omegavault-state'), ownerKey.bytes, vaultSeed], program);
   const [custodyPda, custodyBump] = findProgramAddress([Buffer.from('omegavault-custody'), ownerKey.bytes, vaultSeed], program);
   return Object.freeze({ statePda: bs58.encode(statePda), stateBump, custodyPda: bs58.encode(custodyPda), custodyBump });
+}
+
+export function deriveSolanaAssociatedTokenAddress({ owner, mint, tokenProgramId }) {
+  const ownerKey = publicKey(owner, 'owner');
+  const mintKey = publicKey(mint, 'mint');
+  const tokenProgram = publicKey(tokenProgramId, 'tokenProgramId');
+  const associatedProgram = publicKey(SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID, 'associatedTokenProgramId');
+  const [address, bump] = findProgramAddress([ownerKey.bytes, tokenProgram.bytes, mintKey.bytes], associatedProgram);
+  return Object.freeze({ address: bs58.encode(address), bump, associatedTokenProgramId: associatedProgram.base58 });
 }
 
 export function buildSolanaInitializeInstruction({ programId, payer, owner, rescueDestination, contacts, threshold, inactivitySeconds, vaultId }) {

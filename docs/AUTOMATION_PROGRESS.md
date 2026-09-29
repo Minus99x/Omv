@@ -48,3 +48,16 @@ Next offline task: port the verified raw base/TLV decoding and fail-closed polic
 - Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
 
 Next offline task: use this exact fixture while porting base/TLV validation and checked transfer CPI into Rust/SBF, then compile and execute adversarial `solana-program-test` coverage with the pinned toolchain.
+
+## 2026-09-29 — deterministic rescue ATA verification
+
+- Added Token Program and Token-2022-aware associated-token-account derivation using owner, token-program ID, and mint seeds.
+- Raw-account safety assessment now derives canonical rescue destination identity from the actual destination address instead of trusting a caller-supplied boolean.
+- Bound the exact assessed source and destination addresses into the digest-bound `TransferChecked` plan.
+- Updated only the client-codec provenance SHA; compiled SBF, Rust source, artifact hashes, and promotion flags remain unchanged.
+- Verification: 195/195 JavaScript tests passed, including 22/22 focused Solana tests; `npm run check` and `npm run check:solana` passed.
+- Safety boundary: no deployment, transaction, wallet signature, secret access, or main-branch write was performed.
+- Connector status: unchanged. This closes a client-side preflight gate only; SPL Token and Token-2022 execution remain not live-proof.
+- Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
+
+Next offline task: port raw base/TLV validation, deterministic ATA verification, and checked token CPI into Rust/SBF, then compile and execute adversarial `solana-program-test` coverage with the pinned toolchain.

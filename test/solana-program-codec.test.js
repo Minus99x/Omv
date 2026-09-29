@@ -4,7 +4,8 @@ import bs58 from 'bs58';
 import { ed25519 } from '@noble/curves/ed25519.js';
 import {
   SOLANA_PROGRAM_STATE_BYTES, buildSolanaInitializeInstruction, buildSolanaHeartbeatInstruction,
-  buildSolanaApprovalInstruction, buildSolanaExecuteNativeInstruction, deriveSolanaVaultPdas
+  buildSolanaApprovalInstruction, buildSolanaExecuteNativeInstruction, deriveSolanaVaultPdas,
+  deriveSolanaAssociatedTokenAddress, SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID
 } from '../src/chains/solana/program-codec.js';
 
 const key = byte => bs58.encode(ed25519.getPublicKey(Uint8Array.from({ length: 32 }, () => byte)));
@@ -45,4 +46,13 @@ test('Solana initialize codec rejects policy identity and threshold drift', () =
 
 test('Solana codec rejects base58-shaped values that are not canonical 32-byte keys', () => {
   assert.throws(() => deriveSolanaVaultPdas({ programId: '1'.repeat(31), owner, vaultId: 'fixture-1' }), /canonical 32-byte/);
+});
+
+test('Solana associated token address derivation scopes the PDA to owner, mint and token program', () => {
+  const legacy = deriveSolanaAssociatedTokenAddress({ owner, mint: rescue, tokenProgramId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' });
+  const token2022 = deriveSolanaAssociatedTokenAddress({ owner, mint: rescue, tokenProgramId: 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb' });
+  assert.equal(legacy.associatedTokenProgramId, SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID);
+  assert.notEqual(legacy.address, token2022.address);
+  assert.ok(legacy.bump >= 0 && legacy.bump <= 255);
+  assert.ok(token2022.bump >= 0 && token2022.bump <= 255);
 });

@@ -17,7 +17,7 @@
     "rustSha256": "2bdde9efa5692caf8c8b41b4cae40c6002d646bad69abdc33aa70a6a0a1e1d5c",
     "cargoTomlSha256": "5ab4f09afc78ee65760eded7d08b366df82a089ed9b73bd39c7cd2f605d78058",
     "cargoLockSha256": "fd3edf79bd841362a2a377e0efc6879773c0f962c5de2e371344ee1be4b9c066",
-    "clientCodecSha256": "94136f3163a7163264b836dd1df25538764e4a9fb729ff9e4483d38bb9b1c4f2",
+    "clientCodecSha256": "63f8bad14a0bc2f5d7baea2a41b19f8f92906492552cffbdd670aba187250af4",
     "programTestSha256": "aa156c290c09fa15d60e81ead1bd6e621d45bab3e71d41daec86ffc8fe37f52d"
   },
   "artifact": {
