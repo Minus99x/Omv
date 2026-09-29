@@ -1,6 +1,23 @@
 export const SOLANA_TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 export const SOLANA_TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+export const SOLANA_TOKEN_MINT_BASE_BYTES = 82;
+export const SOLANA_TOKEN_ACCOUNT_BASE_BYTES = 165;
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+const SOLANA_TOKEN_2022_ACCOUNT_TYPE_OFFSET = SOLANA_TOKEN_ACCOUNT_BASE_BYTES;
+const SOLANA_TOKEN_2022_TLV_OFFSET = SOLANA_TOKEN_2022_ACCOUNT_TYPE_OFFSET + 1;
+const SOLANA_TOKEN_2022_ACCOUNT_TYPE = Object.freeze({ mint: 1, account: 2 });
+const SOLANA_TOKEN_2022_EXTENSION_NAMES = Object.freeze(new Map([
+  [1, 'TransferFeeConfig'], [2, 'TransferFeeAmount'], [3, 'MintCloseAuthority'],
+  [4, 'ConfidentialTransferMint'], [5, 'ConfidentialTransferAccount'], [6, 'DefaultAccountState'],
+  [7, 'ImmutableOwner'], [8, 'MemoTransfer'], [9, 'NonTransferable'],
+  [10, 'InterestBearingConfig'], [11, 'CpiGuard'], [12, 'PermanentDelegate'],
+  [13, 'NonTransferableAccount'], [14, 'TransferHook'], [15, 'TransferHookAccount'],
+  [16, 'ConfidentialTransferFeeConfig'], [17, 'ConfidentialTransferFeeAmount'],
+  [18, 'MetadataPointer'], [19, 'TokenMetadata'], [20, 'GroupPointer'],
+  [21, 'TokenGroup'], [22, 'GroupMemberPointer'], [23, 'TokenGroupMember'],
+  [24, 'ConfidentialMintBurn'], [25, 'ScaledUiAmount'], [26, 'Pausable'],
+  [27, 'PausableAccount'], [28, 'PermissionedBurn']
+]));
 
 const SOLANA_TOKEN_2022_BLOCKED_MINT_EXTENSIONS = Object.freeze(new Set([
   'TransferFeeConfig', 'DefaultAccountState', 'ConfidentialTransferMint', 'NonTransferable',
@@ -21,6 +38,67 @@ const SOLANA_TOKEN_2022_ALLOWED_ACCOUNT_EXTENSIONS = Object.freeze(new Set(['Imm
 function normalizeExtensionNames(value, label) {
   if (!Array.isArray(value) || value.some(x => typeof x !== 'string' || x.length === 0)) throw new TypeError(`${label} must be an array of extension names.`);
   return Object.freeze([...new Set(value)]);
+}
+
+function accountBytes(value, label) {
+  if (!Buffer.isBuffer(value) && !(value instanceof Uint8Array)) {
+    throw new TypeError(`${label} must be a Buffer or Uint8Array.`);
+  }
+  return Buffer.from(value);
+}
+
+export function parseSolanaToken2022Extensions({ data, accountKind }) {
+  if (!Object.hasOwn(SOLANA_TOKEN_2022_ACCOUNT_TYPE, accountKind)) {
+    throw new TypeError('accountKind must be mint or account.');
+  }
+  const bytes = accountBytes(data, 'data');
+  const baseBytes = accountKind === 'mint' ? SOLANA_TOKEN_MINT_BASE_BYTES : SOLANA_TOKEN_ACCOUNT_BASE_BYTES;
+  if (bytes.length === baseBytes) {
+    return Object.freeze({ accountKind, extensionTypes: Object.freeze([]), extensionNames: Object.freeze([]), unknownExtensionTypes: Object.freeze([]) });
+  }
+  if (bytes.length < SOLANA_TOKEN_2022_TLV_OFFSET) {
+    throw new Error('Extended Token-2022 account data is truncated before its account-type/TLV region.');
+  }
+  if (accountKind === 'mint' && bytes.subarray(SOLANA_TOKEN_MINT_BASE_BYTES, SOLANA_TOKEN_ACCOUNT_BASE_BYTES).some(byte => byte !== 0)) {
+    throw new Error('Token-2022 mint padding is non-zero.');
+  }
+  if (bytes[SOLANA_TOKEN_2022_ACCOUNT_TYPE_OFFSET] !== SOLANA_TOKEN_2022_ACCOUNT_TYPE[accountKind]) {
+    throw new Error('Token-2022 account-type discriminator does not match the expected account kind.');
+  }
+
+  const extensionTypes = [];
+  const extensionNames = [];
+  const unknownExtensionTypes = [];
+  const seen = new Set();
+  let offset = SOLANA_TOKEN_2022_TLV_OFFSET;
+  while (offset < bytes.length) {
+    if (bytes.length - offset < 4) throw new Error('Token-2022 TLV header is truncated.');
+    const extensionType = bytes.readUInt16LE(offset);
+    const extensionLength = bytes.readUInt16LE(offset + 2);
+    offset += 4;
+    if (extensionType === 0) {
+      if (extensionLength !== 0 || bytes.subarray(offset).some(byte => byte !== 0)) {
+        throw new Error('Token-2022 TLV padding is malformed.');
+      }
+      offset = bytes.length;
+      break;
+    }
+    if (seen.has(extensionType)) throw new Error('Token-2022 account contains a duplicate extension type.');
+    seen.add(extensionType);
+    const end = offset + extensionLength;
+    if (!Number.isSafeInteger(end) || end > bytes.length) throw new Error('Token-2022 TLV value is truncated.');
+    const name = SOLANA_TOKEN_2022_EXTENSION_NAMES.get(extensionType);
+    extensionTypes.push(extensionType);
+    extensionNames.push(name ?? `UnknownExtension(${extensionType})`);
+    if (name == null) unknownExtensionTypes.push(extensionType);
+    offset = end;
+  }
+  return Object.freeze({
+    accountKind,
+    extensionTypes: Object.freeze(extensionTypes),
+    extensionNames: Object.freeze(extensionNames),
+    unknownExtensionTypes: Object.freeze(unknownExtensionTypes)
+  });
 }
 
 export function createSolanaToken2022SafetyAssessment({ tokenProgramId, mintDecimals, checkedDecimals, sourceAmount, transferAmount, mintExtensions = [], sourceExtensions = [], destinationExtensions = [], sourceFrozen = false, destinationFrozen = false, destinationIsCanonicalAta = false, destinationAddressPolicy = 'associated-token-account' }) {
@@ -60,6 +138,30 @@ export function createSolanaToken2022SafetyAssessment({ tokenProgramId, mintDeci
     allowedExtensions: Object.freeze(tokenProgramId === SOLANA_TOKEN_2022_PROGRAM_ID ? Object.freeze({ mint: Object.freeze([...SOLANA_TOKEN_2022_ALLOWED_MINT_EXTENSIONS]), account: Object.freeze([...SOLANA_TOKEN_2022_ALLOWED_ACCOUNT_EXTENSIONS]) }) : Object.freeze({ mint: Object.freeze([]), account: Object.freeze([]) })),
     transferInstruction: 'TransferChecked',
     policy: 'fail-closed: only independently reviewed Token-2022 extension combinations are allowed; all unknown or unreviewed extensions are rejected before execution'
+  });
+}
+
+export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramId, mintData, sourceAccountData, destinationAccountData, ...assessment }) {
+  assertPubkey(tokenProgramId, 'tokenProgramId');
+  const mintBytes = accountBytes(mintData, 'mintData');
+  const sourceBytes = accountBytes(sourceAccountData, 'sourceAccountData');
+  const destinationBytes = accountBytes(destinationAccountData, 'destinationAccountData');
+  if (tokenProgramId === SOLANA_TOKEN_PROGRAM_ID) {
+    if (mintBytes.length !== SOLANA_TOKEN_MINT_BASE_BYTES || sourceBytes.length !== SOLANA_TOKEN_ACCOUNT_BASE_BYTES || destinationBytes.length !== SOLANA_TOKEN_ACCOUNT_BASE_BYTES) {
+      throw new Error('Legacy SPL Token accounts must use the exact base mint/account layouts.');
+    }
+    return createSolanaToken2022SafetyAssessment({ tokenProgramId, ...assessment });
+  }
+  if (tokenProgramId !== SOLANA_TOKEN_2022_PROGRAM_ID) throw new TypeError('Unsupported Solana token program.');
+  const mint = parseSolanaToken2022Extensions({ data: mintBytes, accountKind: 'mint' });
+  const source = parseSolanaToken2022Extensions({ data: sourceBytes, accountKind: 'account' });
+  const destination = parseSolanaToken2022Extensions({ data: destinationBytes, accountKind: 'account' });
+  return createSolanaToken2022SafetyAssessment({
+    tokenProgramId,
+    ...assessment,
+    mintExtensions: mint.extensionNames,
+    sourceExtensions: source.extensionNames,
+    destinationExtensions: destination.extensionNames
   });
 }
 

@@ -4,7 +4,10 @@ import {
   SOLANA_TOKEN_PROGRAM_ID, SOLANA_TOKEN_2022_PROGRAM_ID,
   createSolanaVaultState, heartbeatSolanaVault, approveSolanaRecovery, executeSolanaRecovery,
   solanaRecoveryEligible, createSolanaPdaPlan, normalizeSolanaTokenAsset,
-  createSolanaTokenRecoveryPreflight, createSolanaToken2022SafetyAssessment, createSolanaTransactionLifetimePlan, createSolanaProgramVerificationPlan
+  createSolanaTokenRecoveryPreflight, createSolanaToken2022SafetyAssessment,
+  createSolanaTokenSafetyAssessmentFromAccountData, parseSolanaToken2022Extensions,
+  SOLANA_TOKEN_MINT_BASE_BYTES, SOLANA_TOKEN_ACCOUNT_BASE_BYTES,
+  createSolanaTransactionLifetimePlan, createSolanaProgramVerificationPlan
 } from '../src/chains/solana/recovery-program.js';
 
 const key = n => `${String(n).repeat(32)}`;
@@ -145,4 +148,70 @@ test('Solana Token-2022 extension policy rejects unknown/unreviewed extensions b
   });
   assert.equal(unknownAccountExtension.ok, false);
   assert.deepEqual(unknownAccountExtension.blockedExtensions, ['FutureAccountExtension']);
+});
+
+function token2022Data({ accountKind, extensions = [] }) {
+  const baseBytes = accountKind === 'mint' ? SOLANA_TOKEN_MINT_BASE_BYTES : SOLANA_TOKEN_ACCOUNT_BASE_BYTES;
+  const base = Buffer.alloc(SOLANA_TOKEN_ACCOUNT_BASE_BYTES);
+  const accountType = Buffer.from([accountKind === 'mint' ? 1 : 2]);
+  const entries = extensions.map(({ type, value = Buffer.alloc(0) }) => {
+    const header = Buffer.alloc(4);
+    header.writeUInt16LE(type, 0);
+    header.writeUInt16LE(value.length, 2);
+    return Buffer.concat([header, value]);
+  });
+  return Buffer.concat([base.subarray(0, Math.max(baseBytes, SOLANA_TOKEN_ACCOUNT_BASE_BYTES)), accountType, ...entries]);
+}
+
+test('Solana raw Token-2022 parser accepts canonical ImmutableOwner ATAs and rejects unknown types', () => {
+  const canonicalAta = token2022Data({ accountKind: 'account', extensions: [{ type: 7 }] });
+  const parsed = parseSolanaToken2022Extensions({ data: canonicalAta, accountKind: 'account' });
+  assert.deepEqual(parsed.extensionTypes, [7]);
+  assert.deepEqual(parsed.extensionNames, ['ImmutableOwner']);
+  assert.deepEqual(parsed.unknownExtensionTypes, []);
+
+  const unknown = token2022Data({ accountKind: 'account', extensions: [{ type: 65535 }] });
+  const unknownParsed = parseSolanaToken2022Extensions({ data: unknown, accountKind: 'account' });
+  assert.deepEqual(unknownParsed.extensionNames, ['UnknownExtension(65535)']);
+  assert.deepEqual(unknownParsed.unknownExtensionTypes, [65535]);
+});
+
+test('Solana raw Token-2022 safety assessment derives extensions from bytes and fails closed', () => {
+  const mintData = token2022Data({ accountKind: 'mint' });
+  const canonicalAta = token2022Data({ accountKind: 'account', extensions: [{ type: 7 }] });
+  const safe = createSolanaTokenSafetyAssessmentFromAccountData({
+    tokenProgramId: SOLANA_TOKEN_2022_PROGRAM_ID,
+    mintData,
+    sourceAccountData: canonicalAta,
+    destinationAccountData: canonicalAta,
+    mintDecimals: 6,
+    checkedDecimals: 6,
+    sourceAmount: 10n,
+    transferAmount: 10n,
+    destinationIsCanonicalAta: true
+  });
+  assert.equal(safe.ok, true);
+
+  const unknownMint = token2022Data({ accountKind: 'mint', extensions: [{ type: 65535 }] });
+  const blocked = createSolanaTokenSafetyAssessmentFromAccountData({
+    tokenProgramId: SOLANA_TOKEN_2022_PROGRAM_ID,
+    mintData: unknownMint,
+    sourceAccountData: canonicalAta,
+    destinationAccountData: canonicalAta,
+    mintDecimals: 6,
+    checkedDecimals: 6,
+    sourceAmount: 10n,
+    transferAmount: 10n,
+    destinationIsCanonicalAta: true
+  });
+  assert.equal(blocked.ok, false);
+  assert.deepEqual(blocked.blockedExtensions, ['UnknownExtension(65535)']);
+});
+
+test('Solana raw Token-2022 parser rejects malformed TLV and account-kind confusion', () => {
+  const account = token2022Data({ accountKind: 'account', extensions: [{ type: 7 }] });
+  assert.throws(() => parseSolanaToken2022Extensions({ data: account, accountKind: 'mint' }), /discriminator/);
+  assert.throws(() => parseSolanaToken2022Extensions({ data: account.subarray(0, account.length - 1), accountKind: 'account' }), /truncated/);
+  const duplicate = token2022Data({ accountKind: 'account', extensions: [{ type: 7 }, { type: 7 }] });
+  assert.throws(() => parseSolanaToken2022Extensions({ data: duplicate, accountKind: 'account' }), /duplicate/);
 });

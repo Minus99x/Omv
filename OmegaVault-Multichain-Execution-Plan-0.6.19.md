@@ -7,6 +7,7 @@
 - [x] Permit canonical Token-2022 ATA `ImmutableOwner` while refusing unreviewed mint/account extensions.
 - [x] Add adversarial tests for unknown future extension names.
 - [x] Preserve the distinction between known-danger extensions and unreviewed/unknown extensions in evidence output.
+- [x] Parse raw Token-2022 mint/account TLV data client-side and reject malformed, duplicate, or unknown extension types before execution assessment.
 
 ## Remaining ordered Solana token tasks
 
