@@ -2,22 +2,22 @@
 
 ## Latest verified increment
 
-- Added `src/chains/solana/rpc-evidence.js`, a fail-closed normalizer for realistic Solana JSON-RPC request/response evidence.
-- Bound the frozen message intent, fee payer, ATA and token program to confirmed `getLatestBlockhash`, `isBlockhashValid`, `getBlockHeight`, `simulateTransaction`, `getFeeForMessage`, `getSlot`, rent and balance observations.
-- Required monotonic context slots, an unexpired/valid blockhash, successful frozen-blockhash simulation, exact Token-2022 ATA rent sizing and sufficient payer capacity.
-- Required successful finalized ATA-creation status followed by a finalized `getAccountInfo` refetch with the exact address, token-program owner, account size, base64 data length and rent floor.
-- Added a checked-in JSON fixture plus adversarial cases for expiry, stale fee context, non-finalized creation, wrong account owner, truncated data and mismatched JSON-RPC IDs.
+- Closed an RPC evidence substitution gap by decoding the compact signature vector and serialized Solana message from the `simulateTransaction` payload.
+- Requires caller-supplied SHA-256 digests for both the serialized transaction and serialized message.
+- Verifies that the extracted message and `getFeeForMessage` payload are byte-identical and bind the expected fee payer and recent blockhash.
+- Rejects unsupported message versions, malformed/noncanonical compact-u16 values, truncated signature arrays/messages, signature-count/header drift and payloads above the supported packet limit.
+- Added adversarial fixtures proving signature-only transaction substitution, fee-message substitution and recent-blockhash substitution fail closed.
 
 ## Verification results
 
-- Focused Solana suites: 31/31 passed.
-- Full JavaScript suite: 204/204 passed.
+- Focused Solana suites: 32/32 passed.
+- Full JavaScript suite: 205/205 passed.
 - Full syntax/manifest check: passed.
 - Solana source/codec evidence check: passed (`e140b5235505df36f727051adf880f78b8ff7168b4e0269fc2071d4d7f24804e`).
 
 ## Promotion boundary
 
-This is deterministic offline RPC-fixture coverage, not validator-backed integration or a live-network proof. SPL Token/Token-2022 remain unpromoted; no deployment, transaction or signature was performed. Rust/Agave/Solana SBF tooling is unavailable in this environment, so the existing native-SOL artifact remains the latest compiled execution proof.
+This remains deterministic offline RPC-fixture coverage, not validator-backed integration or a live-network proof. SPL Token/Token-2022 remain unpromoted; no deployment, broadcast or wallet signature was performed. Rust/Agave/Solana SBF tooling is unavailable in this environment, so the existing native-SOL artifact remains the latest compiled execution proof.
 
 ## Next offline task
 

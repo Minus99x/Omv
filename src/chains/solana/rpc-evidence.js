@@ -37,6 +37,10 @@ function digest(value) {
     .digest('hex');
 }
 
+function digestBytes(value) {
+  return createHash('sha256').update(value).digest('hex');
+}
+
 function rpcPair(calls, key, method) {
   const pair = assertObject(calls[key], `fixture.calls.${key}`);
   const request = assertObject(pair.request, `${key}.request`);
@@ -67,9 +71,64 @@ function decodeCanonicalBase64(value, label) {
   return bytes;
 }
 
+function readCompactU16(bytes, offset, label) {
+  let value = 0;
+  let shift = 0;
+  for (let index = 0; index < 3; index += 1) {
+    if (offset + index >= bytes.length) throw new Error(`${label} compact-u16 is truncated.`);
+    const byte = bytes[offset + index];
+    value |= (byte & 0x7f) << shift;
+    if ((byte & 0x80) === 0) {
+      if (value > 0xffff || (index > 0 && byte === 0)) throw new Error(`${label} compact-u16 is non-canonical.`);
+      return { value, nextOffset: offset + index + 1 };
+    }
+    shift += 7;
+  }
+  throw new Error(`${label} compact-u16 exceeds the supported u16 range.`);
+}
+
+function parseMessageIdentity(bytes, label) {
+  if (bytes.length < 4) throw new Error(`${label} is truncated before its header.`);
+  let offset = 0;
+  let version = 'legacy';
+  if ((bytes[0] & 0x80) !== 0) {
+    version = bytes[0] & 0x7f;
+    if (version !== 0) throw new Error(`${label} uses an unsupported message version.`);
+    offset += 1;
+  }
+  if (offset + 3 > bytes.length) throw new Error(`${label} header is truncated.`);
+  const requiredSignatures = bytes[offset];
+  offset += 3;
+  const accountCount = readCompactU16(bytes, offset, `${label} account count`);
+  offset = accountCount.nextOffset;
+  if (accountCount.value === 0) throw new Error(`${label} has no fee-payer account key.`);
+  const blockhashOffset = offset + accountCount.value * 32;
+  if (!Number.isSafeInteger(blockhashOffset) || blockhashOffset + 32 > bytes.length) {
+    throw new Error(`${label} account keys or recent blockhash are truncated.`);
+  }
+  return Object.freeze({
+    version,
+    requiredSignatures,
+    feePayer: bs58.encode(bytes.subarray(offset, offset + 32)),
+    blockhash: bs58.encode(bytes.subarray(blockhashOffset, blockhashOffset + 32))
+  });
+}
+
+function parseTransactionEnvelope(bytes) {
+  if (bytes.length > 1232) throw new Error('simulation transaction exceeds the 1232-byte packet limit.');
+  const signatureCount = readCompactU16(bytes, 0, 'transaction signature count');
+  const messageOffset = signatureCount.nextOffset + signatureCount.value * 64;
+  if (!Number.isSafeInteger(messageOffset) || messageOffset >= bytes.length) throw new Error('simulation transaction signature array or message is truncated.');
+  const messageBytes = bytes.subarray(messageOffset);
+  const message = parseMessageIdentity(messageBytes, 'simulation transaction message');
+  return Object.freeze({ signatureCount: signatureCount.value, messageBytes, message });
+}
+
 export function createSolanaRpcEvidenceBundle({
   fixture,
   expectedMessageIntentDigest,
+  expectedSerializedMessageSha256,
+  expectedSerializedTransactionSha256,
   expectedFeePayer,
   expectedAssociatedTokenAccount,
   expectedTokenProgramId,
@@ -79,6 +138,8 @@ export function createSolanaRpcEvidenceBundle({
   const intent = assertObject(root.intent, 'fixture.intent');
   const calls = assertObject(root.calls, 'fixture.calls');
   if (!/^[0-9a-f]{64}$/.test(expectedMessageIntentDigest ?? '')) throw new TypeError('expectedMessageIntentDigest must be a lowercase SHA-256 digest.');
+  if (!/^[0-9a-f]{64}$/.test(expectedSerializedMessageSha256 ?? '')) throw new TypeError('expectedSerializedMessageSha256 must be a lowercase SHA-256 digest.');
+  if (!/^[0-9a-f]{64}$/.test(expectedSerializedTransactionSha256 ?? '')) throw new TypeError('expectedSerializedTransactionSha256 must be a lowercase SHA-256 digest.');
   const feePayer = canonicalBase58(expectedFeePayer, 32, 'expectedFeePayer');
   const associatedTokenAccount = canonicalBase58(expectedAssociatedTokenAccount, 32, 'expectedAssociatedTokenAccount');
   const tokenProgramId = canonicalBase58(expectedTokenProgramId, 32, 'expectedTokenProgramId');
@@ -106,11 +167,17 @@ export function createSolanaRpcEvidenceBundle({
   const simulationResult = contextualResult(simulation.response, 'simulation');
   const simulationValue = assertObject(simulationResult.value, 'simulation.value');
   const unitsConsumed = safeUnsignedInteger(simulationValue.unitsConsumed, 'simulation.value.unitsConsumed');
+  const serializedTransaction = decodeCanonicalBase64(simulation.request.params[0], 'simulation.request.params[0]');
+  const transactionEnvelope = parseTransactionEnvelope(serializedTransaction);
 
   const fee = rpcPair(calls, 'feeQuote', 'getFeeForMessage');
   const feeConfig = configAt(fee.request, 1, 'feeQuote');
   const feeResult = contextualResult(fee.response, 'feeQuote');
   const feeQuoteLamports = positiveLamports(feeResult.value, 'feeQuote.value');
+  const feeMessageBytes = decodeCanonicalBase64(fee.request.params[0], 'feeQuote.request.params[0]');
+  const feeMessage = parseMessageIdentity(feeMessageBytes, 'fee-quote message');
+  const serializedMessageSha256 = digestBytes(transactionEnvelope.messageBytes);
+  const serializedTransactionSha256 = digestBytes(serializedTransaction);
 
   const slot = rpcPair(calls, 'observationSlot', 'getSlot');
   const slotConfig = configAt(slot.request, 0, 'observationSlot');
@@ -148,6 +215,7 @@ export function createSolanaRpcEvidenceBundle({
 
   const checks = Object.freeze({
     intentDigestMatches: intent.messageIntentDigest === expectedMessageIntentDigest,
+    serializedPayloadDigestsDeclared: intent.serializedMessageSha256 === expectedSerializedMessageSha256 && intent.serializedTransactionSha256 === expectedSerializedTransactionSha256,
     feePayerMatches: intent.feePayer === feePayer && balance.request.params[0] === feePayer,
     associatedTokenAccountMatches: intent.associatedTokenAccount === associatedTokenAccount && account.request.params[0] === associatedTokenAccount,
     tokenProgramMatches: intent.tokenProgramId === tokenProgramId,
@@ -157,7 +225,14 @@ export function createSolanaRpcEvidenceBundle({
     blockhashValid: validityResult.value === true,
     blockHeightObservationFresh: blockHeightConfig.commitment === COMMITMENT && blockHeightConfig.minContextSlot >= validityResult.slot,
     blockhashNotExpired: currentBlockHeight <= lastValidBlockHeight,
-    simulationUsesFrozenBlockhash: simulationConfig.commitment === COMMITMENT && simulationConfig.replaceRecentBlockhash === false && simulationResult.slot >= validityResult.slot && simulationValue.replacementBlockhash == null,
+    simulationEncodingBase64: simulationConfig.encoding === 'base64',
+    serializedTransactionMatchesExpected: serializedTransactionSha256 === expectedSerializedTransactionSha256,
+    serializedMessageMatchesExpected: serializedMessageSha256 === expectedSerializedMessageSha256,
+    simulationAndFeePayloadsMatch: transactionEnvelope.messageBytes.equals(feeMessageBytes),
+    messageFeePayerMatches: transactionEnvelope.message.feePayer === feePayer && feeMessage.feePayer === feePayer,
+    messageBlockhashMatches: transactionEnvelope.message.blockhash === blockhash && feeMessage.blockhash === blockhash,
+    signatureCountMatchesHeader: transactionEnvelope.signatureCount === transactionEnvelope.message.requiredSignatures,
+    simulationUsesFrozenBlockhash: simulationConfig.commitment === COMMITMENT && simulationConfig.minContextSlot >= validityResult.slot && simulationConfig.replaceRecentBlockhash === false && simulationResult.slot >= validityResult.slot && simulationValue.replacementBlockhash == null,
     simulationSucceeded: simulationValue.err == null && unitsConsumed > 0,
     feeQuoteFresh: feeConfig.commitment === COMMITMENT && feeResult.slot >= simulationResult.slot,
     observationSlotFresh: slotConfig.commitment === COMMITMENT && slotConfig.minContextSlot >= feeResult.slot && observationSlot >= feeResult.slot,
@@ -178,6 +253,10 @@ export function createSolanaRpcEvidenceBundle({
 
   const evidence = Object.freeze({
     messageIntentDigest: expectedMessageIntentDigest,
+    serializedMessageSha256,
+    serializedTransactionSha256,
+    messageVersion: transactionEnvelope.message.version,
+    requiredSignatures: transactionEnvelope.message.requiredSignatures,
     feePayer,
     associatedTokenAccount,
     tokenProgramId,

@@ -1,6 +1,8 @@
 {
   "intent": {
     "messageIntentDigest": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+    "serializedMessageSha256": "b1c2eb550490885fc1b60ae992cd958bc7f00cd9a7c9f71e40df3d3b0ded2bb3",
+    "serializedTransactionSha256": "e994eff284e1ad82d6754141a22573d2cf6793340617738f9e80f0a18ff50b5b",
     "feePayer": "5KovAGoer61Vvo1Uv7sod2PpdATt74wUm7ezjKsLpKeF",
     "associatedTokenAccount": "5bV6jUfhDHCQVA1WfKBUnXUsboJgoKgkzkKcxr3joew5",
     "tokenProgramId": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
@@ -19,11 +21,11 @@
       "response": { "jsonrpc": "2.0", "id": 3, "result": 375 }
     },
     "simulation": {
-      "request": { "jsonrpc": "2.0", "id": 4, "method": "simulateTransaction", "params": ["AQ==", { "commitment": "confirmed", "encoding": "base64", "replaceRecentBlockhash": false, "minContextSlot": 351 }] },
+      "request": { "jsonrpc": "2.0", "id": 4, "method": "simulateTransaction", "params": ["AUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUUBAAABQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQwA=", { "commitment": "confirmed", "encoding": "base64", "replaceRecentBlockhash": false, "minContextSlot": 351 }] },
       "response": { "jsonrpc": "2.0", "id": 4, "result": { "context": { "slot": 352 }, "value": { "err": null, "logs": [], "replacementBlockhash": null, "unitsConsumed": 50000 } } }
     },
     "feeQuote": {
-      "request": { "jsonrpc": "2.0", "id": 5, "method": "getFeeForMessage", "params": ["AQ==", { "commitment": "confirmed", "minContextSlot": 352 }] },
+      "request": { "jsonrpc": "2.0", "id": 5, "method": "getFeeForMessage", "params": ["AQAAAUBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0MA", { "commitment": "confirmed", "minContextSlot": 352 }] },
       "response": { "jsonrpc": "2.0", "id": 5, "result": { "context": { "slot": 353 }, "value": 5006 } }
     },
     "observationSlot": {
