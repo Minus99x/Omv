@@ -1,9 +1,10 @@
 import { createHash } from 'node:crypto';
 import bs58 from 'bs58';
-import { deriveSolanaAssociatedTokenAddress } from './program-codec.js';
+import { deriveSolanaAssociatedTokenAddress, SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID } from './program-codec.js';
 
 export const SOLANA_TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
 export const SOLANA_TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+export const SOLANA_SYSTEM_PROGRAM_ID = '11111111111111111111111111111111';
 export const SOLANA_TOKEN_MINT_BASE_BYTES = 82;
 export const SOLANA_TOKEN_ACCOUNT_BASE_BYTES = 165;
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
@@ -245,6 +246,57 @@ export function createSolanaTokenSafetyAssessmentFromAccountData({ tokenProgramI
       source: Object.freeze({ ...sourceBase, address: sourceAccountAddress }),
       destination: Object.freeze({ ...destinationBase, address: destinationAccountAddress, canonicalBump: canonicalDestination.bump })
     })
+  });
+}
+
+export function createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount, tokenProgramId, destinationTokenAccount }) {
+  const payerKey = canonicalPubkey(payer, 'payer');
+  const owner = canonicalPubkey(rescueOwner, 'rescueOwner');
+  const mint = canonicalPubkey(mintAccount, 'mintAccount');
+  const programId = canonicalPubkey(tokenProgramId, 'tokenProgramId');
+  const destination = canonicalPubkey(destinationTokenAccount, 'destinationTokenAccount');
+  if (![SOLANA_TOKEN_PROGRAM_ID, SOLANA_TOKEN_2022_PROGRAM_ID].includes(programId)) {
+    throw new TypeError('Unsupported Solana token program.');
+  }
+  const derived = deriveSolanaAssociatedTokenAddress({ owner, mint, tokenProgramId: programId });
+  if (destination !== derived.address) {
+    throw new Error('Destination token account is not the canonical associated token account for the rescue owner, mint, and token program.');
+  }
+  const instruction = Object.freeze({
+    programId: SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID,
+    dataHex: '01',
+    instruction: 'CreateIdempotent',
+    keys: Object.freeze([
+      Object.freeze({ pubkey: payerKey, isSigner: true, isWritable: true }),
+      Object.freeze({ pubkey: destination, isSigner: false, isWritable: true }),
+      Object.freeze({ pubkey: owner, isSigner: false, isWritable: false }),
+      Object.freeze({ pubkey: mint, isSigner: false, isWritable: false }),
+      Object.freeze({ pubkey: SOLANA_SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false }),
+      Object.freeze({ pubkey: programId, isSigner: false, isWritable: false })
+    ])
+  });
+  const intent = Object.freeze({
+    instruction,
+    associatedTokenAccount: destination,
+    associatedTokenAccountBump: derived.bump,
+    tokenProgramId: programId,
+    funding: Object.freeze({
+      payer: payerKey,
+      payerMustSign: true,
+      rescueOwnerMustSign: false,
+      rentLamportsInput: null,
+      policy: 'Associated Token Program computes rent exemption at execution; preflight payer balance from current cluster state.'
+    }),
+    expectedDestinationExtensions: Object.freeze(programId === SOLANA_TOKEN_2022_PROGRAM_ID ? ['ImmutableOwner'] : []),
+    postCreationGate: Object.freeze({
+      mustRefetchAccountData: true,
+      mustPassRawSafetyAssessment: true,
+      transferPlanBlockedUntilVerified: true
+    })
+  });
+  return Object.freeze({
+    ...intent,
+    intentDigest: createHash('sha256').update(JSON.stringify(intent)).digest('hex')
   });
 }
 

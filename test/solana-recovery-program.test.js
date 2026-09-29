@@ -8,11 +8,12 @@ import {
   createSolanaTokenRecoveryPreflight, createSolanaToken2022SafetyAssessment,
   createSolanaTokenSafetyAssessmentFromAccountData, parseSolanaToken2022Extensions,
   parseSolanaTokenMintBase, parseSolanaTokenAccountBase,
-  createSolanaTransferCheckedInstructionPlan,
+  createSolanaRescueAtaCreationPlan, createSolanaTransferCheckedInstructionPlan,
+  SOLANA_SYSTEM_PROGRAM_ID,
   SOLANA_TOKEN_MINT_BASE_BYTES, SOLANA_TOKEN_ACCOUNT_BASE_BYTES,
   createSolanaTransactionLifetimePlan, createSolanaProgramVerificationPlan
 } from '../src/chains/solana/recovery-program.js';
-import { deriveSolanaAssociatedTokenAddress } from '../src/chains/solana/program-codec.js';
+import { deriveSolanaAssociatedTokenAddress, SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID } from '../src/chains/solana/program-codec.js';
 
 const key = n => `${String(n).repeat(32)}`;
 const owner = key(1), rescue = key(2), a = key(3), b = key(4), program = key(5), mint = key(6), sourceAta = key(7), rescueAta = key(8);
@@ -352,6 +353,36 @@ test('Solana TransferChecked plan freezes assessed accounts, PDA authority and c
   assert.throws(() => createSolanaTransferCheckedInstructionPlan({ assessment: { ...assessment, ok: false }, sourceTokenAccount, mintAccount: rawMint, destinationTokenAccount, custodyAuthority: sourceAuthority }), /passing raw-account/);
   assert.throws(() => createSolanaTransferCheckedInstructionPlan({ assessment, sourceTokenAccount, mintAccount: rawKey(36), destinationTokenAccount, custodyAuthority: sourceAuthority }), /mint does not match/);
   assert.throws(() => createSolanaTransferCheckedInstructionPlan({ assessment: { ...assessment, transferAmount: 1n << 64n }, sourceTokenAccount, mintAccount: rawMint, destinationTokenAccount, custodyAuthority: sourceAuthority }), /unsigned 64-bit/);
+});
+
+test('Solana rescue ATA plan freezes idempotent creation, funding roles and post-creation verification', () => {
+  const payer = rawKey(41), rescueOwner = rawKey(42), rawMint = rawKey(43);
+  for (const tokenProgramId of [SOLANA_TOKEN_PROGRAM_ID, SOLANA_TOKEN_2022_PROGRAM_ID]) {
+    const destinationTokenAccount = deriveSolanaAssociatedTokenAddress({ owner: rescueOwner, mint: rawMint, tokenProgramId }).address;
+    const plan = createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount: rawMint, tokenProgramId, destinationTokenAccount });
+    assert.equal(plan.instruction.programId, SOLANA_ASSOCIATED_TOKEN_PROGRAM_ID);
+    assert.equal(plan.instruction.instruction, 'CreateIdempotent');
+    assert.equal(plan.instruction.dataHex, '01');
+    assert.deepEqual(plan.instruction.keys, [
+      { pubkey: payer, isSigner: true, isWritable: true },
+      { pubkey: destinationTokenAccount, isSigner: false, isWritable: true },
+      { pubkey: rescueOwner, isSigner: false, isWritable: false },
+      { pubkey: rawMint, isSigner: false, isWritable: false },
+      { pubkey: SOLANA_SYSTEM_PROGRAM_ID, isSigner: false, isWritable: false },
+      { pubkey: tokenProgramId, isSigner: false, isWritable: false }
+    ]);
+    assert.equal(plan.funding.rescueOwnerMustSign, false);
+    assert.equal(plan.funding.rentLamportsInput, null);
+    assert.equal(plan.postCreationGate.transferPlanBlockedUntilVerified, true);
+    assert.deepEqual(plan.expectedDestinationExtensions, tokenProgramId === SOLANA_TOKEN_2022_PROGRAM_ID ? ['ImmutableOwner'] : []);
+    assert.match(plan.intentDigest, /^[0-9a-f]{64}$/);
+  }
+});
+
+test('Solana rescue ATA plan rejects redirection and unsupported token programs', () => {
+  const payer = rawKey(44), rescueOwner = rawKey(45), rawMint = rawKey(46);
+  assert.throws(() => createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount: rawMint, tokenProgramId: SOLANA_TOKEN_PROGRAM_ID, destinationTokenAccount: rawKey(47) }), /not the canonical/);
+  assert.throws(() => createSolanaRescueAtaCreationPlan({ payer, rescueOwner, mintAccount: rawMint, tokenProgramId: rawKey(48), destinationTokenAccount: rawKey(49) }), /Unsupported/);
 });
 
 test('Solana raw Token-2022 parser rejects malformed TLV and account-kind confusion', () => {

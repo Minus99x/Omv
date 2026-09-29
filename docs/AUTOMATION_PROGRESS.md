@@ -61,3 +61,18 @@ Next offline task: use this exact fixture while porting base/TLV validation and 
 - Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
 
 Next offline task: port raw base/TLV validation, deterministic ATA verification, and checked token CPI into Rust/SBF, then compile and execute adversarial `solana-program-test` coverage with the pinned toolchain.
+
+## 2026-09-29 — idempotent rescue-ATA creation plan
+
+- Added a deterministic, digest-bound Associated Token Program `CreateIdempotent` plan for both the original Token Program and Token-2022.
+- Froze the canonical six-account order and signer/writable roles, including the external rent payer, derived rescue ATA, rescue owner, mint, System Program, and selected token program.
+- Refused noncanonical destination addresses and unsupported token programs before instruction construction.
+- Kept rent dynamic: no lamport amount is hardcoded, and the payer balance must be preflighted against current cluster state.
+- Added a mandatory post-creation gate: account data must be re-fetched and pass the raw-byte safety assessment before a `TransferChecked` plan may be produced.
+- Recorded the Token-2022 `ImmutableOwner` extension expected on ATAs created by the Associated Token Program.
+- Verification: 197/197 JavaScript tests passed, including 24/24 focused Solana tests; `npm run check` and `npm run check:solana` passed.
+- Safety boundary: no deployment, transaction, wallet signature, secret access, or main-branch write was performed.
+- Connector status: unchanged. The creation plan is offline-only; SPL Token and Token-2022 remain not live-proof.
+- Environment blocker: this runner still has no Rust/Cargo or Solana SBF toolchain.
+
+Next offline task: port raw validation, canonical ATA handling, and checked token CPI into Rust/SBF, then execute ATA creation plus adversarial transfer cases under `solana-program-test` with the pinned toolchain.
