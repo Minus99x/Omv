@@ -1,35 +1,34 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.19-dev**
+Current development checkpoint: **0.6.20-dev**
 
-Archive: `omegavault-mvp-0.6.19-dev.zip`
-SHA-256: `964a279aa5c40082a5f8d2a274529a733a599f4c5798c222d0a891edf837f12f`
+Archive: `omegavault-mvp-0.6.20-dev.zip`
+SHA-256: `4a9a1d53cd88e24d3be5e543dac9fac5c174fca39f236f851c63976225d474e3`
 
-## 0.6.19 delta
+## 0.6.20 delta
 
-- Closed a fail-closed gap in Solana Token-2022 recovery preflight.
-- Extension handling is now allowlist-based rather than relying only on known blocked extensions.
-- No Token-2022 mint extensions are execution-approved at this checkpoint.
-- `ImmutableOwner` is the only approved Token-2022 token-account extension because canonical Token-2022 associated token accounts initialize it automatically.
-- Unknown and unreviewed extension names are rejected.
-- Existing native-SOL SBF execution proof remains unchanged.
+- Reverified current official Solana Token/Token-2022 CPI, `TransferChecked`, ATA and `ImmutableOwner` behavior.
+- Resolved a multi-asset sequencing hazard before Rust/SBF token execution: native recovery is the one-way recovery activation; token movements are repeatable **post-recovery sweeps** to the already immutable rescue authority.
+- Added client-model enforcement requiring recovered state, passing token preflight and checked-token safety gates, canonical custody-PDA source authority, immutable rescue destination and exact token-program identity.
+- Froze the future OmegaVault token-sweep instruction envelope as tag `4` + u64 little-endian amount + mint decimals.
+- Froze the downstream Token Program CPI payload as canonical `TransferChecked` tag `12` + the same amount/decimals.
+- Existing native-SOL SBF execution proof remains unchanged; token SBF execution is not claimed.
 
 ## Verification
 
-- `src/chains/solana/recovery-program.js` syntax check: passed.
-- Focused Solana model suite: **11/11 passed**.
-- Full JavaScript suite attempted: **106 passed / 13 failed**.
-- All 13 failures are dependency-loading failures for unavailable packages: `@stellar/stellar-sdk`, `@noble/curves`, `@emurgo/cardano-serialization-lib-nodejs`, `bs58`, and `xrpl`.
-- No new functional-test failure was introduced.
-- Rust/Agave compilation is not claimed in the current execution environment.
+- `npm run check`: **passed**.
+- Focused Solana recovery model suite: **13/13 passed**.
+- Full JavaScript suite: **108 passed / 13 failed**.
+- All 13 failures remain dependency-loading startup failures caused by unavailable pinned npm packages in the execution sandbox; no new functional assertion failure was observed.
+- Rust/Agave compilation remains unavailable in the current execution environment.
 
 ## Source of truth
 
-The complete 0.6.19-dev archive is stored in the ChatGPT file Library under the exact filename above. Do not reconstruct 0.6.19 from the older 0.5 repository tree.
+The complete 0.6.20-dev archive is stored in the ChatGPT file Library under the exact filename and checksum above. Do not reconstruct it from the older 0.5 tree on `main`.
 
 ## Next offline gate
 
-Mirror the extension allowlist/fail-closed policy inside the Rust/SBF program, add checked SPL Token and Token-2022 CPI using the custody PDA authority, compile with the pinned Rust/Agave toolchain, and run adversarial `solana-program-test` coverage before any Devnet interaction.
+Implement tag `4` in Rust/SBF with post-recovery-only semantics: parse SPL Token / Token-2022 state, mirror the fail-closed extension allowlist, verify the canonical rescue ATA, issue `TransferChecked` via `invoke_signed` with custody-PDA seeds, then compile and run adversarial `solana-program-test` coverage.
 
 ## Safety boundary
 
