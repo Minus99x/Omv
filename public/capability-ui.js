@@ -86,11 +86,28 @@ export function createCapabilityUiModel(envelope) {
   if (new Set(contracts.map(contract => contract.chainId)).size !== contracts.length) return unavailable('Capability catalog contains duplicate chains.');
 
   contracts.sort((a, b) => a.name.localeCompare(b.name));
+  const eligibleCount = contracts.filter(contract => contract.promotionEligible).length;
   return Object.freeze({
     schema: 'omegavault.capability-ui-model.v1',
     available: true,
     reason: null,
     headline: 'Backend-validated capability status',
+    eligibleCount,
+    blockedCount: contracts.length - eligibleCount,
     contracts: Object.freeze(contracts)
   });
+}
+
+
+export function selectCapabilityContracts(model, { filter = 'all', sort = 'name' } = {}) {
+  if (!model?.available || !Array.isArray(model.contracts)) return Object.freeze([]);
+  if (!['all', 'eligible', 'blocked'].includes(filter)) throw new TypeError(`Unknown capability filter: ${filter}`);
+  if (!['name', 'stage'].includes(sort)) throw new TypeError(`Unknown capability sort: ${sort}`);
+  let contracts = [...model.contracts];
+  if (filter === 'eligible') contracts = contracts.filter(contract => contract.promotionEligible === true);
+  if (filter === 'blocked') contracts = contracts.filter(contract => contract.promotionEligible === false);
+  contracts.sort((a, b) => sort === 'stage'
+    ? a.stage.localeCompare(b.stage) || a.name.localeCompare(b.name)
+    : a.name.localeCompare(b.name));
+  return Object.freeze(contracts);
 }
