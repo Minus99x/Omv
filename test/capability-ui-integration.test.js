@@ -19,3 +19,14 @@ test('browser capability dashboard exposes status and chain cards', () => {
   assert.match(css, /\.capability-grid/);
   assert.match(css, /\.capability-badge\.blocked/);
 });
+
+
+test('capability dashboard exposes accessible live status and keyboard-focusable diagnostics', () => {
+  assert.match(html, /id="capabilityStatus"[^>]*role="status"[^>]*aria-live="polite"/);
+  assert.match(html, /id="capabilityGrid"[^>]*role="list"/);
+  assert.match(html, /id="capabilityFilter"/);
+  assert.match(html, /id="capabilitySort"/);
+  assert.match(app, /card\.tabIndex = 0/);
+  assert.match(app, /Evidence:/);
+  assert.match(css, /\.capability-card:focus-visible/);
+});
