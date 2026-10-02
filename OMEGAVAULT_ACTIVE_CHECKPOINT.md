@@ -1,39 +1,35 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.22-dev**
+Current development checkpoint: **0.6.23-dev**
 
-Archive: `omegavault-mvp-0.6.22-dev.zip`
-SHA-256: `ac0a6ad15394b6f8fe12267330e9ef608f91127f8ed63181c65edb5035a98a19`
+Archive: `omegavault-mvp-0.6.23-dev.zip`
+SHA-256: `e2a96a522d3f921194f144b4b87276b540bf72bfb2da6bb2a48f6da3ff0f3e88`
 
-## 0.6.22 delta
+## 0.6.23 delta
 
-- Shifted active multichain work away from the blocked Solana Rust/SBF toolchain and resumed XRPL hardening.
-- Reverified current official XRPL Permission Delegation and multi-signing behavior.
-- Added a minimal `DelegateSet(Payment)` builder for a dedicated recovery delegate with structural sequence/Ticket checks and explicit amendment/evidence expectations.
-- Added a fail-closed delegated-recovery assessment. A dedicated delegate can use its own SignerList/quorum, reducing authority compared with putting recovery signers directly on the owner account.
-- Encoded the native limitations: delegated Payment is not bound to owner-resettable inactivity, one rescue destination, one amount, or one currency.
-- Added product-claim guards so permission delegation cannot be described as exact resettable-inactivity, immutable-rescue, destination-bound, amount-bound, or currency-bound recovery.
-- Added a candidate XRPL plan combining `DelegateSet(Payment)` with a delegate-owned SignerList while preserving those limitations as blockers.
-- Solana 0.6.21 remains preserved and parked until a usable Rust/Agave/SBF environment is available.
+- Hardened the Bitcoin reduced-semantics recovery lane from signature verification toward deterministic transaction extraction.
+- Added a strict PSBTv2 recovery finalizer that requires the exact configured P2WSH descriptor/witness script on every input.
+- Every recovery input must encode the configured block-based CSV delay and meet the configured distinct-contact threshold.
+- Unauthorized/owner partial signers are rejected from the delayed recovery finalization path.
+- OmegaVault finalization requires exactly one caller-confirmed rescue output and an exact caller-confirmed fee.
+- The finalizer constructs the delayed recovery witness stack, raw SegWit transaction bytes, txid, wtxid, weight and vsize.
+- Expanded the project-wide syntax gate so Bitcoin descriptor and PSBT execution modules are no longer skipped.
+- Bitcoin remains reduced semantics: the OmegaVault-produced transaction is output-bound, but ordinary CSV + multisig Script still cannot covenant every alternative future spend to the rescue address.
 
 ## Verification
 
-- Focused XRPL native + permission-delegation suite: **16/16 passed**.
-- `npm run check`: **passed**.
-- Full JavaScript suite: **120 passed / 13 failed**.
-- All 13 failures are the existing missing-dependency startup failures caused by absent pinned npm packages in the extracted workspace; no new functional assertion failure was observed.
-
-## Security conclusion
-
-XRPL Permission Delegation is a useful least-privilege support primitive, but it does not solve OmegaVault's exact inactivity or immutable-rescue requirements. Exact XRPL recovery remains unpromoted.
+- `npm run check`: **passed**, including `src/chains/bitcoin/descriptor.js` and `src/chains/bitcoin/psbt-v2.js`.
+- Executable Bitcoin recovery-policy + finalizer structural suite: **11/11 passed**.
+- The full cryptographic descriptor/PSBT/finalizer test file is present but could not run in this fresh extraction because pinned `@noble/curves` 2.4.0 is absent.
+- No full cryptographic finalizer runtime proof, Bitcoin Core extraction cross-check, Signet broadcast or public-network recovery proof is claimed in this checkpoint.
 
 ## Source of truth
 
-The complete 0.6.22-dev archive is stored in the ChatGPT file Library under the exact filename and checksum above. Do not reconstruct the current source from the older tree on `main`.
+The complete 0.6.23-dev archive is stored in the ChatGPT file Library under the exact filename and checksum above. Do not reconstruct the current source from the older tree on `main`.
 
 ## Next offline gate
 
-Move to Bitcoin reduced-semantics/PSBT hardening and evidence unless a new XRPL-native primitive materially changes the exact-recovery analysis. Keep Solana frozen until the Agave/Rust workbench is available.
+Do not wait on the missing Node dependency. Continue Cardano evaluation preparation or Stellar/TRON execution hardening. Revisit Bitcoin when the pinned dependencies are available, then run the full cryptographic finalizer suite and cross-check the extracted raw transaction with Bitcoin Core before any Signet proof.
 
 ## Safety boundary
 
