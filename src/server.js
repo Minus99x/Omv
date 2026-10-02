@@ -17,6 +17,7 @@ import {
 } from './core/recovery.js';
 import { listChains } from './chains/registry.js';
 import { createCapabilityCatalogResponse } from './chains/capability-catalog.js';
+import { createValidatedCapabilityCatalogResponse } from './api/response-contracts.js';
 import { ensureSolcCompiler, SOLC_0_8_24 } from './ethereum/compiler-cache.js';
 
 const APP_VERSION = '0.4.3';
@@ -158,7 +159,10 @@ async function handleApi(req, res, url) {
     });
   }
   if (req.method === 'GET' && p === '/api/chains') return json(res, 200, { chains: listChains() });
-  if (req.method === 'GET' && p === '/api/chain-capabilities') return json(res, 200, createCapabilityCatalogResponse());
+  if (req.method === 'GET' && p === '/api/chain-capabilities') {
+    const catalog = createCapabilityCatalogResponse();
+    return json(res, 200, createValidatedCapabilityCatalogResponse(catalog));
+  }
   if (req.method === 'GET' && p === '/api/vaults') return json(res, 200, { vaults: store.all().map(publicRecord) });
   if (req.method === 'GET' && p === '/api/ethereum/contract-source') {
     return json(res, 200, {
