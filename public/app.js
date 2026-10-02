@@ -1,6 +1,7 @@
 import { getBrowserChain } from './chains/index.js';
 import { createCapabilityUiModel, selectCapabilityContracts } from './capability-ui.js';
 import { createEvidenceProvenanceUiModel, resolveEvidenceReference } from './evidence-provenance-ui.js';
+import { createEvidenceHistoryUiModel, selectEvidenceHistory } from './evidence-history-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const selectedChainId = 'ethereum';
@@ -20,6 +21,7 @@ let approvalStatuses = [];
 let contactBalances = [];
 let capabilityUiModel = null;
 let evidenceProvenanceUiModel = null;
+let evidenceHistoryUiModel = null;
 
 function toast(message, duration = 4200) {
   const el = $('toast');
@@ -232,22 +234,74 @@ function renderCapabilityDashboard(model) {
 
 async function loadCapabilityDashboard() {
   try {
-    const [capabilityEnvelope, provenanceEnvelope] = await Promise.all([
+    const [capabilityEnvelope, provenanceEnvelope, evidenceHistoryEnvelope] = await Promise.all([
       api('/api/chain-capabilities'),
-      api('/api/evidence-provenance')
+      api('/api/evidence-provenance'),
+      api('/api/evidence-history')
     ]);
     capabilityUiModel = createCapabilityUiModel(capabilityEnvelope);
     evidenceProvenanceUiModel = createEvidenceProvenanceUiModel(provenanceEnvelope);
+    evidenceHistoryUiModel = createEvidenceHistoryUiModel(evidenceHistoryEnvelope);
   } catch (error) {
     capabilityUiModel = createCapabilityUiModel(null);
     capabilityUiModel = Object.freeze({ ...capabilityUiModel, reason: `Capability API request failed: ${error.message}` });
     evidenceProvenanceUiModel = createEvidenceProvenanceUiModel(null);
+    evidenceHistoryUiModel = createEvidenceHistoryUiModel(null);
   }
   renderCapabilityDashboard(capabilityUiModel);
+  renderEvidenceHistory(evidenceHistoryUiModel);
 }
 
 $('capabilityFilter')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
 $('capabilitySort')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
+
+function renderEvidenceHistory(model) {
+  const status = $('evidenceHistoryStatus');
+  const container = $('evidenceHistoryList');
+  const summary = $('evidenceHistorySummary');
+  if (!status || !container || !summary) return;
+  container.replaceChildren();
+  if (!model?.available) {
+    status.textContent = 'History unavailable';
+    status.className = 'status status-unavailable';
+    summary.textContent = model?.reason || 'No validated evidence-history response was received.';
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'Evidence history is unavailable. No maturity or promotion state is inferred from missing history.';
+    container.append(empty);
+    return;
+  }
+  const query = $('evidenceHistorySearch')?.value || '';
+  const chainId = $('evidenceHistoryChain')?.value || 'all';
+  const sort = $('evidenceHistorySort')?.value || 'newest';
+  let rows;
+  try { rows = selectEvidenceHistory(model, { query, chainId, sort }); }
+  catch (error) {
+    status.textContent = 'History controls invalid';
+    status.className = 'status status-unavailable';
+    summary.textContent = error.message;
+    return;
+  }
+  status.textContent = `${model.summary.checkpointCount} evidence checkpoints · ${model.summary.evidenceRefCount} refs · backend validated`;
+  status.className = 'status status-validated';
+  summary.textContent = `Showing ${rows.length} of ${model.checkpoints.length} evidence checkpoints. Timeline links show evidence-checkpoint order only, not source ancestry.`;
+  if (!rows.length) {
+    const empty = document.createElement('div'); empty.className='empty'; empty.textContent='No evidence checkpoints match the current history search/filter.'; container.append(empty); return;
+  }
+  for (const row of rows) {
+    const card=document.createElement('section'); card.className='history-card'; card.tabIndex=0;
+    const head=document.createElement('div'); head.className='history-head';
+    const title=document.createElement('strong'); title.textContent=row.checkpointRef;
+    const chains=document.createElement('span'); chains.className='history-chain-badges'; chains.textContent=row.chainIds.join(' · ');
+    head.append(title,chains); card.append(head);
+    const meta=document.createElement('div'); meta.className='history-meta mono'; meta.textContent=`${row.archiveFilename} · ${row.archiveSha256}`; card.append(meta);
+    const relation=document.createElement('div'); relation.className='history-relation'; relation.textContent=`Timeline: ${row.previousEvidenceCheckpointRef || 'start'} ← ${row.checkpointRef} → ${row.nextEvidenceCheckpointRef || 'latest'} · order only, not source ancestry`; card.append(relation);
+    const refs=document.createElement('details'); const rs=document.createElement('summary'); rs.textContent=`Evidence refs (${row.evidenceRefs.length})`; refs.append(rs); appendList(refs,row.evidenceRefs,'No refs'); card.append(refs);
+    const scopes=document.createElement('details'); const ss=document.createElement('summary'); ss.textContent=`Scopes (${row.scopes.length})`; scopes.append(ss); appendList(scopes,row.scopes,'No scopes'); card.append(scopes);
+    const artifacts=document.createElement('details'); const ars=document.createElement('summary'); ars.textContent=`Artifacts (${row.artifactPaths.length})`; artifacts.append(ars); appendList(artifacts,row.artifactPaths,'No artifacts'); card.append(artifacts);
+    container.append(card);
+  }
+}
 
 function permissionHas(address) {
   return permittedAccounts.some(value => sameAddress(value, address));
