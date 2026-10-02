@@ -1,4 +1,5 @@
 import { getBrowserChain } from './chains/index.js';
+import { createCapabilityUiModel } from './capability-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const selectedChainId = 'ethereum';
@@ -16,6 +17,7 @@ let lastChainState = null;
 let permittedAccounts = [];
 let approvalStatuses = [];
 let contactBalances = [];
+let capabilityUiModel = null;
 
 function toast(message, duration = 4200) {
   const el = $('toast');
@@ -57,6 +59,120 @@ function nonce() {
   const bytes = new Uint8Array(16);
   globalThis.crypto?.getRandomValues?.(bytes);
   return [...bytes].map(v => v.toString(16).padStart(2, '0')).join('');
+}
+
+
+function appendList(container, items, emptyText) {
+  const list = document.createElement('ul');
+  list.className = 'capability-list';
+  if (!items.length) {
+    const item = document.createElement('li');
+    item.textContent = emptyText;
+    list.append(item);
+  } else {
+    for (const value of items) {
+      const item = document.createElement('li');
+      item.textContent = value;
+      list.append(item);
+    }
+  }
+  container.append(list);
+}
+
+function renderCapabilityDashboard(model) {
+  const status = $('capabilityStatus');
+  const container = $('capabilityGrid');
+  if (!status || !container) return;
+  container.replaceChildren();
+  if (!model?.available) {
+    status.textContent = 'Status unavailable';
+    status.className = 'status status-unavailable';
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = `Multichain maturity status is unavailable. ${model?.reason || 'No validated capability response was received.'} No promotion claim is being made.`;
+    container.append(empty);
+    return;
+  }
+
+  status.textContent = `${model.contracts.length} chains · backend validated`;
+  status.className = 'status status-validated';
+  for (const contract of model.contracts) {
+    const card = document.createElement('section');
+    card.className = `capability-card ${contract.promotionEligible ? 'promotion-eligible' : 'promotion-blocked'}`;
+
+    const head = document.createElement('div');
+    head.className = 'capability-head';
+    const title = document.createElement('div');
+    const name = document.createElement('strong');
+    name.textContent = contract.name;
+    const id = document.createElement('span');
+    id.className = 'mono small muted';
+    id.textContent = contract.chainId;
+    title.append(name, id);
+    const badge = document.createElement('span');
+    badge.className = contract.promotionEligible ? 'capability-badge eligible' : 'capability-badge blocked';
+    badge.textContent = contract.promotionLabel;
+    head.append(title, badge);
+    card.append(head);
+
+    const meta = document.createElement('div');
+    meta.className = 'capability-meta';
+    const stage = document.createElement('span');
+    stage.textContent = `Stage: ${contract.stage}`;
+    const adapter = document.createElement('span');
+    adapter.textContent = `Adapter label: ${contract.adapterImplementationStage}`;
+    meta.append(stage, adapter);
+    card.append(meta);
+
+    const evidence = document.createElement('div');
+    evidence.className = 'evidence-levels';
+    for (const [level, count] of Object.entries(contract.evidenceCounts).sort(([a],[b]) => a.localeCompare(b))) {
+      const pill = document.createElement('span');
+      pill.className = 'evidence-pill';
+      pill.textContent = `${level}: ${count}`;
+      evidence.append(pill);
+    }
+    card.append(evidence);
+
+    const blockers = document.createElement('details');
+    blockers.open = contract.blockers.length > 0;
+    const blockersSummary = document.createElement('summary');
+    blockersSummary.textContent = `Blockers (${contract.blockers.length})`;
+    blockers.append(blockersSummary);
+    appendList(blockers, contract.blockers, 'No blockers reported by the backend contract.');
+    card.append(blockers);
+
+    const gates = document.createElement('details');
+    const gatesSummary = document.createElement('summary');
+    gatesSummary.textContent = `Promotion gates · missing ${contract.missingGates.length} · insufficient ${contract.insufficientEvidenceGates.length}`;
+    gates.append(gatesSummary);
+    const gateTable = document.createElement('div');
+    gateTable.className = 'gate-table';
+    for (const gate of contract.gateEvidence) {
+      const row = document.createElement('div');
+      row.className = `gate-row ${gate.evidenceSufficient ? 'sufficient' : gate.passed ? 'insufficient' : 'missing'}`;
+      const gateName = document.createElement('span');
+      gateName.textContent = gate.gate;
+      const level = document.createElement('span');
+      level.textContent = gate.passed ? `${gate.level} / min ${gate.minimumEvidence}` : `missing / min ${gate.minimumEvidence}`;
+      row.append(gateName, level);
+      gateTable.append(row);
+    }
+    gates.append(gateTable);
+    card.append(gates);
+    container.append(card);
+  }
+}
+
+async function loadCapabilityDashboard() {
+  try {
+    const envelope = await api('/api/chain-capabilities');
+    capabilityUiModel = createCapabilityUiModel(envelope);
+  } catch (error) {
+    capabilityUiModel = createCapabilityUiModel(null);
+    capabilityUiModel = Object.freeze({ ...capabilityUiModel, reason: `Capability API request failed: ${error.message}` });
+  }
+  renderCapabilityDashboard(capabilityUiModel);
 }
 
 function permissionHas(address) {
@@ -329,6 +445,7 @@ async function loadLatestVault({ announce = true } = {}) {
   lastChainState = null;
   approvalStatuses = [];
   renderVault();
+  await loadCapabilityDashboard();
   await refreshWallet({ request: false }).catch(() => {});
   if (announce) toast(currentVault.chainBindings?.ethereum ? 'Existing deployed OmegaVault test resumed.' : 'Latest local OmegaVault policy loaded.');
   return currentVault;
