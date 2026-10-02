@@ -104,8 +104,21 @@
         <div id="capabilityGrid" class="capability-grid" role="list" aria-label="Backend-validated chain capability status"><div class="empty">Loading capability contracts…</div></div>
       </article>
 
+
+      <article class="card wide evidence-history-card">
+        <div class="section-head"><div><span class="step">05</span><h2>Evidence checkpoint history</h2></div><span id="evidenceHistoryStatus" class="status status-unavailable" role="status" aria-live="polite">Loading validated history…</span></div>
+        <div class="inline-info"><strong>Diagnostic timeline only:</strong> checkpoint links below describe the ordered history of registered maturity evidence. They do not claim Git ancestry, proof parentage, or promotion readiness.</div>
+        <div class="history-controls" aria-label="Evidence history display controls">
+          <label>Search<input id="evidenceHistorySearch" type="search" placeholder="checkpoint, ref, chain, scope or artifact" /></label>
+          <label>Chain<select id="evidenceHistoryChain"><option value="all">All chains</option><option value="bitcoin">Bitcoin</option><option value="cardano">Cardano</option><option value="solana">Solana</option><option value="tron">TRON</option><option value="xdc">XDC</option><option value="xrpl">XRPL</option></select></label>
+          <label>Order<select id="evidenceHistorySort"><option value="newest">Newest evidence first</option><option value="oldest">Oldest evidence first</option></select></label>
+          <div id="evidenceHistorySummary" class="muted small" role="status" aria-live="polite">Waiting for validated evidence history.</div>
+        </div>
+        <div id="evidenceHistoryList" class="history-list" role="list" aria-label="Validated evidence checkpoint history"><div class="empty">Loading evidence checkpoint history…</div></div>
+      </article>
+
       <article class="card wide live-card">
-        <div class="section-head"><div><span class="step">05</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
+        <div class="section-head"><div><span class="step">06</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
         <div id="liveEmpty" class="empty">Create an OmegaVault policy first. The same neutral policy will then be expressed through the Ethereum adapter.</div>
         <div id="livePanel" class="hidden">
           <div class="proof-banner"><strong>Guardrail:</strong> this build will not deploy or send proof-contract actions on Ethereum mainnet. The only live proof network accepted by the application and server binding layer is Sepolia.</div>
