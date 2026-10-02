@@ -1,5 +1,6 @@
 import { getBrowserChain } from './chains/index.js';
 import { createCapabilityUiModel, selectCapabilityContracts } from './capability-ui.js';
+import { createEvidenceProvenanceUiModel, resolveEvidenceReference } from './evidence-provenance-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const selectedChainId = 'ethereum';
@@ -18,6 +19,7 @@ let permittedAccounts = [];
 let approvalStatuses = [];
 let contactBalances = [];
 let capabilityUiModel = null;
+let evidenceProvenanceUiModel = null;
 
 function toast(message, duration = 4200) {
   const el = $('toast');
@@ -77,6 +79,48 @@ function appendList(container, items, emptyText) {
     }
   }
   container.append(list);
+}
+
+
+function appendEvidenceProvenance(container, refs, chainId) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'gate-provenance';
+  if (!refs.length) {
+    const none = document.createElement('small');
+    none.className = 'muted';
+    none.textContent = 'No evidence reference registered for this gate.';
+    wrapper.append(none);
+    container.append(wrapper);
+    return;
+  }
+  for (const ref of refs) {
+    const provenance = resolveEvidenceReference(evidenceProvenanceUiModel, ref, chainId);
+    const details = document.createElement('details');
+    details.className = `provenance-record ${provenance ? 'resolved' : 'unresolved'}`;
+    const summary = document.createElement('summary');
+    summary.textContent = ref;
+    details.append(summary);
+    if (!provenance) {
+      const unavailable = document.createElement('div');
+      unavailable.className = 'provenance-unavailable';
+      unavailable.textContent = 'Provenance unavailable or not registered for this chain. No additional claim is inferred.';
+      details.append(unavailable);
+    } else {
+      const body = document.createElement('div');
+      body.className = 'provenance-body';
+      const scope = document.createElement('div'); scope.textContent = `Scope: ${provenance.scope}`;
+      const checkpoint = document.createElement('div'); checkpoint.textContent = `Checkpoint: ${provenance.checkpointRef}`;
+      const archive = document.createElement('div'); archive.className = 'mono'; archive.textContent = `Archive: ${provenance.archiveFilename}`;
+      const digest = document.createElement('div'); digest.className = 'mono provenance-digest'; digest.textContent = `SHA-256: ${provenance.archiveSha256}`;
+      const description = document.createElement('div'); description.textContent = provenance.summary;
+      const artifacts = document.createElement('ul'); artifacts.className = 'provenance-artifacts';
+      for (const path of provenance.artifactPaths) { const item = document.createElement('li'); item.className = 'mono'; item.textContent = path; artifacts.append(item); }
+      body.append(scope, checkpoint, archive, digest, description, artifacts);
+      details.append(body);
+    }
+    wrapper.append(details);
+  }
+  container.append(wrapper);
 }
 
 function renderCapabilityDashboard(model) {
@@ -172,8 +216,9 @@ function renderCapabilityDashboard(model) {
       gateName.textContent = gate.gate;
       const refs = document.createElement('small');
       refs.className = 'gate-refs mono';
-      refs.textContent = gate.refs.length ? `Evidence: ${gate.refs.join(' · ')}` : 'Evidence: none';
+      refs.textContent = gate.refs.length ? `Evidence refs: ${gate.refs.length}` : 'Evidence: none';
       gateCopy.append(gateName, refs);
+      appendEvidenceProvenance(gateCopy, gate.refs, contract.chainId);
       const level = document.createElement('span');
       level.textContent = gate.passed ? `${gate.level} / min ${gate.minimumEvidence}` : `missing / min ${gate.minimumEvidence}`;
       row.append(gateCopy, level);
@@ -187,11 +232,16 @@ function renderCapabilityDashboard(model) {
 
 async function loadCapabilityDashboard() {
   try {
-    const envelope = await api('/api/chain-capabilities');
-    capabilityUiModel = createCapabilityUiModel(envelope);
+    const [capabilityEnvelope, provenanceEnvelope] = await Promise.all([
+      api('/api/chain-capabilities'),
+      api('/api/evidence-provenance')
+    ]);
+    capabilityUiModel = createCapabilityUiModel(capabilityEnvelope);
+    evidenceProvenanceUiModel = createEvidenceProvenanceUiModel(provenanceEnvelope);
   } catch (error) {
     capabilityUiModel = createCapabilityUiModel(null);
     capabilityUiModel = Object.freeze({ ...capabilityUiModel, reason: `Capability API request failed: ${error.message}` });
+    evidenceProvenanceUiModel = createEvidenceProvenanceUiModel(null);
   }
   renderCapabilityDashboard(capabilityUiModel);
 }
