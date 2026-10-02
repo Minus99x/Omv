@@ -1,40 +1,39 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.26-dev**
+Current development checkpoint: **0.6.27-dev**
 
-Authoritative archive: `omegavault-mvp-0.6.26-dev(1).zip`
-SHA-256: `2ec1e6473dceceadb7a72f5324b480b259d7ad1997e28abb297aa234e6bf8017`
+Authoritative archive: `omegavault-mvp-0.6.27-dev.zip`
+SHA-256: `bf8638a91bb1e77ab80fb38c2ac89703efc3fc50855657d9a7f66814162102fa`
 
-## 0.6.26 delta
+## 0.6.27 delta
 
-- Added deterministic EVM-family proof-context binding.
-- Native and ERC-20 recovery evidence is now bound to the exact verified deployment, network, contract, policy and rescue destination.
-- Cross-network proof reuse now fails closed; a successful proof from one EVM-family network cannot promote another.
-- Native EVM recovery proof now verifies exact deposit and rescue balance deltas, including pre-existing rescue balances.
-- ERC-20 recovery proof now requires the vault to already be in recovered state before sweep evidence can pass.
-- XDC `xdc...` and `0x...` address forms normalize to one canonical address identity while remaining bound to XDC Apothem.
-- Compatibility promotion now requires native and ERC-20 proofs to share one proof-context digest and deployment-verification digest.
-- Finality evidence must match the same chain/network before satisfying the promotion gate.
+- Upgraded new evidence records to `OmegaVault-evidence/0.6` while retaining validation support for ordinary 0.5 records.
+- Added deterministic canonical evidence JSON with sorted keys and explicit BigInt representation.
+- Evidence now fails closed on undefined, function, symbol, non-finite number, non-plain object, Date-like object and cyclic structures instead of allowing JSON ambiguity or silent field loss.
+- Evidence payloads are canonicalized before storage and deeply frozen after digest creation.
+- Added optional parent-evidence SHA-256 binding.
+- Added exact project-checkpoint `{ref, sha256}` binding so evidence can identify the precise OmegaVault source checkpoint that produced it.
+- Validator reports canonicalization problems in malformed external records as validation errors instead of throwing.
+- Preserves the 0.6.26 EVM/XDC proof-context hardening in the authoritative archive.
 
 ## Verification
 
-- Focused EVM/XDC hardening suite: **8/8 passed**.
-- Combined Cardano/shared-evidence/EVM-XDC/TRON regression slice: **31/31 passed**.
+- Focused evidence-recorder suite: **8/8 passed**.
+- Combined Cardano/evidence/EVM-XDC/TRON regression slice: **37/37 passed**.
 - `npm run check`: **passed**.
 - Existing Solidity and TRON artifact verification: **passed**.
-- Current XDC Apothem registry values remain chain ID 51 / `0x33`; no fresh live deployment is claimed.
 
 ## Promotion boundary
 
-No new XDC Apothem public-network deployment or recovery proof is claimed. XDC remains compatibility-ready/test-only until its own deployment, recovery and finality evidence is captured.
+This checkpoint hardens evidence provenance and integrity only. It does not promote any additional chain to live-proof status.
 
 ## Source of truth
 
-The exact Library archive and checksum above are authoritative for 0.6.26. This branch records the handoff checkpoint; continue implementation from the archive rather than reconstructing from older branch files.
+The exact Library archive and checksum above are authoritative for 0.6.27. Continue implementation from that archive rather than reconstructing newer source from older branch files.
 
 ## Next offline gate
 
-Advance shared evidence-integrity hardening: fail closed on unsupported or canonicalization-ambiguous evidence values and add explicit parent/checkpoint binding. If complete, continue EVM/XDC finality evidence hardening.
+Advance network-specific EVM/XDC finality evidence binding. Then harden dependency/lockfile integrity and workstation-resume tooling. When a workstation is available, `npm ci` remains the high-leverage gate for Stellar native-recovery execution and the Bitcoin Noble-backed finalizer suite.
 
 ## Safety boundary
 
