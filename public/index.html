@@ -117,8 +117,20 @@
         <div id="evidenceHistoryList" class="history-list" role="list" aria-label="Validated evidence checkpoint history"><div class="empty">Loading evidence checkpoint history…</div></div>
       </article>
 
+
+      <article class="card wide evidence-diagnostics-card">
+        <div class="section-head"><div><span class="step">06</span><h2>Evidence health diagnostics</h2></div><span id="evidenceDiagnosticsStatus" class="status status-unavailable" role="status" aria-live="polite">Loading validated diagnostics…</span></div>
+        <div class="inline-info"><strong>No inferred ancestry:</strong> explicit lineage counts only cryptographic parent bindings actually recorded in provenance. Timeline order is never promoted to ancestry.</div>
+        <div class="diagnostic-controls" aria-label="Evidence diagnostics display controls">
+          <label>Show<select id="evidenceDiagnosticsFilter"><option value="all">All chains</option><option value="errors">Provenance errors</option><option value="gaps">Evidence gaps</option><option value="clear">Promotion eligible</option></select></label>
+          <label>Sort<select id="evidenceDiagnosticsSort"><option value="name">Chain name</option><option value="gaps">Most gaps</option></select></label>
+          <div id="evidenceDiagnosticsSummary" class="muted small" role="status" aria-live="polite">Waiting for validated evidence diagnostics.</div>
+        </div>
+        <div id="evidenceDiagnosticsList" class="diagnostic-list" role="list" aria-label="Validated evidence health diagnostics"><div class="empty">Loading evidence diagnostics…</div></div>
+      </article>
+
       <article class="card wide live-card">
-        <div class="section-head"><div><span class="step">06</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
+        <div class="section-head"><div><span class="step">07</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
         <div id="liveEmpty" class="empty">Create an OmegaVault policy first. The same neutral policy will then be expressed through the Ethereum adapter.</div>
         <div id="livePanel" class="hidden">
           <div class="proof-banner"><strong>Guardrail:</strong> this build will not deploy or send proof-contract actions on Ethereum mainnet. The only live proof network accepted by the application and server binding layer is Sepolia.</div>
