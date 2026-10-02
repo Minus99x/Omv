@@ -1,43 +1,40 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.29-dev**
+Current development checkpoint: **0.6.30-dev**
 
-Authoritative archive: `omegavault-mvp-0.6.29-dev.zip`
-SHA-256: `80ad4ceecb8645601928c132c0ad0e4b52a9faa38d552fca41b87f656b39cd9a`
+Authoritative archive: `omegavault-mvp-0.6.30-dev.zip`
+SHA-256: `96ca6578305dd44e11faff156bf692ebf775202a352b4e2f5d5f9a2e8267b032`
+Dependency-lock binding SHA-256: `515fc619837afd2bebe0537a1b96109e77c110560faa9e9be720422477335d4b`
 
-## 0.6.29 delta
+## 0.6.30 delta
 
-- Added an exact dependency/lockfile integrity verifier.
-- Top-level runtime and dev dependencies must use exact semver pins.
-- Root package-lock pins must match package.json exactly.
-- Locked top-level packages must resolve to the exact pinned version and include valid SHA-512 integrity values.
-- package.json and package-lock.json are SHA-256 bound into one dependency-lock manifest.
-- Added a read-only workstation-resume preflight that inventories installed/missing/mismatched packages and Node/npm/Rust/Cargo/Solana/Aiken/bitcoin-cli availability.
-- Added deterministic `npm ci` recommendation logic.
-- The preflight performs no wallet, signature, deployment, transaction or chain-state action.
+- Added checkpoint-bound chain proof bundles.
+- Every bundle requires the exact checkpoint ref, ZIP filename, archive SHA-256 and dependency-lock binding SHA-256.
+- Every included chain proof is independently canonical-hashed; proof or checkpoint/archive drift invalidates verification.
+- Duplicate chain/network/proof-kind entries fail closed.
+- Optional parent-bundle SHA-256 lineage supports explicit proof-bundle chaining.
+- Added a read-only post-install verification planner and `npm run verify:offline-resume`.
+- The resume verifier refuses to execute when pinned dependencies are missing or mismatched and recommends `npm ci` only when lock integrity is valid.
+- Once dependencies are exact, it runs the Stellar native-recovery and Bitcoin Noble-backed descriptor/PSBT/finalizer suites locally with no live-chain actions.
 
 ## Verification
 
-- Dependency/workstation suite: **5/5 passed**.
-- Combined Cardano/evidence/EVM-XDC/finality/TRON/preflight/dependency regression slice: **51/51 passed**.
+- New proof-bundle + post-install/dependency/evidence slice: **22/22 passed**.
+- Combined Cardano/evidence/EVM-XDC/finality/TRON/preflight/dependency/provenance regression slice: **60/60 passed**.
 - `npm run check`: **passed**.
-- Existing Solidity and TRON artifact verification: **passed**.
-
-## Current stripped-workspace result
-
-The lockfile is internally valid and all expected versions/integrity hashes are present. The current stripped workspace lacks the pinned Node packages, so the preflight correctly recommends `npm ci` rather than misclassifying missing dependencies as chain-code failures.
+- Current stripped-workspace resume command exits safely with code 2 and recommends `npm ci`, exactly as designed.
 
 ## Promotion boundary
 
-No chain maturity is promoted by this checkpoint.
+No chain maturity is promoted by this checkpoint. This is proof provenance and offline workstation-resume hardening only.
 
 ## Source of truth
 
-The complete 0.6.29-dev archive is stored in ChatGPT Library under the exact filename and checksum above.
+The exact Library archive and checksums above are authoritative for 0.6.30.
 
 ## Next offline gate
 
-Bind chain-proof bundles to the exact OmegaVault archive/checkpoint digest and add a one-command post-`npm ci` verification sequence for Stellar native recovery and the Bitcoin Noble-backed finalizer suite without performing live-chain actions.
+Generate reproducible checkpoint metadata alongside proof bundles, then continue shared multichain capability/maturity metadata and backend/API contract hardening. When a workstation is available, run `npm ci` followed by `npm run verify:offline-resume` to reopen Stellar and Bitcoin cryptographic execution without live-chain actions.
 
 ## Safety boundary
 
