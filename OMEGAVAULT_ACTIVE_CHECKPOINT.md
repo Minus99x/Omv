@@ -1,35 +1,41 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.25-dev**
+Current development checkpoint: **0.6.26-dev**
 
-Archive: `omegavault-mvp-0.6.25-dev.zip`
-SHA-256: `e451a934c7f4cb572bb7b3eea737d9e61da1ea131eddf1684ca1605d2681be07`
+Authoritative archive: `omegavault-mvp-0.6.26-dev(1).zip`
+SHA-256: `2ec1e6473dceceadb7a72f5324b480b259d7ad1997e28abb297aa234e6bf8017`
 
-## 0.6.25 delta
+## 0.6.26 delta
 
-- Added a dependency-free Cardano synchronized evidence-binding layer.
-- Bound the exact recovery transaction body and CBOR to one acquired node tip.
-- Required UTxO, protocol-parameter, Ogmios evaluation and phase-1 evidence to share the exact same node tip.
-- Required evaluation and phase-1 evidence to reference the exact same transaction body.
-- Required complete phase-1 checks for balance, minimum ADA, collateral and witnesses before evidence promotion.
-- Canonicalized and SHA-256 hashed UTxO, protocol-parameter, evaluation and phase-1 evidence individually.
-- Hash-bound all component digests, the acquired tip and transaction identity into one deterministic evidence-bundle digest.
-- Added fail-closed rejection for mixed-tip, mixed-transaction and non-canonical evidence.
+- Added deterministic EVM-family proof-context binding.
+- Native and ERC-20 recovery evidence is now bound to the exact verified deployment, network, contract, policy and rescue destination.
+- Cross-network proof reuse now fails closed; a successful proof from one EVM-family network cannot promote another.
+- Native EVM recovery proof now verifies exact deposit and rescue balance deltas, including pre-existing rescue balances.
+- ERC-20 recovery proof now requires the vault to already be in recovered state before sweep evidence can pass.
+- XDC `xdc...` and `0x...` address forms normalize to one canonical address identity while remaining bound to XDC Apothem.
+- Compatibility promotion now requires native and ERC-20 proofs to share one proof-context digest and deployment-verification digest.
+- Finality evidence must match the same chain/network before satisfying the promotion gate.
 
 ## Verification
 
+- Focused EVM/XDC hardening suite: **8/8 passed**.
+- Combined Cardano/shared-evidence/EVM-XDC/TRON regression slice: **31/31 passed**.
 - `npm run check`: **passed**.
-- Focused Cardano evidence-binding suite: **7/7 passed**.
-- Full Cardano live/evaluation execution remains toolchain-gated; no new public-network proof is claimed.
+- Existing Solidity and TRON artifact verification: **passed**.
+- Current XDC Apothem registry values remain chain ID 51 / `0x33`; no fresh live deployment is claimed.
+
+## Promotion boundary
+
+No new XDC Apothem public-network deployment or recovery proof is claimed. XDC remains compatibility-ready/test-only until its own deployment, recovery and finality evidence is captured.
 
 ## Source of truth
 
-The complete 0.6.25-dev archive is stored in the ChatGPT file Library under the exact filename and checksum above.
+The exact Library archive and checksum above are authoritative for 0.6.26. This branch records the handoff checkpoint; continue implementation from the archive rather than reconstructing from older branch files.
 
 ## Next offline gate
 
-Continue independent EVM/XDC/shared-evidence hardening. When a workstation is available, run `npm ci` to restore pinned dependencies and immediately resume Stellar native-recovery and Bitcoin cryptographic finalizer execution.
+Advance shared evidence-integrity hardening: fail closed on unsupported or canonicalization-ambiguous evidence values and add explicit parent/checkpoint binding. If complete, continue EVM/XDC finality evidence hardening.
 
 ## Safety boundary
 
-Do not write directly to `main`. Do not perform production deployments, wallet signatures, production-value transfers, or claim live proof until the corresponding promotion gates pass.
+Do not write directly to `main`. Do not perform production deployments, wallet signatures, production-value transfers, or claim live proof until corresponding promotion gates pass.
