@@ -2,6 +2,7 @@ import { getBrowserChain } from './chains/index.js';
 import { createCapabilityUiModel, selectCapabilityContracts } from './capability-ui.js';
 import { createEvidenceProvenanceUiModel, resolveEvidenceReference } from './evidence-provenance-ui.js';
 import { createEvidenceHistoryUiModel, selectEvidenceHistory } from './evidence-history-ui.js';
+import { createEvidenceDiagnosticsUiModel, selectEvidenceDiagnostics } from './evidence-diagnostics-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const selectedChainId = 'ethereum';
@@ -22,6 +23,7 @@ let contactBalances = [];
 let capabilityUiModel = null;
 let evidenceProvenanceUiModel = null;
 let evidenceHistoryUiModel = null;
+let evidenceDiagnosticsUiModel = null;
 
 function toast(message, duration = 4200) {
   const el = $('toast');
@@ -234,22 +236,26 @@ function renderCapabilityDashboard(model) {
 
 async function loadCapabilityDashboard() {
   try {
-    const [capabilityEnvelope, provenanceEnvelope, evidenceHistoryEnvelope] = await Promise.all([
+    const [capabilityEnvelope, provenanceEnvelope, evidenceHistoryEnvelope, evidenceDiagnosticsEnvelope] = await Promise.all([
       api('/api/chain-capabilities'),
       api('/api/evidence-provenance'),
-      api('/api/evidence-history')
+      api('/api/evidence-history'),
+      api('/api/evidence-diagnostics')
     ]);
     capabilityUiModel = createCapabilityUiModel(capabilityEnvelope);
     evidenceProvenanceUiModel = createEvidenceProvenanceUiModel(provenanceEnvelope);
     evidenceHistoryUiModel = createEvidenceHistoryUiModel(evidenceHistoryEnvelope);
+    evidenceDiagnosticsUiModel = createEvidenceDiagnosticsUiModel(evidenceDiagnosticsEnvelope);
   } catch (error) {
     capabilityUiModel = createCapabilityUiModel(null);
     capabilityUiModel = Object.freeze({ ...capabilityUiModel, reason: `Capability API request failed: ${error.message}` });
     evidenceProvenanceUiModel = createEvidenceProvenanceUiModel(null);
     evidenceHistoryUiModel = createEvidenceHistoryUiModel(null);
+    evidenceDiagnosticsUiModel = createEvidenceDiagnosticsUiModel(null);
   }
   renderCapabilityDashboard(capabilityUiModel);
   renderEvidenceHistory(evidenceHistoryUiModel);
+  renderEvidenceDiagnostics(evidenceDiagnosticsUiModel);
 }
 
 $('capabilityFilter')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
@@ -257,6 +263,8 @@ $('capabilitySort')?.addEventListener('change', () => renderCapabilityDashboard(
 $('evidenceHistorySearch')?.addEventListener('input', () => renderEvidenceHistory(evidenceHistoryUiModel));
 $('evidenceHistoryChain')?.addEventListener('change', () => renderEvidenceHistory(evidenceHistoryUiModel));
 $('evidenceHistorySort')?.addEventListener('change', () => renderEvidenceHistory(evidenceHistoryUiModel));
+$('evidenceDiagnosticsFilter')?.addEventListener('change', () => renderEvidenceDiagnostics(evidenceDiagnosticsUiModel));
+$('evidenceDiagnosticsSort')?.addEventListener('change', () => renderEvidenceDiagnostics(evidenceDiagnosticsUiModel));
 
 function renderEvidenceHistory(model) {
   const status = $('evidenceHistoryStatus');
@@ -302,6 +310,32 @@ function renderEvidenceHistory(model) {
     const refs=document.createElement('details'); const rs=document.createElement('summary'); rs.textContent=`Evidence refs (${row.evidenceRefs.length})`; refs.append(rs); appendList(refs,row.evidenceRefs,'No refs'); card.append(refs);
     const scopes=document.createElement('details'); const ss=document.createElement('summary'); ss.textContent=`Scopes (${row.scopes.length})`; scopes.append(ss); appendList(scopes,row.scopes,'No scopes'); card.append(scopes);
     const artifacts=document.createElement('details'); const ars=document.createElement('summary'); ars.textContent=`Artifacts (${row.artifactPaths.length})`; artifacts.append(ars); appendList(artifacts,row.artifactPaths,'No artifacts'); card.append(artifacts);
+    container.append(card);
+  }
+}
+
+function renderEvidenceDiagnostics(model) {
+  const status=$('evidenceDiagnosticsStatus');
+  const container=$('evidenceDiagnosticsList');
+  const summary=$('evidenceDiagnosticsSummary');
+  if(!status||!container||!summary)return;
+  container.replaceChildren();
+  if(!model?.available){status.textContent='Diagnostics unavailable';status.className='status status-unavailable';summary.textContent=model?.reason||'No validated diagnostics response was received.';const empty=document.createElement('div');empty.className='empty';empty.textContent='Evidence diagnostics are unavailable. No maturity state is inferred.';container.append(empty);return;}
+  const filter=$('evidenceDiagnosticsFilter')?.value||'all';
+  const sort=$('evidenceDiagnosticsSort')?.value||'name';
+  let rows;
+  try{rows=selectEvidenceDiagnostics(model,{filter,sort});}catch(error){status.textContent='Diagnostics controls invalid';status.className='status status-unavailable';summary.textContent=error.message;return;}
+  status.textContent=`${model.summary.chainCount} chains · ${model.summary.healthyProvenanceCount} provenance-healthy · ${model.summary.errorCount} provenance errors`;
+  status.className=model.summary.errorCount?'status status-unavailable':'status status-validated';
+  summary.textContent=`Showing ${rows.length} of ${model.diagnostics.length} chain diagnostics. Explicit lineage counts cryptographic parent bindings only.`;
+  if(!rows.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No chain diagnostics match the selected filter.';container.append(empty);return;}
+  for(const row of rows){
+    const card=document.createElement('section');card.className=`diagnostic-card severity-${row.severity}`;card.tabIndex=0;
+    const head=document.createElement('div');head.className='diagnostic-head';const title=document.createElement('strong');title.textContent=row.name;const badge=document.createElement('span');badge.className='diagnostic-badge';badge.textContent=row.severity;head.append(title,badge);card.append(head);
+    const meta=document.createElement('div');meta.className='diagnostic-meta';meta.textContent=`${row.resolvedEvidenceRefCount}/${row.evidenceRefCount} evidence refs resolved · provenance ${row.provenanceHealthy?'healthy':'error'} · lineage ${row.explicitLineage.status}`;card.append(meta);
+    const lineage=document.createElement('div');lineage.className='diagnostic-lineage';lineage.textContent=row.explicitLineage.note;card.append(lineage);
+    const gaps=document.createElement('details');const gs=document.createElement('summary');gs.textContent=`Evidence gaps · missing ${row.missingGates.length} · insufficient ${row.insufficientEvidenceGates.length} · blockers ${row.blockers.length}`;gaps.append(gs);appendList(gaps,row.missingGates,'No missing gates.');appendList(gaps,row.insufficientEvidenceGates,'No insufficient-evidence gates.');appendList(gaps,row.blockers,'No blockers.');card.append(gaps);
+    if(row.unresolvedEvidenceRefs.length||row.crossWiredEvidenceRefs.length){const integrity=document.createElement('details');integrity.open=true;const is=document.createElement('summary');is.textContent='Provenance integrity errors';integrity.append(is);appendList(integrity,row.unresolvedEvidenceRefs,'No unresolved refs.');appendList(integrity,row.crossWiredEvidenceRefs,'No cross-wired refs.');card.append(integrity);}
     container.append(card);
   }
 }
