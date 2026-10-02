@@ -1,0 +1,6 @@
+import test from 'node:test'; import assert from 'node:assert/strict'; import {createEvidenceProvenanceCatalog} from '../src/chains/evidence-provenance.js'; import {createValidatedEvidenceProvenanceCatalogResponse} from '../src/api/response-contracts.js'; import {createEvidenceProvenanceUiModel,resolveEvidenceReference} from '../public/evidence-provenance-ui.js';
+const envelope=()=>createValidatedEvidenceProvenanceCatalogResponse(createEvidenceProvenanceCatalog());
+test('browser provenance consumes only backend-validated provenance',()=>{const m=createEvidenceProvenanceUiModel(envelope()),i=resolveEvidenceReference(m,'0.6.28:EVM_XDC_FINALITY_BINDING','xdc'); assert.ok(i); assert.equal(i.checkpointRef,'0.6.28-dev');});
+test('browser provenance resolution rejects chain cross-wiring',()=>assert.equal(resolveEvidenceReference(createEvidenceProvenanceUiModel(envelope()),'0.6.22:XRPL_PERMISSION_DELEGATION','xdc'),null));
+test('browser provenance fails closed when validation is absent',()=>assert.equal(createEvidenceProvenanceUiModel({schema:'omegavault.api.evidence-provenance.v1',data:createEvidenceProvenanceCatalog()}).available,false));
+test('unknown refs remain unresolved',()=>assert.equal(resolveEvidenceReference(createEvidenceProvenanceUiModel(envelope()),'0.6.99:UNKNOWN','xdc'),null));
