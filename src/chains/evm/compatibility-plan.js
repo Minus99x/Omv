@@ -12,9 +12,12 @@ export function createEvmCompatibilityProbe(networkId) {
       Object.freeze({ method: 'eth_getBlockByNumber', params: ['latest', false], purpose: 'block/fee field inspection' }),
       Object.freeze({ method: 'eth_feeHistory', optional: true, purpose: 'EIP-1559 capability' }),
       Object.freeze({ method: 'eth_getCode', params: ['<deployed-contract>', 'latest'], purpose: 'runtime bytecode verification' }),
-      Object.freeze({ method: 'eth_getTransactionReceipt', params: ['<tx-hash>'], purpose: 'receipt/finality evidence' })
+      Object.freeze({ method: 'eth_getTransactionReceipt', params: ['<tx-hash>'], purpose: 'successful execution receipt' }),
+      Object.freeze({ method: 'eth_getBlockByHash', params: ['<receipt-block-hash>', false], purpose: 'receipt block identity' }),
+      Object.freeze({ method: 'eth_getBlockByNumber', params: ['<receipt-block-number>', false], purpose: 'receipt block canonicality' }),
+      Object.freeze({ method: 'eth_getBlockByNumber', params: ['finalized', false], purpose: 'network-native finalized head' })
     ]),
-    requiredChecks: Object.freeze(['chain-id-match', 'rpc-read', 'wallet-network-switch', 'deployment-receipt', 'runtime-code-match', 'policy-config-match', 'native-recovery', 'erc20-recovery', 'finality-evidence'])
+    requiredChecks: Object.freeze(['chain-id-match', 'rpc-read', 'wallet-network-switch', 'deployment-receipt', 'runtime-code-match', 'policy-config-match', 'native-recovery', 'erc20-recovery', 'proof-context-bound', 'finality-evidence'])
   });
 }
 
