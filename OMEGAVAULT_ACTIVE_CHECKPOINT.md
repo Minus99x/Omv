@@ -1,37 +1,38 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.34-dev**
+Current development checkpoint: **0.6.35-dev**
 
-Archive filename: `omegavault-mvp-0.6.34-dev.zip`
-Sidecar filename: `omegavault-mvp-0.6.34-dev.checkpoint-manifest.json`
+Archive filename: `omegavault-mvp-0.6.35-dev.zip`
+Sidecar filename: `omegavault-mvp-0.6.35-dev.checkpoint-manifest.json`
 
 The archive SHA-256 is deliberately recorded only in the external sidecar manifest so the archive does not attempt to contain its own digest.
 
-## 0.6.34 delta
+## 0.6.35 delta
 
-- Added a browser capability dashboard backed exclusively by the validated `omegavault.api.chain-capabilities.v1` response.
-- Browser presentation does not recalculate promotion eligibility.
-- Displays backend-provided blockers, missing gates, insufficient-evidence gates and gate evidence levels.
-- Malformed, unvalidated, duplicate-chain or unavailable capability data fails closed to **Status unavailable** with no promotion claim.
-- Stellar/XLM remains visible in the browser even when the full Stellar transaction SDK is absent.
-- Preserves the 0.6.33 validated backend/API boundary and dependency-free Stellar account validation.
+- Added keyboard-focusable capability cards and semantic live-region status.
+- Added backend-driven capability filters for all / promotion eligible / not promotion eligible.
+- Added name/stage sorting that changes presentation only and does not recalculate maturity.
+- Added visible evidence references for every gate row.
+- Added operator summary counts sourced from backend eligibility flags.
+- Unknown filter/sort values fail closed in the presentation selector.
+- Preserves 0.6.34 rule that browser code never independently derives promotion eligibility.
 
 ## Verification
 
-- Browser capability UI model/integration tests: **8/8 passed**.
-- Broad dependency-free offline regression: **229/229 passed**.
+- Capability UI accessibility/operator tests: **12/12 passed**.
+- Broad dependency-free offline regression: **233/233 passed**.
 - `npm run check`: **passed**.
 - Deterministic archive rebuild: **passed**.
 - Fresh-extraction sidecar verification: **passed**.
-- Nine SDK-bound test files remain intentionally workstation-gated and are not counted as passing until `npm ci` restores their pinned dependencies.
+- Nine SDK-bound test files remain intentionally workstation-gated until `npm ci` restores their pinned dependencies.
 
 ## Promotion boundary
 
-No chain is newly promoted. The browser may display backend eligibility but cannot independently create or upgrade a promotion claim.
+No chain is newly promoted. Filtering and sorting are presentation-only operations over backend-validated contracts.
 
 ## Next offline gate
 
-Harden capability-dashboard accessibility, sorting/filter semantics and contract-detail UX while keeping maturity logic backend-owned. Then continue evidence-detail/API presentation and operator diagnostics.
+Add evidence-detail/API presentation that resolves visible evidence references into checkpoint/proof provenance without creating browser-side promotion logic. Continue operator diagnostics and accessibility hardening around evidence history.
 
 ## Workstation gate
 
