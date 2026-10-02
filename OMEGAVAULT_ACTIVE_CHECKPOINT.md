@@ -1,40 +1,47 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.30-dev**
+Current development checkpoint: **0.6.31-dev**
 
-Authoritative archive: `omegavault-mvp-0.6.30-dev.zip`
-SHA-256: `96ca6578305dd44e11faff156bf692ebf775202a352b4e2f5d5f9a2e8267b032`
-Dependency-lock binding SHA-256: `515fc619837afd2bebe0537a1b96109e77c110560faa9e9be720422477335d4b`
+Archive filename: `omegavault-mvp-0.6.31-dev.zip`
+Archive SHA-256 (external sidecar authority): `81c004db7b58cba7206d251927ef0e25a70b047e8ce81200502627879320f976`
+Sidecar manifest filename: `omegavault-mvp-0.6.31-dev.checkpoint-manifest.json`
+Sidecar file SHA-256: `1d876beaa65367e1fc97dc110216eeae3c3c67c9b86533af07b0beb60f3de0b5`
+Checkpoint-manifest logical SHA-256: `f72dc5248d648d13e72c59c13d7c667ce480291783ea394a7b7e15339c0b7c70`
+Source-tree SHA-256: `0eb66c5de293eda181d6904ffc9ea2317fa01a72db4807af7c0cf0f596c891ec`
+Dependency-lock binding SHA-256: `7e6f6915dadd9a45430a1337e037c6402149d262dac62682f1340abdfa84d096`
 
-## 0.6.30 delta
+The archive SHA-256 is deliberately not embedded inside the archive. The exact archive digest is recorded in the external sidecar manifest to avoid self-referential hashing.
 
-- Added checkpoint-bound chain proof bundles.
-- Every bundle requires the exact checkpoint ref, ZIP filename, archive SHA-256 and dependency-lock binding SHA-256.
-- Every included chain proof is independently canonical-hashed; proof or checkpoint/archive drift invalidates verification.
-- Duplicate chain/network/proof-kind entries fail closed.
-- Optional parent-bundle SHA-256 lineage supports explicit proof-bundle chaining.
-- Added a read-only post-install verification planner and `npm run verify:offline-resume`.
-- The resume verifier refuses to execute when pinned dependencies are missing or mismatched and recommends `npm ci` only when lock integrity is valid.
-- Once dependencies are exact, it runs the Stellar native-recovery and Bitcoin Noble-backed descriptor/PSBT/finalizer suites locally with no live-chain actions.
+## 0.6.31 delta
+
+- Added deterministic source-tree inventory generation with normalized relative paths, byte counts and per-file SHA-256 digests.
+- Added a checkpoint sidecar manifest that binds the checkpoint ref, archive filename, archive SHA-256, dependency-lock binding, source-tree digest and optional proof-bundle digest.
+- Added independent checkpoint-manifest verification; archive, dependency-lock, source-tree or proof-bundle drift fails closed.
+- Added deterministic archive construction with normalized ordering and timestamps.
+- Two independent archive builds from the same 351-file source tree produced the exact same SHA-256.
+- Removed the self-referential pattern of embedding an archive's own SHA-256 inside that archive.
+- Added `npm run checkpoint:manifest`.
 
 ## Verification
 
-- New proof-bundle + post-install/dependency/evidence slice: **22/22 passed**.
-- Combined Cardano/evidence/EVM-XDC/finality/TRON/preflight/dependency/provenance regression slice: **60/60 passed**.
+- Checkpoint-manifest focused tests: **6/6 passed**.
+- Manifest/provenance/dependency/evidence slice: **20/20 passed**.
+- Combined offline regression slice: **66/66 passed**.
 - `npm run check`: **passed**.
-- Current stripped-workspace resume command exits safely with code 2 and recommends `npm ci`, exactly as designed.
+- Fresh-extraction sidecar verification: **passed**.
+- Reproducible archive comparison: **passed**.
 
 ## Promotion boundary
 
-No chain maturity is promoted by this checkpoint. This is proof provenance and offline workstation-resume hardening only.
-
-## Source of truth
-
-The exact Library archive and checksums above are authoritative for 0.6.30.
+No chain maturity is promoted by this checkpoint. This is checkpoint/provenance infrastructure only.
 
 ## Next offline gate
 
-Generate reproducible checkpoint metadata alongside proof bundles, then continue shared multichain capability/maturity metadata and backend/API contract hardening. When a workstation is available, run `npm ci` followed by `npm run verify:offline-resume` to reopen Stellar and Bitcoin cryptographic execution without live-chain actions.
+Advance shared multichain capability/maturity metadata so backend and UI consume one explicit evidence-backed maturity contract instead of per-chain assumptions. Then harden backend/API response schemas around that contract.
+
+## Workstation gate
+
+When a workstation is available, run `npm ci` followed by `npm run verify:offline-resume`.
 
 ## Safety boundary
 
