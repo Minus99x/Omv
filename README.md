@@ -1,4 +1,4 @@
-# OmegaVault MVP 0.6.19-dev
+# OmegaVault MVP 0.6.29-dev
 
 > Development branch built on the **completed 0.4.3 Sepolia recovery proof**. The proven 0.4.3 runtime remains intact while multichain mechanisms are built and tested offline. No new connector is promoted to live proof until its chain-specific gates pass.
 
@@ -65,6 +65,18 @@ Runtime dependencies are pinned for exact Stellar, Cardano, Bitcoin-curve and XR
 ```bash
 npm start
 ```
+
+For a fresh checkout, the deterministic workstation-resume path restores the
+exact lockfile graph without package lifecycle scripts, verifies the installed
+direct dependencies, runs the complete regression suite, and executes the
+global syntax/artifact checks:
+
+```bash
+npm run resume:workstation
+```
+
+The suppressed `@aiken-lang/aiken` install script remains an explicit toolchain
+step; the resume command does not silently execute downloaded lifecycle code.
 
 Open the local URL printed by the server:
 
@@ -147,7 +159,7 @@ npm run check
 npm test
 ```
 
-The full 0.6.16 development package currently passes **186 JavaScript tests** with zero failures plus **7/7 Aiken on-chain tests**. `npm run check` syntax-checks the existing JavaScript modules and verifies the pinned EVM/TRON artifacts. `npm run check:xrpl` verifies deterministic signer preimages, signatures and canonical multisigned-binary evidence. `npm run check:solana` verifies native-source hashes, exact PDA derivation and instruction/account-meta evidence without claiming Rust compilation. `npm run check:bitcoin` verifies the Bitcoin Core descriptor/PSBTv2 evidence. `npm run check:cardano` formats, tests and compiles the pinned Aiken Plutus V3 project, reapplies the non-deployable fixture parameters, verifies script identities/addresses, validates the epoch-316 protocol snapshot, and checks deterministic signed-size, fee, minimum-ADA, collateral and zero-budget Ogmios evaluation-request evidence while preserving the independent-node live-construction block.
+The full 0.6.29 development package currently passes **238 JavaScript tests** with zero failures. `npm run check` syntax-checks the JavaScript modules, verifies the exact dependency evidence manifest, and verifies the pinned EVM/TRON artifacts. `npm run check:xrpl` verifies deterministic signer preimages, signatures and canonical multisigned-binary evidence. `npm run check:solana` verifies native-source hashes, exact PDA derivation and instruction/account-meta evidence without promoting a live connector. `npm run check:bitcoin` verifies the Bitcoin Core descriptor/PSBTv2 evidence. `npm run check:cardano` formats, tests and compiles the pinned Aiken Plutus V3 project, reapplies the non-deployable fixture parameters, verifies script identities/addresses, validates the epoch-316 protocol snapshot, and checks deterministic signed-size, fee, minimum-ADA, collateral and zero-budget Ogmios evaluation-request evidence while preserving the independent-node live-construction block.
 
 ## Important limitations
 

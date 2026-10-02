@@ -1,33 +1,34 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.28-dev**
+Current development checkpoint: **0.6.29-dev**
 
-Authoritative archive: `omegavault-mvp-0.6.28-dev(2).zip`
-SHA-256: `e9e1aadaaf3a0561c374b75bcfd8ddbff39fc07425487111e33e5976ac3ea819`
+Authoritative archive: `omegavault-mvp-0.6.29-dev(1).zip`
+SHA-256: `417cbcf443d10bd1e2b1238316b6eb8824aaac2a44dede84473a52447c989011`
 
-## 0.6.28 delta
+## 0.6.29 delta
 
-- Added network-specific finality evidence verification for Ethereum Sepolia and XDC Apothem.
-- Bound exact RPC request/result shapes for chain identity, recovery receipt, receipt-block hash lookup, receipt-height canonical lookup and the `finalized` head.
-- Bound finality evidence to the exact proof transaction, proof binding, common proof context and verified deployment digest.
-- Required separate native and ERC-20 finality records and rejected cross-wired evidence.
-- Restored pinned dependencies from the lockfile and completed the full regression suite.
+- Added fail-closed lockfile v3 inspection for exact direct versions, complete graph entries, HTTPS npm-registry tarballs and SHA-512 integrity metadata.
+- Bound both package manifests and the 131-package graph summary to machine-readable dependency evidence.
+- Added installed direct-dependency verification.
+- Added a Node.js 22.12+ cross-platform resume workflow using `npm ci --ignore-scripts`, dependency verification, the full test suite and global checks.
+- Updated the Windows launcher to use the same runtime and restore gates.
+- Kept the detected Aiken lifecycle script explicit and suppressed during deterministic restore.
 
 ## Verification
 
-- Focused finality suite: **5/5 passed**.
-- EVM/finality regression slice: **16/16 passed**.
-- Full JavaScript suite: **235/235 passed**.
+- Focused dependency-integrity suite: **3/3 passed**.
+- Full JavaScript suite: **238/238 passed**.
+- Exact manifest and installed-tree verification: **passed**.
 - `npm run check`: **passed**.
 - Archive integrity test: **passed**.
 
 ## Promotion boundary
 
-This checkpoint closes an offline implementation gate only. It does not contain fresh Ethereum Sepolia or XDC Apothem transactions and does not promote XDC to live-proof.
+This checkpoint hardens offline build integrity only. It does not perform a deployment, transaction or wallet signature and does not promote any connector.
 
 ## Next offline gate
 
-Harden dependency/lockfile integrity and workstation-resume tooling. Then continue independent Stellar and Bitcoin execution work while Solana SBF remains parked pending Rust/Agave.
+Advance Stellar native-recovery execution evidence with the restored pinned SDK, then strengthen Bitcoin Noble-backed finalizer and Bitcoin Core/Signet cross-check evidence. Solana SBF remains parked pending Rust/Agave.
 
 ## Safety boundary
 
