@@ -2,7 +2,8 @@ import { PROMOTION_GATES } from '../chains/maturity.js';
 import { EVIDENCE_LEVELS, GATE_MINIMUM_EVIDENCE } from '../chains/capability-contract.js';
 import { getNetwork } from '../chains/network-registry.js';
 import { validateEvidenceRecord } from '../core/evidence.js';
-import { validateMaturityEvidenceProvenanceCoverage } from '../chains/evidence-provenance.js';
+import { validateMaturityEvidenceProvenanceCoverage, resolveEvidenceProvenance } from '../chains/evidence-provenance.js';
+import { createEvidenceHistoryCatalog } from '../chains/evidence-history.js';
 
 const evidenceRank = new Map(EVIDENCE_LEVELS.map((level, index) => [level, index]));
 
@@ -156,4 +157,56 @@ export function createValidatedEvidenceProvenanceCatalogResponse(catalog) {
     data: catalog,
     validation
   });
+}
+
+
+export function validateEvidenceHistoryCatalogResponse(catalog) {
+  plainObject(catalog, 'historyCatalog');
+  if (catalog.schema !== 'omegavault.evidence-history-catalog.v1') throw new Error('Unexpected evidence-history catalog schema.');
+  if (catalog.relationSemantics !== 'evidence-checkpoint-order-not-source-ancestry') throw new Error('Unexpected evidence-history relation semantics.');
+  if (!Array.isArray(catalog.checkpoints) || catalog.checkpoints.length < 1) throw new TypeError('historyCatalog.checkpoints must be a non-empty array.');
+  const checkpointRefs = [];
+  let refCount = 0;
+  for (const [index, item] of catalog.checkpoints.entries()) {
+    plainObject(item, `historyCatalog.checkpoints[${index}]`);
+    const checkpointRef = requiredText(item.checkpointRef, `historyCatalog.checkpoints[${index}].checkpointRef`);
+    const match = checkpointRef.match(/^0\.6\.(\d+)-dev$/);
+    if (!match) throw new Error(`Invalid evidence-history checkpoint ref ${checkpointRef}.`);
+    if (item.versionNumber !== Number(match[1])) throw new Error(`Version number mismatch for ${checkpointRef}.`);
+    if (item.archiveFilename !== `omegavault-mvp-0.6.${match[1]}-dev.zip`) throw new Error(`Archive filename mismatch for ${checkpointRef}.`);
+    if (typeof item.archiveSha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(item.archiveSha256)) throw new Error(`Archive SHA-256 is invalid for ${checkpointRef}.`);
+    const refs = stringArray(item.evidenceRefs, `historyCatalog.checkpoints[${index}].evidenceRefs`);
+    const chainIds = stringArray(item.chainIds, `historyCatalog.checkpoints[${index}].chainIds`);
+    const scopes = stringArray(item.scopes, `historyCatalog.checkpoints[${index}].scopes`);
+    const artifacts = stringArray(item.artifactPaths, `historyCatalog.checkpoints[${index}].artifactPaths`);
+    stringArray(item.summaries, `historyCatalog.checkpoints[${index}].summaries`);
+    if (!refs.length || !chainIds.length || !scopes.length || !artifacts.length) throw new Error(`Evidence-history checkpoint ${checkpointRef} is incomplete.`);
+    if (artifacts.some(path => path.startsWith('/') || path.includes('..'))) throw new Error(`Unsafe artifact path in evidence-history checkpoint ${checkpointRef}.`);
+    if (item.relationSemantics !== catalog.relationSemantics) throw new Error(`Relation semantics mismatch for ${checkpointRef}.`);
+    for (const ref of refs) {
+      const provenance = resolveEvidenceProvenance(ref);
+      if (!provenance) throw new Error(`Evidence-history checkpoint ${checkpointRef} references unregistered provenance ${ref}.`);
+      if (provenance.checkpointRef !== checkpointRef || provenance.archiveFilename !== item.archiveFilename || provenance.archiveSha256 !== item.archiveSha256) throw new Error(`Evidence-history checkpoint provenance drift for ${ref}.`);
+      if (provenance.chainIds.some(chainId => !chainIds.includes(chainId))) throw new Error(`Evidence-history chain coverage mismatch for ${ref}.`);
+      refCount += 1;
+    }
+    checkpointRefs.push(checkpointRef);
+  }
+  if (new Set(checkpointRefs).size !== checkpointRefs.length) throw new Error('Evidence-history catalog contains duplicate checkpoints.');
+  for (let index = 0; index < catalog.checkpoints.length; index += 1) {
+    const item = catalog.checkpoints[index];
+    const expectedPrevious = index > 0 ? catalog.checkpoints[index - 1].checkpointRef : null;
+    const expectedNext = index < catalog.checkpoints.length - 1 ? catalog.checkpoints[index + 1].checkpointRef : null;
+    if ((item.previousEvidenceCheckpointRef ?? null) !== expectedPrevious) throw new Error(`Previous evidence checkpoint mismatch for ${item.checkpointRef}.`);
+    if ((item.nextEvidenceCheckpointRef ?? null) !== expectedNext) throw new Error(`Next evidence checkpoint mismatch for ${item.checkpointRef}.`);
+  }
+  plainObject(catalog.summary, 'historyCatalog.summary');
+  if (catalog.summary.checkpointCount !== catalog.checkpoints.length || catalog.summary.evidenceRefCount !== refCount) throw new Error('Evidence-history summary counts do not match checkpoint data.');
+  if (catalog.summary.earliestCheckpointRef !== catalog.checkpoints[0].checkpointRef || catalog.summary.latestCheckpointRef !== catalog.checkpoints.at(-1).checkpointRef) throw new Error('Evidence-history summary boundary refs do not match checkpoint data.');
+  return Object.freeze({ ok: true, checkpointCount: catalog.checkpoints.length, evidenceRefCount: refCount });
+}
+
+export function createValidatedEvidenceHistoryCatalogResponse(catalog = createEvidenceHistoryCatalog()) {
+  const validation = validateEvidenceHistoryCatalogResponse(catalog);
+  return Object.freeze({ schema: 'omegavault.api.evidence-history.v1', data: catalog, validation });
 }
