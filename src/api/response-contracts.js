@@ -2,6 +2,7 @@ import { PROMOTION_GATES } from '../chains/maturity.js';
 import { EVIDENCE_LEVELS, GATE_MINIMUM_EVIDENCE } from '../chains/capability-contract.js';
 import { getNetwork } from '../chains/network-registry.js';
 import { validateEvidenceRecord } from '../core/evidence.js';
+import { validateMaturityEvidenceProvenanceCoverage } from '../chains/evidence-provenance.js';
 
 const evidenceRank = new Map(EVIDENCE_LEVELS.map((level, index) => [level, index]));
 
@@ -118,4 +119,41 @@ export function validateEvidenceApiPayload(record) {
 export function createValidatedEvidenceApiResponse(record) {
   const validation = validateEvidenceApiPayload(record);
   return Object.freeze({ schema: 'omegavault.api.evidence.v1', data: record, validation });
+}
+
+
+export function validateEvidenceProvenanceCatalogResponse(catalog) {
+  plainObject(catalog, 'provenanceCatalog');
+  if (catalog.schema !== 'omegavault.evidence-provenance-catalog.v1') throw new Error('Unexpected evidence-provenance catalog schema.');
+  if (!Array.isArray(catalog.records)) throw new TypeError('provenanceCatalog.records must be an array.');
+  const refs = [];
+  for (const [index, item] of catalog.records.entries()) {
+    plainObject(item, `provenanceCatalog.records[${index}]`);
+    const ref = requiredText(item.ref, `provenanceCatalog.records[${index}].ref`);
+    const match = ref.match(/^(0\.6\.\d+):([A-Z0-9_]+)$/);
+    if (!match) throw new Error(`Invalid provenance ref ${ref}.`);
+    if (item.checkpointRef !== `${match[1]}-dev`) throw new Error(`Checkpoint ref mismatch for ${ref}.`);
+    if (item.archiveFilename !== `omegavault-mvp-${match[1]}-dev.zip`) throw new Error(`Archive filename mismatch for ${ref}.`);
+    if (typeof item.archiveSha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(item.archiveSha256)) throw new Error(`Archive SHA-256 is invalid for ${ref}.`);
+    const chainIds = stringArray(item.chainIds, `provenanceCatalog.records[${index}].chainIds`);
+    const artifactPaths = stringArray(item.artifactPaths, `provenanceCatalog.records[${index}].artifactPaths`);
+    if (chainIds.length < 1) throw new Error(`Provenance record ${ref} must name at least one chain.`);
+    if (artifactPaths.length < 1 || artifactPaths.some(path => path.startsWith('/') || path.includes('..'))) throw new Error(`Unsafe artifact path in provenance record ${ref}.`);
+    requiredText(item.scope, `provenanceCatalog.records[${index}].scope`);
+    requiredText(item.summary, `provenanceCatalog.records[${index}].summary`);
+    refs.push(ref);
+  }
+  if (new Set(refs).size !== refs.length) throw new Error('Evidence provenance catalog contains duplicate refs.');
+  const coverage = validateMaturityEvidenceProvenanceCoverage();
+  if (!coverage.ok) throw new Error(`Maturity evidence provenance coverage failed: ${coverage.errors.join('; ')}`);
+  return Object.freeze({ ok: true, recordCount: refs.length, refs: Object.freeze(refs) });
+}
+
+export function createValidatedEvidenceProvenanceCatalogResponse(catalog) {
+  const validation = validateEvidenceProvenanceCatalogResponse(catalog);
+  return Object.freeze({
+    schema: 'omegavault.api.evidence-provenance.v1',
+    data: catalog,
+    validation
+  });
 }
