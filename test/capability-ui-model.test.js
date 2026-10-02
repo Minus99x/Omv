@@ -59,3 +59,28 @@ test('UI fails closed on duplicate chain entries', () => {
   assert.equal(result.available, false);
   assert.match(result.reason, /duplicate/);
 });
+
+
+import { selectCapabilityContracts } from '../public/capability-ui.js';
+
+test('UI filter uses backend eligibility flags without deriving promotion', () => {
+  const model = createCapabilityUiModel(envelope());
+  const blocked = selectCapabilityContracts(model, { filter: 'blocked' });
+  const eligible = selectCapabilityContracts(model, { filter: 'eligible' });
+  assert.ok(blocked.every(contract => contract.promotionEligible === false));
+  assert.ok(eligible.every(contract => contract.promotionEligible === true));
+  assert.equal(blocked.length + eligible.length, model.contracts.length);
+});
+
+test('UI stage sorting changes display order only', () => {
+  const model = createCapabilityUiModel(envelope());
+  const sorted = selectCapabilityContracts(model, { sort: 'stage' });
+  assert.equal(sorted.length, model.contracts.length);
+  assert.deepEqual(new Set(sorted.map(contract => contract.chainId)), new Set(model.contracts.map(contract => contract.chainId)));
+});
+
+test('UI filter fails closed on unknown filter/sort values', () => {
+  const model = createCapabilityUiModel(envelope());
+  assert.throws(() => selectCapabilityContracts(model, { filter: 'maybe' }), /Unknown capability filter/);
+  assert.throws(() => selectCapabilityContracts(model, { sort: 'rank' }), /Unknown capability sort/);
+});
