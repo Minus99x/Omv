@@ -254,6 +254,9 @@ async function loadCapabilityDashboard() {
 
 $('capabilityFilter')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
 $('capabilitySort')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
+$('evidenceHistorySearch')?.addEventListener('input', () => renderEvidenceHistory(evidenceHistoryUiModel));
+$('evidenceHistoryChain')?.addEventListener('change', () => renderEvidenceHistory(evidenceHistoryUiModel));
+$('evidenceHistorySort')?.addEventListener('change', () => renderEvidenceHistory(evidenceHistoryUiModel));
 
 function renderEvidenceHistory(model) {
   const status = $('evidenceHistoryStatus');
