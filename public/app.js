@@ -1,5 +1,5 @@
 import { getBrowserChain } from './chains/index.js';
-import { createCapabilityUiModel } from './capability-ui.js';
+import { createCapabilityUiModel, selectCapabilityContracts } from './capability-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const selectedChainId = 'ethereum';
@@ -94,17 +94,33 @@ function renderCapabilityDashboard(model) {
     return;
   }
 
-  status.textContent = `${model.contracts.length} chains · backend validated`;
+  status.textContent = `${model.contracts.length} chains · ${model.eligibleCount} eligible · ${model.blockedCount} blocked · backend validated`;
+  const filter = $('capabilityFilter')?.value || 'all';
+  const sort = $('capabilitySort')?.value || 'name';
+  const visibleContracts = selectCapabilityContracts(model, { filter, sort });
+  $('capabilityVisibleSummary').textContent = `Showing ${visibleContracts.length} of ${model.contracts.length} backend-validated chain contracts.`;
   status.className = 'status status-validated';
-  for (const contract of model.contracts) {
+  if (visibleContracts.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'empty';
+    empty.textContent = 'No chain contracts match the selected backend-status filter.';
+    container.append(empty);
+    return;
+  }
+  for (const contract of visibleContracts) {
     const card = document.createElement('section');
+    card.setAttribute('role', 'listitem');
+    card.tabIndex = 0;
     card.className = `capability-card ${contract.promotionEligible ? 'promotion-eligible' : 'promotion-blocked'}`;
 
     const head = document.createElement('div');
     head.className = 'capability-head';
     const title = document.createElement('div');
     const name = document.createElement('strong');
+    const headingId = `capability-${contract.chainId.replace(/[^a-z0-9_-]/gi, '-')}`;
+    name.id = headingId;
     name.textContent = contract.name;
+    card.setAttribute('aria-labelledby', headingId);
     const id = document.createElement('span');
     id.className = 'mono small muted';
     id.textContent = contract.chainId;
@@ -151,11 +167,16 @@ function renderCapabilityDashboard(model) {
     for (const gate of contract.gateEvidence) {
       const row = document.createElement('div');
       row.className = `gate-row ${gate.evidenceSufficient ? 'sufficient' : gate.passed ? 'insufficient' : 'missing'}`;
+      const gateCopy = document.createElement('div');
       const gateName = document.createElement('span');
       gateName.textContent = gate.gate;
+      const refs = document.createElement('small');
+      refs.className = 'gate-refs mono';
+      refs.textContent = gate.refs.length ? `Evidence: ${gate.refs.join(' · ')}` : 'Evidence: none';
+      gateCopy.append(gateName, refs);
       const level = document.createElement('span');
       level.textContent = gate.passed ? `${gate.level} / min ${gate.minimumEvidence}` : `missing / min ${gate.minimumEvidence}`;
-      row.append(gateName, level);
+      row.append(gateCopy, level);
       gateTable.append(row);
     }
     gates.append(gateTable);
@@ -174,6 +195,9 @@ async function loadCapabilityDashboard() {
   }
   renderCapabilityDashboard(capabilityUiModel);
 }
+
+$('capabilityFilter')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
+$('capabilitySort')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
 
 function permissionHas(address) {
   return permittedAccounts.some(value => sameAddress(value, address));
