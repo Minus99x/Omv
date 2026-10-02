@@ -1,6 +1,6 @@
 {
   "name": "omegavault-mvp",
-  "version": "0.6.30-dev",
+  "version": "0.6.31-dev",
   "private": true,
   "type": "module",
   "description": "Chain-agnostic non-custodial recovery-wallet MVP; Ethereum proof complete, multichain offline verification and recovery-mechanism scaffolding in active development.",
@@ -15,7 +15,8 @@
     "check:solana": "node --check src/chains/solana/program-codec.js && node --check src/chains/solana/recovery-program.js && node --check src/chains/solana/rpc-evidence.js && node --check scripts/verify-solana-program-source.js && node scripts/verify-solana-program-source.js",
     "check:bitcoin": "node --check src/chains/bitcoin/descriptor.js && node --check src/chains/bitcoin/psbt-v2.js && node --check scripts/verify-bitcoin-evidence.js && node scripts/verify-bitcoin-evidence.js",
     "check:cardano": "node --check src/chains/cardano/recovery-validator.js && node --check src/chains/cardano/transaction-body.js && node --check src/chains/cardano/protocol-parameters.js && node --check src/chains/cardano/witness-set.js && node --check src/chains/cardano/ogmios-evaluation.js && node --check scripts/verify-cardano-applied-fixtures.js && node --check scripts/verify-cardano-witness-evidence.js && cd validators/cardano && ../../node_modules/.bin/aiken fmt --check && ../../node_modules/.bin/aiken check && ../../node_modules/.bin/aiken build && cd ../.. && node scripts/verify-cardano-blueprint.js && node scripts/verify-cardano-applied-fixtures.js && node scripts/verify-cardano-witness-evidence.js",
-    "verify:offline-resume": "node scripts/verify-offline-resume.js"
+    "verify:offline-resume": "node scripts/verify-offline-resume.js",
+    "checkpoint:manifest": "node scripts/generate-checkpoint-manifest.js"
   },
   "engines": {
     "node": ">=22.12"
