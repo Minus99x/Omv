@@ -93,8 +93,14 @@
         </div>
       </article>
 
+      <article class="card wide capability-dashboard-card">
+        <div class="section-head"><div><span class="step">04</span><h2>Multichain capability status</h2></div><span id="capabilityStatus" class="status status-unavailable">Loading validated status…</span></div>
+        <div class="inline-info"><strong>Single source of truth:</strong> this dashboard displays the backend-validated capability contract. The browser does not calculate or upgrade chain maturity on its own.</div>
+        <div id="capabilityGrid" class="capability-grid"><div class="empty">Loading capability contracts…</div></div>
+      </article>
+
       <article class="card wide live-card">
-        <div class="section-head"><div><span class="step">04</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
+        <div class="section-head"><div><span class="step">05</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
         <div id="liveEmpty" class="empty">Create an OmegaVault policy first. The same neutral policy will then be expressed through the Ethereum adapter.</div>
         <div id="livePanel" class="hidden">
           <div class="proof-banner"><strong>Guardrail:</strong> this build will not deploy or send proof-contract actions on Ethereum mainnet. The only live proof network accepted by the application and server binding layer is Sepolia.</div>
