@@ -19,7 +19,8 @@ import { listChains } from './chains/registry.js';
 import { createCapabilityCatalogResponse } from './chains/capability-catalog.js';
 import { createEvidenceProvenanceCatalog } from './chains/evidence-provenance.js';
 import { createEvidenceHistoryCatalog } from './chains/evidence-history.js';
-import { createValidatedCapabilityCatalogResponse, createValidatedEvidenceProvenanceCatalogResponse, createValidatedEvidenceHistoryCatalogResponse } from './api/response-contracts.js';
+import { createEvidenceDiagnosticsCatalog } from './chains/evidence-diagnostics.js';
+import { createValidatedCapabilityCatalogResponse, createValidatedEvidenceProvenanceCatalogResponse, createValidatedEvidenceHistoryCatalogResponse, createValidatedEvidenceDiagnosticsCatalogResponse } from './api/response-contracts.js';
 import { ensureSolcCompiler, SOLC_0_8_24 } from './ethereum/compiler-cache.js';
 
 const APP_VERSION = '0.4.3';
@@ -172,6 +173,10 @@ async function handleApi(req, res, url) {
   if (req.method === 'GET' && p === '/api/evidence-history') {
     const catalog = createEvidenceHistoryCatalog();
     return json(res, 200, createValidatedEvidenceHistoryCatalogResponse(catalog));
+  }
+  if (req.method === 'GET' && p === '/api/evidence-diagnostics') {
+    const catalog = createEvidenceDiagnosticsCatalog();
+    return json(res, 200, createValidatedEvidenceDiagnosticsCatalogResponse(catalog));
   }
   if (req.method === 'GET' && p === '/api/vaults') return json(res, 200, { vaults: store.all().map(publicRecord) });
   if (req.method === 'GET' && p === '/api/ethereum/contract-source') {
