@@ -1,39 +1,37 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.36-dev**
+Current development checkpoint: **0.6.37-dev**
 
-Archive filename: `omegavault-mvp-0.6.36-dev.zip`
-Sidecar filename: `omegavault-mvp-0.6.36-dev.checkpoint-manifest.json`
+Archive filename: `omegavault-mvp-0.6.37-dev.zip`
+Sidecar filename: `omegavault-mvp-0.6.37-dev.checkpoint-manifest.json`
 
 The archive SHA-256 is deliberately recorded only in the external sidecar manifest so the archive does not attempt to contain its own digest.
 
-## 0.6.36 delta
+## 0.6.37 delta
 
-- Added a backend evidence-provenance registry for every evidence reference currently used by chain maturity profiles.
-- Each provenance record binds an evidence ref to its exact checkpoint ref, checkpoint archive filename, archive SHA-256, applicable chain IDs, claim scope and artifact paths.
-- Added fail-closed coverage validation: every maturity evidence ref must resolve to provenance registered for the same chain.
-- Added versioned API envelope `omegavault.api.evidence-provenance.v1` at `/api/evidence-provenance`.
-- API validation rejects duplicate refs, checkpoint/archive drift, invalid archive digests and unsafe artifact paths.
-- Browser provenance data is separately backend-validated and joined to gate refs by exact ref + chain identity.
-- Capability cards now expose checkpoint, archive SHA-256, provenance scope and artifact paths for resolved evidence refs.
-- Unresolved or cross-wired refs remain visible as unavailable and never create an additional maturity or promotion claim.
+- Added a backend evidence-checkpoint history catalog derived only from validated evidence provenance records.
+- Groups maturity evidence by exact checkpoint/archive identity and reports refs, chains, scopes, summaries and artifact paths.
+- Adds deterministic predecessor/successor links explicitly labeled `evidence-checkpoint-order-not-source-ancestry`.
+- Added fail-closed API validation for timeline ordering, archive/provenance drift, summary-count drift and unsafe artifact paths.
+- Added validated API envelope `omegavault.api.evidence-history.v1` at `/api/evidence-history`.
+- Added browser evidence-history diagnostics with text search, chain filtering and newest/oldest ordering.
+- Browser history remains presentation-only and contains no promotion-eligibility field or maturity inference.
+- Missing or invalid history fails closed and cannot alter chain status.
 
 ## Verification
 
-- Evidence provenance registry/API/browser/HTTP slice: **15/15 passed**.
-- Broad dependency-free offline regression: **248/248 passed**.
+- Evidence-history backend/API/browser/HTTP slice: **17/17 passed**.
+- Broad dependency-free offline regression: **265/265 passed**.
 - `npm run check`: **passed**.
-- Deterministic archive rebuild: **passed**.
-- Fresh-extraction sidecar verification: **passed**.
-- Nine SDK-bound test files remain intentionally workstation-gated until `npm ci` restores their pinned dependencies.
+- Full suite: **265 passed / 9 workstation-gated files failed to load**, exactly the known missing pinned SDK/toolchain boundary.
 
 ## Promotion boundary
 
-No chain is newly promoted. Provenance explains existing gate evidence but does not alter promotion eligibility.
+No chain is newly promoted. Evidence history is an operator diagnostic view only and does not establish source ancestry, proof parentage or promotion readiness.
 
 ## Next offline gate
 
-Add operator evidence-history diagnostics and checkpoint lineage summaries, then harden provenance browsing/search without allowing the browser to infer maturity.
+Add stronger checkpoint lineage diagnostics using only explicit cryptographic parent/checkpoint bindings where available, plus operator provenance-health summaries and evidence-gap diagnostics. Do not infer ancestry from version order.
 
 ## Workstation gate
 
