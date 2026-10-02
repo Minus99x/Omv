@@ -94,9 +94,14 @@
       </article>
 
       <article class="card wide capability-dashboard-card">
-        <div class="section-head"><div><span class="step">04</span><h2>Multichain capability status</h2></div><span id="capabilityStatus" class="status status-unavailable">Loading validated status…</span></div>
+        <div class="section-head"><div><span class="step">04</span><h2>Multichain capability status</h2></div><span id="capabilityStatus" class="status status-unavailable" role="status" aria-live="polite">Loading validated status…</span></div>
         <div class="inline-info"><strong>Single source of truth:</strong> this dashboard displays the backend-validated capability contract. The browser does not calculate or upgrade chain maturity on its own.</div>
-        <div id="capabilityGrid" class="capability-grid"><div class="empty">Loading capability contracts…</div></div>
+        <div class="capability-controls" aria-label="Capability dashboard display controls">
+          <label>Show<select id="capabilityFilter"><option value="all">All chains</option><option value="blocked">Not promotion eligible</option><option value="eligible">Promotion eligible</option></select></label>
+          <label>Sort<select id="capabilitySort"><option value="name">Chain name</option><option value="stage">Maturity stage</option></select></label>
+          <div id="capabilityVisibleSummary" class="muted small" role="status" aria-live="polite">Waiting for validated capability data.</div>
+        </div>
+        <div id="capabilityGrid" class="capability-grid" role="list" aria-label="Backend-validated chain capability status"><div class="empty">Loading capability contracts…</div></div>
       </article>
 
       <article class="card wide live-card">
