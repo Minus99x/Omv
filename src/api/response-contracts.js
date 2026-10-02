@@ -4,6 +4,8 @@ import { getNetwork } from '../chains/network-registry.js';
 import { validateEvidenceRecord } from '../core/evidence.js';
 import { validateMaturityEvidenceProvenanceCoverage, resolveEvidenceProvenance } from '../chains/evidence-provenance.js';
 import { createEvidenceHistoryCatalog } from '../chains/evidence-history.js';
+import { createEvidenceDiagnosticsCatalog } from '../chains/evidence-diagnostics.js';
+import { getChainCapabilityContract } from '../chains/capability-catalog.js';
 
 const evidenceRank = new Map(EVIDENCE_LEVELS.map((level, index) => [level, index]));
 
@@ -209,4 +211,56 @@ export function validateEvidenceHistoryCatalogResponse(catalog) {
 export function createValidatedEvidenceHistoryCatalogResponse(catalog = createEvidenceHistoryCatalog()) {
   const validation = validateEvidenceHistoryCatalogResponse(catalog);
   return Object.freeze({ schema: 'omegavault.api.evidence-history.v1', data: catalog, validation });
+}
+
+
+export function validateEvidenceDiagnosticsCatalogResponse(catalog) {
+  plainObject(catalog, 'diagnosticsCatalog');
+  if (catalog.schema !== 'omegavault.evidence-diagnostics-catalog.v1') throw new Error('Unexpected evidence-diagnostics catalog schema.');
+  if (catalog.lineageSemantics !== 'cryptographic-parent-bindings-only') throw new Error('Unexpected evidence-diagnostics lineage semantics.');
+  if (!Array.isArray(catalog.diagnostics) || catalog.diagnostics.length < 1) throw new TypeError('diagnosticsCatalog.diagnostics must be a non-empty array.');
+  const chainIds=[];
+  for (const [index,item] of catalog.diagnostics.entries()) {
+    plainObject(item, `diagnosticsCatalog.diagnostics[${index}]`);
+    const chainId=requiredText(item.chainId, `diagnosticsCatalog.diagnostics[${index}].chainId`);
+    const contract=getChainCapabilityContract(chainId);
+    if (!contract) throw new Error(`Diagnostics reference unknown chain ${chainId}.`);
+    if (item.name!==contract.name) throw new Error(`Diagnostics name mismatch for ${chainId}.`);
+    if (item.promotionEligible!==contract.promotion.eligible) throw new Error(`Diagnostics promotion state mismatch for ${chainId}.`);
+    const missing=stringArray(item.missingGates, `diagnosticsCatalog.diagnostics[${index}].missingGates`);
+    const insufficient=stringArray(item.insufficientEvidenceGates, `diagnosticsCatalog.diagnostics[${index}].insufficientEvidenceGates`);
+    const blockers=stringArray(item.blockers, `diagnosticsCatalog.diagnostics[${index}].blockers`);
+    if (!sameSet(missing, contract.promotion.missingGates)) throw new Error(`Diagnostics missing-gate mismatch for ${chainId}.`);
+    if (!sameSet(insufficient, contract.promotion.insufficientEvidenceGates)) throw new Error(`Diagnostics insufficient-evidence mismatch for ${chainId}.`);
+    if (!sameSet(blockers, contract.blockers)) throw new Error(`Diagnostics blocker mismatch for ${chainId}.`);
+    const unresolved=stringArray(item.unresolvedEvidenceRefs, `diagnosticsCatalog.diagnostics[${index}].unresolvedEvidenceRefs`);
+    const crossWired=stringArray(item.crossWiredEvidenceRefs, `diagnosticsCatalog.diagnostics[${index}].crossWiredEvidenceRefs`);
+    if (item.provenanceHealthy !== (unresolved.length===0 && crossWired.length===0)) throw new Error(`Diagnostics provenance-health mismatch for ${chainId}.`);
+    const expectedSeverity=!item.provenanceHealthy?'error':item.promotionEligible?'clear':'gaps-present';
+    if (item.severity!==expectedSeverity) throw new Error(`Diagnostics severity mismatch for ${chainId}.`);
+    plainObject(item.explicitLineage, `diagnosticsCatalog.diagnostics[${index}].explicitLineage`);
+    if (item.explicitLineage.semantics!==catalog.lineageSemantics) throw new Error(`Diagnostics lineage semantics mismatch for ${chainId}.`);
+    if (!['complete','partial','not-recorded'].includes(item.explicitLineage.status)) throw new Error(`Unknown lineage status for ${chainId}.`);
+    const lineageRefs=stringArray(item.explicitLineage.refs, `diagnosticsCatalog.diagnostics[${index}].explicitLineage.refs`);
+    if (item.explicitLineage.recordedRefCount!==lineageRefs.length) throw new Error(`Diagnostics lineage count mismatch for ${chainId}.`);
+    for (const ref of lineageRefs) {
+      const provenance = resolveEvidenceProvenance(ref);
+      if (!provenance || !provenance.chainIds.includes(chainId) || typeof provenance.parentBundleSha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(provenance.parentBundleSha256)) {
+        throw new Error(`Diagnostics lineage ref ${ref} lacks an explicit cryptographic parent binding for ${chainId}.`);
+      }
+    }
+    const expectedLineageStatus = lineageRefs.length === 0 ? 'not-recorded' : lineageRefs.length === item.evidenceRefCount && item.evidenceRefCount > 0 ? 'complete' : 'partial';
+    if (item.explicitLineage.status !== expectedLineageStatus) throw new Error(`Diagnostics lineage status mismatch for ${chainId}.`);
+    requiredText(item.explicitLineage.note, `diagnosticsCatalog.diagnostics[${index}].explicitLineage.note`);
+    chainIds.push(chainId);
+  }
+  if (new Set(chainIds).size!==chainIds.length) throw new Error('Evidence diagnostics catalog contains duplicate chains.');
+  plainObject(catalog.summary,'diagnosticsCatalog.summary');
+  if (catalog.summary.chainCount!==catalog.diagnostics.length) throw new Error('Evidence diagnostics summary chain count mismatch.');
+  return Object.freeze({ok:true,chainCount:chainIds.length,chainIds:Object.freeze(chainIds)});
+}
+
+export function createValidatedEvidenceDiagnosticsCatalogResponse(catalog = createEvidenceDiagnosticsCatalog()) {
+  const validation=validateEvidenceDiagnosticsCatalogResponse(catalog);
+  return Object.freeze({schema:'omegavault.api.evidence-diagnostics.v1',data:catalog,validation});
 }
