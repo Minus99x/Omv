@@ -1,41 +1,35 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.24-dev**
+Current development checkpoint: **0.6.25-dev**
 
-Archive: `omegavault-mvp-0.6.24-dev.zip`
-SHA-256: `0e3323aba360ad20248f35fdc6612c8ed8ea2bdc75636619ca3a6674f8594da6`
+Archive: `omegavault-mvp-0.6.25-dev.zip`
+SHA-256: `e451a934c7f4cb572bb7b3eea737d9e61da1ea131eddf1684ca1605d2681be07`
 
-## 0.6.24 delta
+## 0.6.25 delta
 
-- Hardened the TRON TVM proof runner around exact verified-deployment binding.
-- The TRX proof now rejects a valid deployment report reused with a different contract, owner, rescue destination, threshold, or trusted-contact set.
-- Added strict address/contact/amount validation at the proof boundary.
-- Added positive Energy-estimate gates before every state-changing proof action.
-- TRX evidence now records vault state before deposit, after deposit, and after recovery.
-- The runner verifies that the deposit increased the vault by exactly the requested `amountSun`, then requires the rescue balance delta to equal the entire post-deposit vault balance.
-- TRC-20 proof now requires the verified TVM vault to already be recovered and proves an exact vault-to-rescue token balance movement after solidification.
-- Existing pinned TRON Solidity artifact/compiler/runtime verification remains unchanged and passing.
+- Added a dependency-free Cardano synchronized evidence-binding layer.
+- Bound the exact recovery transaction body and CBOR to one acquired node tip.
+- Required UTxO, protocol-parameter, Ogmios evaluation and phase-1 evidence to share the exact same node tip.
+- Required evaluation and phase-1 evidence to reference the exact same transaction body.
+- Required complete phase-1 checks for balance, minimum ADA, collateral and witnesses before evidence promotion.
+- Canonicalized and SHA-256 hashed UTxO, protocol-parameter, evaluation and phase-1 evidence individually.
+- Hash-bound all component digests, the acquired tip and transaction identity into one deterministic evidence-bundle digest.
+- Added fail-closed rejection for mixed-tip, mixed-transaction and non-canonical evidence.
 
 ## Verification
 
 - `npm run check`: **passed**.
-- TRON contract manifest verification: **passed**.
-- Pinned TRON Solidity build/artifact verification: **passed**.
-- Focused TRON permissions + TVM proof suite: **14/14 passed**.
-- Adversarial coverage includes deployment/config mismatch, incorrect rescue delta, unsolidified transaction, and attempted TRC-20 proof before recovered state.
-
-## Promotion boundary
-
-TRON remains test-only. No fresh Shasta deployment or public-network recovery proof is claimed by 0.6.24.
+- Focused Cardano evidence-binding suite: **7/7 passed**.
+- Full Cardano live/evaluation execution remains toolchain-gated; no new public-network proof is claimed.
 
 ## Source of truth
 
-The complete 0.6.24-dev archive is stored in the ChatGPT file Library under the exact filename and checksum above. Do not reconstruct current source from the older tree on `main`.
+The complete 0.6.25-dev archive is stored in the ChatGPT file Library under the exact filename and checksum above.
 
 ## Next offline gate
 
-Advance Stellar native recovery hardening. If the pinned Stellar SDK is unavailable in the active workspace, switch immediately to Cardano evaluation-input preparation or shared evidence/dependency infrastructure rather than waiting.
+Continue independent EVM/XDC/shared-evidence hardening. When a workstation is available, run `npm ci` to restore pinned dependencies and immediately resume Stellar native-recovery and Bitcoin cryptographic finalizer execution.
 
 ## Safety boundary
 
-Do not write directly to `main`. Do not perform production deployments, wallet signatures, production-value transfers, or claim live proof until corresponding promotion gates pass.
+Do not write directly to `main`. Do not perform production deployments, wallet signatures, production-value transfers, or claim live proof until the corresponding promotion gates pass.
