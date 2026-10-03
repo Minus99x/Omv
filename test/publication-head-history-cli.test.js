@@ -272,3 +272,43 @@ test('trusted publisher status cannot override stale publication lineage',()=> {
   assert.equal(staleOutput.publicationReceiptCurrent,false);
   assert.match(staleOutput.errors.join('\n'),/not the current publication-history head/i);
 });
+
+test('authenticated-only verification remains backward compatible without publisher trust configuration',()=> {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'omegavault-auth-only-compat-'));
+  const currentAnchor=anchorFixture('0.6.47-dev','4','2026-10-03T22:10:00.000Z');
+  const receipt=createPublicationHeadReceipt({
+    history:currentAnchor.history,
+    historySnapshot:currentAnchor.snapshot,
+    publisher:'release-registry',
+    publishedAt:'2026-10-03T22:11:00.000Z'
+  });
+  const key=generateKeyPairSync('ed25519');
+  const signature=createDetachedPublicationHeadReceiptSignature({receipt,privateKey:key.privateKey});
+
+  const receiptPath=path.join(dir,'receipt.json');
+  const signaturePath=path.join(dir,'signature.json');
+  const keyPath=path.join(dir,'publisher-public.pem');
+  const historyPath=path.join(dir,'anchor-history.json');
+  const snapshotPath=path.join(dir,'anchor-snapshot.json');
+  fs.writeFileSync(receiptPath,JSON.stringify(receipt));
+  fs.writeFileSync(signaturePath,JSON.stringify(signature));
+  fs.writeFileSync(keyPath,key.publicKey.export({type:'spki',format:'pem'}));
+  fs.writeFileSync(historyPath,JSON.stringify(currentAnchor.history));
+  fs.writeFileSync(snapshotPath,JSON.stringify(currentAnchor.snapshot));
+
+  const result=run('scripts/verify-publication-head-receipt.js',[
+    '--receipt',receiptPath,
+    '--anchor-history',historyPath,
+    '--anchor-history-snapshot',snapshotPath,
+    '--signature',signaturePath,
+    '--public-key',keyPath,
+    '--require-authenticated-publisher'
+  ]);
+  assert.equal(result.status,0,result.stderr);
+  const output=JSON.parse(result.stdout);
+  assert.equal(output.publisherAuthenticated,true);
+  assert.equal(output.publisherTrustConfigured,false);
+  assert.equal(output.publisherTrusted,false);
+  assert.equal(output.publisherTrustStatus,'unconfigured');
+  assert.equal(output.publisherTrustDecision,'authenticated-untrusted');
+});
