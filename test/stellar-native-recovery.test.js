@@ -273,3 +273,28 @@ test('Stellar signed heartbeat rejects extra signatures', () => {
   assert.equal(result.signatureCount, 2);
   assert.ok(result.errors.some(error => /exactly one owner signature/i.test(error)));
 });
+
+
+test('Stellar native recovery refuses network-passphrase drift away from Testnet', () => {
+  const mainnetPassphrase = 'Public Global Stellar Network ; September 2015';
+  assert.throws(() => createRecoveryEnvelopePlan({
+    vaultAccount:G(1), rescueDestination:G(2), currentSequence:'1000', inactivitySeconds:60,
+    contacts:[G(3), G(4)], threshold:2, amounts:{ native:'1' },
+    networkPassphrase:mainnetPassphrase
+  }), /testnet-only/i);
+
+  assert.throws(() => buildHeartbeatEnvelopeArtifact({
+    vaultAccount:G(1), currentSequence:'1000', networkPassphrase:mainnetPassphrase
+  }), /testnet-only/i);
+
+  const plan = recoveryPlan();
+  const driftedPlan = structuredClone(plan);
+  driftedPlan.networkPassphrase = mainnetPassphrase;
+  assert.throws(() => buildRecoveryEnvelopeArtifact(driftedPlan), /restricted to the configured Stellar Testnet identity/i);
+
+  const artifact = buildRecoveryEnvelopeArtifact(plan);
+  const driftedArtifact = { ...artifact, networkPassphrase:mainnetPassphrase };
+  const verified = verifyRecoveryEnvelopeArtifact({ plan, artifact:driftedArtifact });
+  assert.equal(verified.valid, false);
+  assert.ok(verified.errors.some(error => /network passphrase does not match/i.test(error)));
+});
