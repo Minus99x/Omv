@@ -6,6 +6,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
 import { createDetachedReviewReceiptSignature, createExternalReviewReceipt, createReviewerKeyTrustMetadata, verifyExternalReviewReceipt } from '../src/core/review-receipt.js';
+import { createReviewerTrustEvent, createReviewerTrustHistorySnapshot } from '../src/core/reviewer-trust-history.js';
 
 test('receipt CLI creates an unsigned external-review receipt and never signs automatically', () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-review-receipt-'));
@@ -74,4 +75,38 @@ test('verification CLI fails closed for wrong key and required revoked reviewer'
   assert.equal(requiredRevoked.status, 1);
   assert.equal(JSON.parse(requiredRevoked.stdout).signatureAuthenticated, true);
   assert.equal(JSON.parse(requiredRevoked.stdout).reviewerTrusted, false);
+});
+
+test('verification CLI enforces current key and terminal revocation from trust history', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-review-history-'));
+  const oldKey = generateKeyPairSync('ed25519');
+  const currentKey = generateKeyPairSync('ed25519');
+  const index = { schema:'omegavault.external-review-index.v1', sha256:'11'.repeat(32), checkpoint:{ref:'0.6.42-dev',archiveSha256:'22'.repeat(32)}, reviewBasis:{sha256:'33'.repeat(32)} };
+  const receipt = createExternalReviewReceipt({ reviewIndex:index, outcome:'verified', reviewer:'audit-team', reviewedAt:'2026-10-03T04:00:00Z' });
+  const signature = createDetachedReviewReceiptSignature({ receipt, privateKey:currentKey.privateKey });
+  const enroll = createReviewerTrustEvent({ reviewer:'audit-team', publicKey:oldKey.publicKey, action:'enroll', configuredBy:'test-policy', configuredAt:'2026-10-03T04:01:00Z' });
+  const rotate = createReviewerTrustEvent({ reviewer:'audit-team', publicKey:currentKey.publicKey, action:'rotate', configuredBy:'test-policy', configuredAt:'2026-10-03T04:02:00Z', previousEvent:enroll });
+  const files = { receipt:path.join(dir,'receipt.json'), signature:path.join(dir,'signature.json'), key:path.join(dir,'key.pem'), history:path.join(dir,'history.json'), snapshot:path.join(dir,'history.snapshot.json') };
+  fs.writeFileSync(files.receipt, JSON.stringify(receipt));
+  fs.writeFileSync(files.signature, JSON.stringify(signature));
+  fs.writeFileSync(files.key, currentKey.publicKey.export({type:'spki',format:'pem'}));
+  fs.writeFileSync(files.history, JSON.stringify([enroll, rotate]));
+  fs.writeFileSync(files.snapshot, JSON.stringify(createReviewerTrustHistorySnapshot([enroll, rotate])));
+  const trusted = spawnSync(process.execPath, ['scripts/verify-review-receipt.js','--receipt',files.receipt,'--signature',files.signature,'--public-key',files.key,'--trust-history',files.history,'--trust-history-snapshot',files.snapshot,'--require-trusted-reviewer'], { cwd:process.cwd(), encoding:'utf8' });
+  assert.equal(trusted.status, 0, trusted.stderr);
+  assert.equal(JSON.parse(trusted.stdout).reviewerTrusted, true);
+
+  fs.writeFileSync(files.history, JSON.stringify([enroll]));
+  const rolledBack = spawnSync(process.execPath, ['scripts/verify-review-receipt.js','--receipt',files.receipt,'--signature',files.signature,'--public-key',files.key,'--trust-history',files.history,'--trust-history-snapshot',files.snapshot,'--require-trusted-reviewer'], { cwd:process.cwd(), encoding:'utf8' });
+  assert.equal(rolledBack.status, 1);
+  assert.equal(JSON.parse(rolledBack.stdout).trustHistorySnapshotValid, false);
+
+  const revoke = createReviewerTrustEvent({ reviewer:'audit-team', publicKey:currentKey.publicKey, action:'revoke', configuredBy:'test-policy', configuredAt:'2026-10-03T04:03:00Z', previousEvent:rotate });
+  fs.writeFileSync(files.history, JSON.stringify([enroll, rotate, revoke]));
+  const revoked = spawnSync(process.execPath, ['scripts/verify-review-receipt.js','--receipt',files.receipt,'--signature',files.signature,'--public-key',files.key,'--trust-history',files.history,'--require-trusted-reviewer'], { cwd:process.cwd(), encoding:'utf8' });
+  assert.equal(revoked.status, 1);
+  const result = JSON.parse(revoked.stdout);
+  assert.equal(result.signatureAuthenticated, true);
+  assert.equal(result.reviewerTrusted, false);
+  assert.equal(result.trustStatus, 'revoked');
 });

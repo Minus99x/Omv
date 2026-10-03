@@ -1,36 +1,35 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.42-dev**
+Current development checkpoint: **0.6.43-dev**
 
-Archive filename: `omegavault-mvp-0.6.42-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.42-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.42-dev.review-index.json`
+Archive filename: `omegavault-mvp-0.6.43-dev.zip`
+Checkpoint sidecar filename: `omegavault-mvp-0.6.43-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.43-dev.review-index.json`
 
-## 0.6.42 delta
+## 0.6.43 delta
 
-- Added `npm run review:receipt:verify` for detached receipt-signature file verification.
-- Added digest-bound `omegavault.reviewer-key-trust.v1` metadata with `trusted`, `untrusted` and `revoked` states.
-- Cryptographic signature authentication is reported independently from reviewer identity and trust.
-- A valid signature without separate matching trust configuration is explicitly `authenticated-untrusted`.
-- Trusted-reviewer enforcement requires the receipt reviewer label, authenticated SPKI fingerprint and separately configured trusted record to match.
-- Wrong keys, wrong reviewer identities, revoked keys and tampered trust authority fail closed.
-- Signature and trust objects retain zero chain- or evidence-promotion authority.
-- Normal tooling creates and persists no reviewer private keys; tests use ephemeral Ed25519 keys only.
+- Added digest-linked reviewer enrollment, rotation and terminal revocation events.
+- Rotation binds the preceding event SHA-256 and preceding SPKI fingerprint; only the current key may confer trust.
+- Added policy snapshots binding event count and head digest to reject valid-prefix rollback.
+- Extended receipt verification with trust-history and snapshot enforcement.
+- Added public-key-only trust-history append tooling with fail-closed output overwrite protection.
+- Trust events and snapshots retain zero chain- or evidence-promotion authority.
+- Normal tooling creates, reads and persists no reviewer private keys; tests use ephemeral Ed25519 keys only.
 
 ## Verification
 
-- Focused receipt/signature/trust/CLI slice: **11/11 passed**.
-- Broad dependency-free offline regression: **318/318 passed**.
-- `npm run check`: **passed**.
-- Full suite: **318 passed / 9 known workstation-gated files failed to load**.
+- Focused receipt/signature/trust-history/CLI slice: **20/20 passed**.
+- Broad dependency-free offline regression: **327/327 passed**.
+- `npm run check`: **passed**; new trust-history core and CLIs also passed explicit syntax checks.
+- Full suite: **327 passed / 9 known workstation-gated files failed to load**.
 
 ## Promotion boundary
 
-No chain is newly promoted. Cryptographic authentication and configured reviewer trust remain audit metadata only and cannot satisfy chain promotion gates.
+No chain is newly promoted. Cryptographic authentication and reviewer trust history remain audit metadata only and cannot satisfy chain promotion gates.
 
 ## Next offline gate
 
-Add provenance-bound reviewer trust-policy history, including explicit key rotation and revocation lineage, without converting reviewer trust into chain evidence.
+Bind the reviewer trust-policy snapshot into an independently anchored audit index or policy registry.
 
 ## Workstation gate
 

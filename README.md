@@ -169,6 +169,33 @@ npm run review:receipt:verify -- \
 Neither signature authentication nor reviewer trust has chain- or
 evidence-promotion authority.
 
+Reviewer trust can also be managed as an append-only digest-linked history.
+The CLI accepts public keys only; it never reads or creates a private key:
+
+```bash
+npm run review:trust:append -- \
+  --reviewer audit-team \
+  --public-key reviewer-public.pem \
+  --action enroll \
+  --configured-by review-policy \
+  --configured-at 2026-10-03T05:00:00Z \
+  --output reviewer-trust-history.json \
+  --snapshot-output reviewer-trust-history.snapshot.json
+
+npm run review:receipt:verify -- \
+  --receipt receipt.json \
+  --signature receipt.signature.json \
+  --public-key reviewer-public.pem \
+  --trust-history reviewer-trust-history.json \
+  --trust-history-snapshot reviewer-trust-history.snapshot.json \
+  --require-trusted-reviewer
+```
+
+Rotation binds the new key to the previous event and previous key fingerprint.
+Revocation is terminal. A separately stored snapshot binds the expected event
+count and head digest so a valid historical prefix cannot be replayed as the
+current trust policy.
+
 The full 0.6.16 development package currently passes **186 JavaScript tests** with zero failures plus **7/7 Aiken on-chain tests**. `npm run check` syntax-checks the existing JavaScript modules and verifies the pinned EVM/TRON artifacts. `npm run check:xrpl` verifies deterministic signer preimages, signatures and canonical multisigned-binary evidence. `npm run check:solana` verifies native-source hashes, exact PDA derivation and instruction/account-meta evidence without claiming Rust compilation. `npm run check:bitcoin` verifies the Bitcoin Core descriptor/PSBTv2 evidence. `npm run check:cardano` formats, tests and compiles the pinned Aiken Plutus V3 project, reapplies the non-deployable fixture parameters, verifies script identities/addresses, validates the epoch-316 protocol snapshot, and checks deterministic signed-size, fee, minimum-ADA, collateral and zero-budget Ogmios evaluation-request evidence while preserving the independent-node live-construction block.
 
 ## Important limitations
