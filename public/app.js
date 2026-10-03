@@ -88,6 +88,7 @@ function appendList(container, items, emptyText) {
 }
 
 
+
 function appendEvidenceProvenance(container, refs, chainId) {
   const wrapper = document.createElement('div');
   wrapper.className = 'gate-provenance';
@@ -114,14 +115,29 @@ function appendEvidenceProvenance(container, refs, chainId) {
     } else {
       const body = document.createElement('div');
       body.className = 'provenance-body';
-      const scope = document.createElement('div'); scope.textContent = `Scope: ${provenance.scope}`;
-      const checkpoint = document.createElement('div'); checkpoint.textContent = `Checkpoint: ${provenance.checkpointRef}`;
-      const archive = document.createElement('div'); archive.className = 'mono'; archive.textContent = `Archive: ${provenance.archiveFilename}`;
-      const digest = document.createElement('div'); digest.className = 'mono provenance-digest'; digest.textContent = `SHA-256: ${provenance.archiveSha256}`;
-      const parent = document.createElement('div'); parent.className = 'mono provenance-parent'; parent.textContent = provenance.parentBundleSha256 ? `Parent bundle SHA-256: ${provenance.parentBundleSha256}` : 'Parent bundle: not recorded';
-      const description = document.createElement('div'); description.textContent = provenance.summary;
-      const artifacts = document.createElement('ul'); artifacts.className = 'provenance-artifacts';
-      for (const path of provenance.artifactPaths) { const item = document.createElement('li'); item.className = 'mono'; item.textContent = path; artifacts.append(item); }
+      const scope = document.createElement('div');
+      scope.textContent = `Scope: ${provenance.scope}`;
+      const checkpoint = document.createElement('div');
+      checkpoint.textContent = `Checkpoint: ${provenance.checkpointRef}`;
+      const archive = document.createElement('div');
+      archive.className = 'mono';
+      archive.textContent = `Archive: ${provenance.archiveFilename}`;
+      const digest = document.createElement('div');
+      digest.className = 'mono provenance-digest';
+      digest.textContent = `SHA-256: ${provenance.archiveSha256}`;
+      const parent = document.createElement('div');
+      parent.className = 'mono provenance-parent';
+      parent.textContent = provenance.parentBundleSha256 ? `Parent bundle SHA-256: ${provenance.parentBundleSha256}` : 'Parent bundle: not recorded';
+      const description = document.createElement('div');
+      description.textContent = provenance.summary;
+      const artifacts = document.createElement('ul');
+      artifacts.className = 'provenance-artifacts';
+      for (const path of provenance.artifactPaths) {
+        const item = document.createElement('li');
+        item.className = 'mono';
+        item.textContent = path;
+        artifacts.append(item);
+      }
       body.append(scope, checkpoint, archive, digest, parent, description, artifacts);
       details.append(body);
     }
@@ -267,11 +283,7 @@ async function loadCapabilityDashboard() {
 
 $('capabilityFilter')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
 $('capabilitySort')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
-$('evidenceHistorySearch')?.addEventListener('input', () => renderEvidenceHistory(evidenceHistoryUiModel));
-$('evidenceHistoryChain')?.addEventListener('change', () => renderEvidenceHistory(evidenceHistoryUiModel));
-$('evidenceHistorySort')?.addEventListener('change', () => renderEvidenceHistory(evidenceHistoryUiModel));
-$('evidenceDiagnosticsFilter')?.addEventListener('change', () => renderEvidenceDiagnostics(evidenceDiagnosticsUiModel));
-$('evidenceDiagnosticsSort')?.addEventListener('change', () => renderEvidenceDiagnostics(evidenceDiagnosticsUiModel));
+
 
 function renderEvidenceHistory(model) {
   const status = $('evidenceHistoryStatus');
@@ -314,12 +326,14 @@ function renderEvidenceHistory(model) {
     head.append(title,chains); card.append(head);
     const meta=document.createElement('div'); meta.className='history-meta mono'; meta.textContent=`${row.archiveFilename} · ${row.archiveSha256}`; card.append(meta);
     const relation=document.createElement('div'); relation.className='history-relation'; relation.textContent=`Timeline: ${row.previousEvidenceCheckpointRef || 'start'} ← ${row.checkpointRef} → ${row.nextEvidenceCheckpointRef || 'latest'} · order only, not source ancestry`; card.append(relation);
-    const refs=document.createElement('details'); const rs=document.createElement('summary'); rs.textContent=`Evidence refs (${row.evidenceRefs.length})`; refs.append(rs); appendList(refs,row.evidenceRefs,'No refs'); card.append(refs);
+    const refs=document.createElement('details'); const rs=document.createElement('summary'); rs.textContent=`Evidence refs (${row.evidenceRefs.length})`; refs.append(rs);
+    appendList(refs,row.evidenceRefs,'No refs'); card.append(refs);
     const scopes=document.createElement('details'); const ss=document.createElement('summary'); ss.textContent=`Scopes (${row.scopes.length})`; scopes.append(ss); appendList(scopes,row.scopes,'No scopes'); card.append(scopes);
     const artifacts=document.createElement('details'); const ars=document.createElement('summary'); ars.textContent=`Artifacts (${row.artifactPaths.length})`; artifacts.append(ars); appendList(artifacts,row.artifactPaths,'No artifacts'); card.append(artifacts);
     container.append(card);
   }
 }
+
 
 function renderEvidenceDiagnostics(model) {
   const status=$('evidenceDiagnosticsStatus');
@@ -965,6 +979,7 @@ async function init() {
     toast(`Unable to read OmegaVault runtime configuration: ${e.message}`, 7000);
   }
 
+  await loadCapabilityDashboard();
   await refreshWallet({ request: false }).catch(() => {});
   await loadLatestVault({ announce: false }).catch(() => {});
   if (currentVault?.chainBindings?.ethereum && walletNetwork?.isSepolia) {
