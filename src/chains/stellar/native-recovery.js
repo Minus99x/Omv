@@ -158,6 +158,7 @@ export function createRecoveryEnvelopePlan({
 
 export function buildRecoveryEnvelopeArtifact(plan) {
   if (!plan || plan.strategy !== 'preauth-min-sequence-age') throw new TypeError('A Stellar pre-authorized recovery plan is required.');
+  if (plan.networkRef !== 'stellar:testnet' || plan.networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Stellar recovery artifact construction is currently restricted to the configured Stellar Testnet identity.');
   if (!Array.isArray(plan.operations) || plan.operations.length === 0) throw new Error('Recovery envelope cannot be built until every protected asset has an exact payment operation.');
   assertAccount(plan.sourceAccount, 'sourceAccount');
   assertAccount(plan.rescueDestination, 'rescueDestination');
@@ -215,6 +216,8 @@ export function verifyRecoveryEnvelopeArtifact({ plan, artifact }) {
   if (!artifact?.transactionXdr || !artifact?.transactionHashHex) throw new TypeError('Recovery envelope artifact is incomplete.');
   const transaction = TransactionBuilder.fromXdr(artifact.transactionXdr, plan.networkPassphrase);
   const errors = [];
+  if (plan.networkRef !== 'stellar:testnet' || plan.networkPassphrase !== TESTNET_PASSPHRASE) errors.push('Recovery plan is not bound to the configured Stellar Testnet identity.');
+  if (artifact.networkPassphrase !== plan.networkPassphrase) errors.push('Recovery artifact network passphrase does not match plan.');
   if (toHex(transaction.hash()) !== artifact.transactionHashHex) errors.push('Transaction hash does not match XDR.');
   if (transaction.source !== plan.sourceAccount) errors.push('Source account does not match plan.');
   if (transaction.sequence !== plan.sequence.recoverySequence) errors.push('Transaction sequence does not match plan.');
