@@ -1,39 +1,48 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.47-dev**
+Current development checkpoint: **0.6.48-dev**
 
-Archive filename: `omegavault-mvp-0.6.47-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.47-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.47-dev.review-index.json`
+Archive filename: `omegavault-mvp-0.6.48-dev.zip`
+Checkpoint sidecar filename: `omegavault-mvp-0.6.48-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.48-dev.review-index.json`
 
-## 0.6.47 delta
+## 0.6.48 delta
 
-- Added digest-linked successor history for publication-head receipts.
-- Each entry binds the exact predecessor entry and publication-receipt digest.
-- Added a current-head snapshot binding the publisher, receipt, anchor-history head and checkpoint.
-- Verification rejects an older valid publication receipt even when it advertises the same valid anchor head and carries a valid detached signature.
-- Rollback, reorder, skipped links, duplicate receipts, publisher changes, non-increasing timestamps, authority changes and non-canonical extra fields fail closed.
-- Publication-history tooling refuses secret inputs and protects existing output.
+- Added separately configured publisher-key trust history with enroll, rotate and revoke events.
+- Kept cryptographic publisher authentication separate from publisher identity approval/trust.
+- A valid signature from an old, rotated, revoked or identity-mismatched key remains cryptographically authenticated but is not trusted.
+- Added publisher-trust snapshots, rollback/tamper detection, canonical-field enforcement and strict authority boundaries.
+- Added `--require-trusted-publisher` fail-closed verification.
+- Hardened reviewer-trust, reviewer trust-policy anchor-history, publication-history and publisher-trust append CLIs so output destinations are preflighted before writes; invalid or colliding destinations cannot leave partial history files.
+- Restored and regression-tested the operator-audit API contract, HTTP endpoint and UI path.
+- Added `npm run test:review-audit` and a GitHub Actions development verification workflow using pinned dependencies.
 
 ## Verification
 
-- Focused review-receipt/trust/anchor/publication slice: **44/44 passed**.
-- Broad dependency-free offline regression: **351/351 passed**.
-- `npm run check`: **passed**.
-- Full discovery: **351 passed / 9 dependency-gated files failed to load**.
+Clean dependency-backed GitHub Actions verification completed on the development branch:
+
+- Pinned dependency install with `npm ci`: **passed**.
+- Focused review/audit security suite: **84/84 passed**.
+- Full test suite: **415/415 passed**.
+- Offline-resume verification: **ok: true**.
+- Global `npm run check`: **passed**.
+
+The previously known operator-audit mismatches are no longer carried as exceptions.
 
 ## Promotion boundary
 
-No chain is newly promoted. Publication lineage remains audit metadata only and cannot satisfy publisher trust, reviewer trust, anchoring-authority trust, chain, deployment or wallet gates.
+No chain is newly promoted by this checkpoint.
 
-## Next offline gate
+Publisher trust is explicit policy metadata only. It grants no reviewer trust, anchoring-authority trust, chain maturity, chain promotion, evidence promotion, deployment authority, wallet authority or live proof. Publication-current lineage remains an independent requirement.
 
-Add separately configured publisher-key trust metadata/history so cryptographic publisher authentication is never confused with publisher identity approval or trust.
+## Next safe gate
 
-## Workstation gate
+Use the now-available dependency-backed remote verification lane to continue native execution evidence work. Start with Stellar native-recovery execution evidence, then continue Bitcoin finalizer execution evidence, preserving all existing maturity and live-value boundaries.
 
-Run `npm ci` then `npm run verify:offline-resume` when a workstation is available.
+## Workstation status
+
+A local workstation is no longer required merely to restore dependencies and execute the pinned offline verification suite; clean dependency-backed verification is now demonstrated in GitHub Actions. A workstation/user remains necessary only for genuinely local, interactive, wallet-controlled or user-authorized steps.
 
 ## Safety boundary
 
-Never modify `main` directly or perform production/live-value actions from this development queue.
+Never modify `main` directly or perform production deployments, live-value transactions, wallet signatures, secret handling or irreversible external actions from this development queue.
