@@ -57,6 +57,14 @@ test('publication-history CLIs append successors and reject an old publication a
 
   const overwrite=run('scripts/append-publication-head-history.js',['--receipt',files.second,'--history',files.history1,'--output',files.history2,'--snapshot-output',path.join(dir,'unused.json')]);
   assert.equal(overwrite.status,1);
+
+  const secretRejected=run('scripts/append-publication-head-history.js',['--receipt',files.second,'--history',files.history1,'--output',path.join(dir,'secret-history.json'),'--snapshot-output',path.join(dir,'secret-snapshot.json'),'--private-key',path.join(dir,'publisher-private.pem')]);
+  assert.equal(secretRejected.status,2);
+  assert.match(secretRejected.stderr,/secret input is forbidden/i);
+
+  const verifySecretRejected=run('scripts/verify-publication-head-history.js',['--receipt',files.second,'--history',files.history2,'--history-snapshot',files.snapshot2,'--seed','not-a-real-seed']);
+  assert.equal(verifySecretRejected.status,2);
+  assert.match(verifySecretRejected.stderr,/secret input is forbidden/i);
 });
 
 test('publication receipt verifier can require the supplied receipt to be current in publication history',()=>{
