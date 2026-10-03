@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { verifyDetachedPublicationHeadReceiptSignature, verifyPublicationHeadReceipt } from '../src/core/publication-head-receipt.js';
 import { verifyCurrentPublicationHeadReceipt } from '../src/core/publication-head-history.js';
+import { assessPublisherTrustHistory } from '../src/core/publisher-trust-history.js';
 
 function arg(name) { const index=process.argv.indexOf(`--${name}`); return index >= 0 ? process.argv[index+1] : null; }
 
@@ -12,15 +13,21 @@ const signaturePath=arg('signature');
 const publicKeyPath=arg('public-key');
 const publicationHistoryPath=arg('publication-history');
 const publicationHistorySnapshotPath=arg('publication-history-snapshot');
+const publisherTrustHistoryPath=arg('publisher-trust-history');
+const publisherTrustHistorySnapshotPath=arg('publisher-trust-history-snapshot');
 const requireAuthenticated=process.argv.includes('--require-authenticated-publisher');
+const requireTrusted=process.argv.includes('--require-trusted-publisher');
 
 if (!receiptPath
   || !historyPath
   || !snapshotPath
   || Boolean(signaturePath)!==Boolean(publicKeyPath)
   || Boolean(publicationHistoryPath)!==Boolean(publicationHistorySnapshotPath)
-  || (requireAuthenticated && !signaturePath)) {
-  process.stderr.write('Usage: node scripts/verify-publication-head-receipt.js --receipt <receipt.json> --anchor-history <history.json> --anchor-history-snapshot <snapshot.json> [--signature <signature.json> --public-key <publisher-public.pem> --require-authenticated-publisher] [--publication-history <publication-history.json> --publication-history-snapshot <publication-history-snapshot.json>]\n');
+  || Boolean(publisherTrustHistoryPath)!==Boolean(publisherTrustHistorySnapshotPath)
+  || (publisherTrustHistoryPath && (!signaturePath || !publicKeyPath))
+  || (requireAuthenticated && !signaturePath)
+  || (requireTrusted && !publisherTrustHistoryPath)) {
+  process.stderr.write('Usage: node scripts/verify-publication-head-receipt.js --receipt <receipt.json> --anchor-history <history.json> --anchor-history-snapshot <snapshot.json> [--signature <signature.json> --public-key <publisher-public.pem> --require-authenticated-publisher] [--publisher-trust-history <publisher-trust-history.json> --publisher-trust-history-snapshot <publisher-trust-history-snapshot.json> --require-trusted-publisher] [--publication-history <publication-history.json> --publication-history-snapshot <publication-history-snapshot.json>]\n');
   process.exit(2);
 }
 
@@ -46,14 +53,27 @@ try {
       })
     : null;
 
+  const publisherTrust=publisherTrustHistoryPath
+    ? assessPublisherTrustHistory({
+        receipt,
+        signature:JSON.parse(readFileSync(resolve(signaturePath),'utf8')),
+        publicKey:readFileSync(resolve(publicKeyPath)),
+        trustHistory:JSON.parse(readFileSync(resolve(publisherTrustHistoryPath),'utf8')),
+        trustHistorySnapshot:JSON.parse(readFileSync(resolve(publisherTrustHistorySnapshotPath),'utf8'))
+      })
+    : null;
+
   const ok=current.ok
     && (!authentication || authentication.ok)
     && (!requireAuthenticated || authentication?.authenticated===true)
+    && (!publisherTrust || publisherTrust.ok)
+    && (!requireTrusted || publisherTrust?.publisherTrusted===true)
     && (!publicationCurrent || publicationCurrent.ok);
 
   const errors=[
     ...current.errors,
     ...(authentication?.errors.map(error=>`Publisher authentication: ${error}`) ?? []),
+    ...(publisherTrust?.errors.map(error=>`Publisher trust: ${error}`) ?? []),
     ...(publicationCurrent?.errors.map(error=>`Publication history: ${error}`) ?? [])
   ];
 
@@ -62,6 +82,11 @@ try {
     current:current.current,
     publisherAuthenticated:authentication?.authenticated ?? false,
     publisherAuthenticationConfigured:Boolean(authentication),
+    publisherTrustConfigured:Boolean(publisherTrust),
+    publisherTrusted:publisherTrust?.publisherTrusted ?? false,
+    publisherTrustStatus:publisherTrust?.trustStatus ?? 'unconfigured',
+    publisherTrustDecision:publisherTrust?.decision ?? (authentication?.authenticated ? 'authenticated-untrusted' : 'unauthenticated'),
+    publisherTrustHistoryHeadSha256:publisherTrust?.trustHistoryHeadSha256 ?? null,
     publicationHistoryConfigured:Boolean(publicationCurrent),
     publicationReceiptCurrent:publicationCurrent?.current ?? false,
     publisher:receipt?.publisher ?? null,
