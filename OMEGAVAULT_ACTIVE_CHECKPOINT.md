@@ -1,38 +1,37 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.40-dev**
+Current development checkpoint: **0.6.41-dev**
 
-Archive filename: `omegavault-mvp-0.6.40-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.40-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.40-dev.review-index.json`
+Archive filename: `omegavault-mvp-0.6.41-dev.zip`
+Checkpoint sidecar filename: `omegavault-mvp-0.6.41-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.41-dev.review-index.json`
 
-The archive's own SHA-256 is deliberately not embedded inside the archive. External checkpoint identity is carried by the checkpoint sidecar, and the external review index binds that sidecar to the internal audit/history/provenance review basis.
+## 0.6.41 delta
 
-## 0.6.40 delta
-
-- Added deterministic `omegavault.external-review-basis.v1` binding the current provenance audit SHA-256, evidence-history SHA-256, evidence-provenance SHA-256 and review semantics.
-- Added validated API envelope `omegavault.api.external-review-basis.v1` at `/api/review-basis`.
-- Added `omegavault.external-review-index.v1`, generated only after the archive and checkpoint sidecar exist.
-- The external review index binds the exact archive filename/SHA-256, checkpoint-sidecar file SHA-256 and logical SHA-256, source-tree digest, dependency-lock digest, provenance-audit digest, evidence-history digest and evidence-provenance digest.
-- Added `npm run review:index` to generate the external review index.
-- Added `npm run review:verify` to independently verify the ZIP, checkpoint sidecar and current internal review basis.
-- Swapped archives, altered sidecars, stale audit/history state and tampered review-index fields fail closed.
-- Review metadata explicitly states that archive identity comes from the external checkpoint sidecar and that version/timeline order does not establish source ancestry.
+- Added `omegavault.external-review-receipt.v1`, which binds a reviewer result to one exact external review-index digest.
+- Supported outcomes are `verified`, `verified-with-notes`, and `rejected`.
+- Review receipts explicitly have no chain-promotion or evidence-promotion authority.
+- Base receipts are always unsigned; signatures are separate detached objects.
+- Added `omegavault.external-review-receipt-signature.v1` with Ed25519 verification over the receipt SHA-256.
+- Detached signatures authenticate only the receipt and explicitly have no promotion authority.
+- No signing keys are created or persisted by normal receipt tooling.
+- Added `npm run review:receipt` to create an unsigned receipt from an external review index.
+- Wrong keys, changed receipts, tampered authority fields, missing public keys and invalid signatures fail closed.
 
 ## Verification
 
-- External review basis/index/API/CLI focused slice: **12/12 passed**.
-- Broad dependency-free offline regression: **307/307 passed**.
+- Review receipt/signature/CLI focused slice: **6/6 passed**.
+- Broad dependency-free offline regression: **313/313 passed**.
 - `npm run check`: **passed**.
-- Full suite: **307 passed / 9 workstation-gated files failed to load**, exactly the known missing pinned SDK/toolchain boundary.
+- Full suite: **313 passed / 9 known workstation-gated files failed to load**.
 
 ## Promotion boundary
 
-No chain is newly promoted. External-review metadata is audit infrastructure only and cannot change chain maturity.
+No chain is newly promoted. A review receipt records an external review result only; even a valid cryptographic signature cannot promote a chain.
 
 ## Next offline gate
 
-Add a signed-or-detached review receipt format that can record an external review result without granting that receipt authority over chain promotion. Keep signatures optional and never claim authenticity without a real signing key/signature.
+Add detached-signature file CLI verification and reviewer-key trust metadata that distinguishes cryptographic authentication from reviewer identity/trust. Never equate a valid key signature with an approved or trusted reviewer unless that trust is separately configured.
 
 ## Workstation gate
 
