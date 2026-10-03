@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { createSourceTreeInventory, createCheckpointManifest } from '../src/core/checkpoint-manifest.js';
 import { verifyPackageLockIntegrity } from '../src/core/dependency-integrity.js';
 import { createExternalReviewBasis } from '../src/chains/review-basis.js';
@@ -12,7 +13,7 @@ function fixture() {
   const packageLockText = readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8');
   const dependency = verifyPackageLockIntegrity({ packageJsonText, packageLockText });
   assert.equal(dependency.ok, true);
-  const sourceInventory = createSourceTreeInventory(new URL('..', import.meta.url).pathname);
+  const sourceInventory = createSourceTreeInventory(fileURLToPath(new URL('..', import.meta.url)));
   const checkpointManifest = createCheckpointManifest({
     checkpoint: { ref: '0.6.40-dev', archive: 'omegavault-mvp-0.6.40-dev.zip', archiveSha256: '11'.repeat(32) },
     dependencyLock: dependency.binding,
