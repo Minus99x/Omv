@@ -1,38 +1,37 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.38-dev**
+Current development checkpoint: **0.6.39-dev**
 
-Archive filename: `omegavault-mvp-0.6.38-dev.zip`
-Sidecar filename: `omegavault-mvp-0.6.38-dev.checkpoint-manifest.json`
+Archive filename: `omegavault-mvp-0.6.39-dev.zip`
+Sidecar filename: `omegavault-mvp-0.6.39-dev.checkpoint-manifest.json`
 
 The archive SHA-256 is deliberately recorded only in the external sidecar manifest so the archive does not attempt to contain its own digest.
 
-## 0.6.38 delta
+## 0.6.39 delta
 
-- Added backend provenance-health and evidence-gap diagnostics for every chain in the capability catalog.
-- Separates provenance integrity from promotion eligibility: a chain may have healthy provenance while still having missing gates or blockers.
-- Reports unresolved refs, cross-wired refs, missing gates, insufficient-evidence gates and blockers independently.
-- Adds explicit-lineage diagnostics with semantics `cryptographic-parent-bindings-only`.
-- Version/timeline order is never treated as ancestry.
-- A claimed lineage ref must resolve to provenance containing an explicit valid parent-bundle SHA-256; fabricated lineage fails closed.
-- Added validated API envelope `omegavault.api.evidence-diagnostics.v1` at `/api/evidence-diagnostics`.
-- Added browser diagnostics with all/error/gap/clear filters and presentation-only sorting.
-- Browser diagnostics consume backend promotion state and never calculate readiness independently.
+- Every provenance record now explicitly exposes `parentBundleSha256`, using `null` when no cryptographic parent bundle is actually recorded.
+- Existing evidence was scanned for explicit parent-bundle lineage; no real parent-bundle digest is present in the current evidence set, so lineage remains **not recorded** rather than inferred.
+- Added deterministic `omegavault.provenance-integrity-audit.v1` snapshots covering capability, provenance, evidence-history and diagnostics state.
+- Audit snapshots are SHA-256 bound and revalidated against current backend state.
+- Added `npm run audit:provenance` / `scripts/export-provenance-audit.js` for local JSON export.
+- Added validated API envelope `omegavault.api.provenance-integrity-audit.v1` at `/api/provenance-audit`.
+- Browser can export the backend-validated audit JSON and cannot export an unvalidated audit.
+- Provenance details visibly distinguish a real parent digest from `Parent bundle: not recorded`.
 
 ## Verification
 
-- Evidence-diagnostics backend/API/browser/HTTP slice: **15/15 passed**.
-- Broad dependency-free offline regression: **280/280 passed**.
+- Provenance audit/export/provenance focused slice: **27/27 passed**.
+- Broad dependency-free offline regression: **295/295 passed**.
 - `npm run check`: **passed**.
-- Full suite: **280 passed / 9 workstation-gated files failed to load**, exactly the known missing pinned SDK/toolchain boundary.
+- Full suite: **295 passed / 9 workstation-gated files failed to load**, exactly the known missing pinned SDK/toolchain boundary.
 
 ## Promotion boundary
 
-No chain is newly promoted. Diagnostics describe provenance health and evidence gaps but do not change promotion eligibility.
+No chain is newly promoted. The audit describes current integrity/evidence state and cannot modify promotion eligibility.
 
 ## Next offline gate
 
-Add explicit parent-bundle provenance metadata only where an actual cryptographic parent binding can be recovered from existing evidence, and add checkpoint/provenance integrity summaries suitable for export. Do not synthesize missing lineage.
+Add export verification metadata suitable for external review, plus a deterministic operator audit index that can cross-reference audit SHA-256, evidence checkpoint history and checkpoint sidecar identity without embedding the archive's own digest inside itself.
 
 ## Workstation gate
 
