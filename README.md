@@ -1,4 +1,4 @@
-# OmegaVault MVP 0.6.19-dev
+# OmegaVault MVP 0.6.22-dev
 
 > Development branch built on the **completed 0.4.3 Sepolia recovery proof**. The proven 0.4.3 runtime remains intact while multichain mechanisms are built and tested offline. No new connector is promoted to live proof until its chain-specific gates pass.
 
@@ -146,6 +146,28 @@ See:
 npm run check
 npm test
 ```
+
+Detached external-review receipt signatures are verified independently from
+reviewer trust. A valid Ed25519 signature proves only that the supplied key
+authenticated the receipt. Reviewer trust requires a separately controlled
+`omegavault.reviewer-key-trust.v1` file:
+
+```bash
+npm run review:receipt:verify -- \
+  --receipt receipt.json \
+  --signature receipt.signature.json \
+  --public-key reviewer-public.pem
+
+npm run review:receipt:verify -- \
+  --receipt receipt.json \
+  --signature receipt.signature.json \
+  --public-key reviewer-public.pem \
+  --trust reviewer-trust.json \
+  --require-trusted-reviewer
+```
+
+Neither signature authentication nor reviewer trust has chain- or
+evidence-promotion authority.
 
 The full 0.6.16 development package currently passes **186 JavaScript tests** with zero failures plus **7/7 Aiken on-chain tests**. `npm run check` syntax-checks the existing JavaScript modules and verifies the pinned EVM/TRON artifacts. `npm run check:xrpl` verifies deterministic signer preimages, signatures and canonical multisigned-binary evidence. `npm run check:solana` verifies native-source hashes, exact PDA derivation and instruction/account-meta evidence without claiming Rust compilation. `npm run check:bitcoin` verifies the Bitcoin Core descriptor/PSBTv2 evidence. `npm run check:cardano` formats, tests and compiles the pinned Aiken Plutus V3 project, reapplies the non-deployable fixture parameters, verifies script identities/addresses, validates the epoch-316 protocol snapshot, and checks deterministic signed-size, fee, minimum-ADA, collateral and zero-budget Ogmios evaluation-request evidence while preserving the independent-node live-construction block.
 

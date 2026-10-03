@@ -3,6 +3,7 @@ import { evidenceDigest } from './evidence.js';
 
 const SHA256 = /^[0-9a-f]{64}$/i;
 const OUTCOMES = new Set(['verified', 'verified-with-notes', 'rejected']);
+const TRUST_STATUSES = new Set(['trusted', 'untrusted', 'revoked']);
 
 function text(value, label) {
   const normalized = typeof value === 'string' ? value.trim() : '';
@@ -21,10 +22,10 @@ function notesList(value = []) {
   return Object.freeze(value.map((item, index) => text(item, `notes[${index}]`)));
 }
 
-function isoTimestamp(value) {
-  const normalized = text(value, 'reviewedAt');
+function isoTimestamp(value, label = 'reviewedAt') {
+  const normalized = text(value, label);
   const time = Date.parse(normalized);
-  if (!Number.isFinite(time)) throw new TypeError('reviewedAt must be an ISO-compatible timestamp.');
+  if (!Number.isFinite(time)) throw new TypeError(`${label} must be an ISO-compatible timestamp.`);
   return new Date(time).toISOString();
 }
 
@@ -82,7 +83,7 @@ function asPublicKey(publicKey) {
   return publicKey?.type === 'public' ? publicKey : createPublicKey(publicKey);
 }
 
-function publicKeyFingerprint(publicKey) {
+export function reviewerPublicKeyFingerprint(publicKey) {
   const key = asPublicKey(publicKey);
   const der = key.export({ type: 'spki', format: 'der' });
   return createHash('sha256').update(der).digest('hex');
@@ -98,7 +99,7 @@ export function createDetachedReviewReceiptSignature({ receipt, privateKey, publ
     schema: 'omegavault.external-review-receipt-signature.v1',
     algorithm: 'ed25519',
     receiptSha256: receipt.sha256,
-    publicKeySpkiSha256: publicKeyFingerprint(resolvedPublicKey),
+    publicKeySpkiSha256: reviewerPublicKeyFingerprint(resolvedPublicKey),
     signatureBase64: signatureBytes.toString('base64'),
     authority: Object.freeze({
       chainPromotion: false,
@@ -131,7 +132,7 @@ export function verifyDetachedReviewReceiptSignature(signature, receipt, publicK
   if (!publicKey) errors.push('A public key is required to authenticate the detached signature.');
   if (publicKey && typeof signature.publicKeySpkiSha256 === 'string') {
     try {
-      if (publicKeyFingerprint(publicKey) !== signature.publicKeySpkiSha256) errors.push('Public key fingerprint does not match the detached signature.');
+      if (reviewerPublicKeyFingerprint(publicKey) !== signature.publicKeySpkiSha256) errors.push('Public key fingerprint does not match the detached signature.');
     } catch (error) { errors.push(`Public key is invalid: ${error.message}`); }
   }
   if (publicKey && typeof signature.signatureBase64 === 'string' && receipt?.sha256 && errors.length === 0) {
@@ -141,4 +142,91 @@ export function verifyDetachedReviewReceiptSignature(signature, receipt, publicK
     } catch (error) { errors.push(`Detached signature verification failed: ${error.message}`); }
   }
   return Object.freeze({ ok: errors.length === 0, authenticated: errors.length === 0, errors: Object.freeze(errors) });
+}
+
+export function createReviewerKeyTrustMetadata({ reviewer, publicKey, status, configuredBy, configuredAt }) {
+  const normalizedStatus = text(status, 'status');
+  if (!TRUST_STATUSES.has(normalizedStatus)) throw new TypeError(`Unsupported reviewer-key trust status: ${normalizedStatus}`);
+  const core = Object.freeze({
+    schema: 'omegavault.reviewer-key-trust.v1',
+    reviewer: text(reviewer, 'reviewer'),
+    publicKeySpkiSha256: reviewerPublicKeyFingerprint(publicKey),
+    status: normalizedStatus,
+    configuredBy: text(configuredBy, 'configuredBy'),
+    configuredAt: isoTimestamp(configuredAt, 'configuredAt'),
+    scope: 'external-review-receipt-signer',
+    authority: Object.freeze({
+      chainPromotion: false,
+      evidencePromotion: false,
+      scope: 'reviewer-key-trust-only'
+    })
+  });
+  return Object.freeze({ ...core, sha256: evidenceDigest(core) });
+}
+
+export function verifyReviewerKeyTrustMetadata(metadata) {
+  const errors = [];
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return Object.freeze({ ok: false, errors: Object.freeze(['Reviewer-key trust metadata must be an object.']) });
+  }
+  if (metadata.schema !== 'omegavault.reviewer-key-trust.v1') errors.push('Unexpected reviewer-key trust schema.');
+  if (typeof metadata.reviewer !== 'string' || !metadata.reviewer.trim()) errors.push('Reviewer-key trust reviewer is required.');
+  if (typeof metadata.publicKeySpkiSha256 !== 'string' || !SHA256.test(metadata.publicKeySpkiSha256)) errors.push('Reviewer-key fingerprint is invalid.');
+  if (!TRUST_STATUSES.has(metadata.status)) errors.push('Reviewer-key trust status is invalid.');
+  if (typeof metadata.configuredBy !== 'string' || !metadata.configuredBy.trim()) errors.push('Reviewer-key trust configuration authority is required.');
+  if (typeof metadata.configuredAt !== 'string' || !Number.isFinite(Date.parse(metadata.configuredAt)) || new Date(metadata.configuredAt).toISOString() !== metadata.configuredAt) errors.push('Reviewer-key trust timestamp must be canonical ISO.');
+  if (metadata.scope !== 'external-review-receipt-signer') errors.push('Reviewer-key trust scope is invalid.');
+  if (metadata.authority?.chainPromotion !== false || metadata.authority?.evidencePromotion !== false || metadata.authority?.scope !== 'reviewer-key-trust-only') {
+    errors.push('Reviewer-key trust metadata must have no chain or evidence promotion authority.');
+  }
+  if (typeof metadata.sha256 !== 'string' || !SHA256.test(metadata.sha256)) errors.push('Reviewer-key trust SHA-256 is invalid.');
+  else {
+    const { sha256: digest, ...unsigned } = metadata;
+    if (evidenceDigest(unsigned) !== digest) errors.push('Reviewer-key trust digest mismatch.');
+  }
+  return Object.freeze({ ok: errors.length === 0, errors: Object.freeze(errors) });
+}
+
+export function assessReviewerKeyTrust({ receipt, signature, publicKey, trustMetadata = null }) {
+  const signatureVerification = verifyDetachedReviewReceiptSignature(signature, receipt, publicKey);
+  if (!trustMetadata) {
+    return Object.freeze({
+      ok: signatureVerification.ok,
+      signatureAuthenticated: signatureVerification.authenticated,
+      trustConfigured: false,
+      trustMetadataValid: false,
+      reviewerIdentityMatched: false,
+      reviewerTrusted: false,
+      trustStatus: 'not-configured',
+      decision: signatureVerification.authenticated ? 'authenticated-untrusted' : 'unauthenticated',
+      errors: signatureVerification.errors
+    });
+  }
+
+  const trustVerification = verifyReviewerKeyTrustMetadata(trustMetadata);
+  const errors = [...signatureVerification.errors, ...trustVerification.errors.map(error => `Trust: ${error}`)];
+  let keyMatched = false;
+  try {
+    keyMatched = reviewerPublicKeyFingerprint(publicKey) === trustMetadata.publicKeySpkiSha256
+      && signature?.publicKeySpkiSha256 === trustMetadata.publicKeySpkiSha256;
+  } catch (error) { errors.push(`Trust: public key is invalid: ${error.message}`); }
+  const reviewerIdentityMatched = receipt?.reviewer === trustMetadata.reviewer;
+  if (trustVerification.ok && !keyMatched) errors.push('Trust: configured reviewer key does not match the authenticated signature key.');
+  if (trustVerification.ok && !reviewerIdentityMatched) errors.push('Trust: receipt reviewer does not match the configured reviewer identity.');
+  const reviewerTrusted = signatureVerification.authenticated
+    && trustVerification.ok
+    && keyMatched
+    && reviewerIdentityMatched
+    && trustMetadata.status === 'trusted';
+  return Object.freeze({
+    ok: errors.length === 0,
+    signatureAuthenticated: signatureVerification.authenticated,
+    trustConfigured: true,
+    trustMetadataValid: trustVerification.ok,
+    reviewerIdentityMatched,
+    reviewerTrusted,
+    trustStatus: trustVerification.ok ? trustMetadata.status : 'invalid',
+    decision: reviewerTrusted ? 'trusted-authenticated' : (signatureVerification.authenticated ? 'authenticated-untrusted' : 'unauthenticated'),
+    errors: Object.freeze(errors)
+  });
 }
