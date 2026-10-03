@@ -38,9 +38,13 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
     })
   }),
   stellar: Object.freeze({
-    stage: 'scaffold',
-    blockers: ref('Pinned @stellar/stellar-sdk 17.1.0 is absent in the stripped workspace; run npm ci on a workstation, then verify the native-recovery suite.'),
-    notes: ref('XLM/Stellar remains active; the blocker is workspace dependency availability, not protocol abandonment.')
+    stage: 'offline-verified',
+    blockers: ref('A complete Stellar Testnet execution proof is still required: too-early rejection, heartbeat reset, eligible N-of-N execution, fee-bump submission, rescue-balance verification, failed-operation handling and digest-bound evidence export.'),
+    notes: ref(
+      'Pinned @stellar/stellar-sdk 17.1.0 is restored and verified in clean CI and on Windows.',
+      'Exact XDR construction/round-trip, preAuthTx binding, account-policy preflight and external contact-signature verification are covered offline.',
+      'Offline verification does not satisfy public-testnet gates or promote the connector.'
+    )
   }),
   bitcoin: Object.freeze({
     stage: 'reduced-semantics',
