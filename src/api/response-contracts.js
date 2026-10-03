@@ -7,6 +7,7 @@ import { createEvidenceHistoryCatalog } from '../chains/evidence-history.js';
 import { createEvidenceDiagnosticsCatalog } from '../chains/evidence-diagnostics.js';
 import { verifyProvenanceIntegrityAudit } from '../chains/provenance-audit.js';
 import { verifyExternalReviewBasis } from '../chains/review-basis.js';
+import { verifyOperatorAuditIndex } from '../chains/operator-audit-index.js';
 import { getChainCapabilityContract } from '../chains/capability-catalog.js';
 
 const evidenceRank = new Map(EVIDENCE_LEVELS.map((level, index) => [level, index]));
@@ -312,4 +313,22 @@ export function validateExternalReviewBasisResponse(basis) {
 export function createValidatedExternalReviewBasisResponse(basis) {
   const validation = validateExternalReviewBasisResponse(basis);
   return Object.freeze({ schema: 'omegavault.api.external-review-basis.v1', data: basis, validation });
+}
+
+
+export function validateOperatorAuditIndexResponse(index) {
+  plainObject(index, 'operatorAuditIndex');
+  const verification = verifyOperatorAuditIndex(index);
+  if (!verification.ok) throw new Error(`Invalid operator audit index: ${verification.errors.join('; ')}`);
+  plainObject(index.evidenceHistory, 'operatorAuditIndex.evidenceHistory');
+  plainObject(index.lineageRecovery, 'operatorAuditIndex.lineageRecovery');
+  if (index.externalCheckpointIdentity !== 'attached-after-archive-seal') throw new Error('Unexpected operator audit-index external checkpoint identity semantics.');
+  if (!['not-recorded','partial','complete'].includes(index.lineageRecovery.status)) throw new Error('Unknown operator audit-index lineage recovery status.');
+  if (index.promotionAuthority !== false) throw new Error('Operator audit index must not confer promotion authority.');
+  return Object.freeze({ ok:true, sha256:index.sha256, checkpointRef:index.checkpointRef });
+}
+
+export function createValidatedOperatorAuditIndexResponse(index) {
+  const validation = validateOperatorAuditIndexResponse(index);
+  return Object.freeze({ schema:'omegavault.api.operator-audit-index.v1', data:index, validation });
 }
