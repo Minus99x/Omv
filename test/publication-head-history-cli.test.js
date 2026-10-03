@@ -156,3 +156,36 @@ test('publication verifier distinguishes authenticated publisher from separately
   assert.equal(secretRejected.status,1);
   assert.match(secretRejected.stderr,/secret input .* forbidden/i);
 });
+
+test('publication verifier requires complete publisher-trust configuration when trust is required',()=> {
+  const missingTrust=run('scripts/verify-publication-head-receipt.js',[
+    '--receipt','missing.json',
+    '--anchor-history','missing-history.json',
+    '--anchor-history-snapshot','missing-snapshot.json',
+    '--require-trusted-publisher'
+  ]);
+  assert.equal(missingTrust.status,2);
+  assert.match(missingTrust.stderr,/Usage:/);
+
+  const missingSignature=run('scripts/verify-publication-head-receipt.js',[
+    '--receipt','missing.json',
+    '--anchor-history','missing-history.json',
+    '--anchor-history-snapshot','missing-snapshot.json',
+    '--publisher-trust-history','missing-trust.json',
+    '--publisher-trust-history-snapshot','missing-trust-snapshot.json',
+    '--require-trusted-publisher'
+  ]);
+  assert.equal(missingSignature.status,2);
+  assert.match(missingSignature.stderr,/Usage:/);
+
+  const halfTrust=run('scripts/verify-publication-head-receipt.js',[
+    '--receipt','missing.json',
+    '--anchor-history','missing-history.json',
+    '--anchor-history-snapshot','missing-snapshot.json',
+    '--signature','missing-signature.json',
+    '--public-key','missing-key.pem',
+    '--publisher-trust-history','missing-trust.json'
+  ]);
+  assert.equal(halfTrust.status,2);
+  assert.match(halfTrust.stderr,/Usage:/);
+});
