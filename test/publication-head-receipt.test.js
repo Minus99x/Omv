@@ -81,3 +81,23 @@ test('detached publisher authentication is valid only for the exact receipt and 
   const elevated=structuredClone(signature); elevated.authority.reviewerTrust=true; elevated.sha256=evidenceDigest(Object.fromEntries(Object.entries(elevated).filter(([key])=>key!=='sha256')));
   assert.equal(verifyDetachedPublicationHeadReceiptSignature(elevated,receipt,publisherKey.publicKey).authenticated,false);
 });
+
+test('publisher trust additions do not mutate the canonical base publication receipt schema', () => {
+  const {history,snapshot}=fixture();
+  const receipt=createPublicationHeadReceipt({
+    history,
+    historySnapshot:snapshot,
+    publisher:'release-registry',
+    publishedAt:'2026-10-03T21:40:00.000Z'
+  });
+
+  assert.deepEqual(Object.keys(receipt).sort(),[
+    'anchorHistory','authority','publishedAt','publisher','schema','sha256','signatureStatus'
+  ].sort());
+  assert.deepEqual(Object.keys(receipt.authority).sort(),[
+    'anchoringAuthorityTrust','chainMaturity','chainPromotion','deploymentAuthority',
+    'evidencePromotion','reviewerTrust','scope','walletAuthority'
+  ].sort());
+  assert.equal(Object.prototype.hasOwnProperty.call(receipt.authority,'publisherTrust'),false);
+  assert.equal(verifyPublicationHeadReceipt(receipt,{history,historySnapshot:snapshot}).ok,true);
+});
