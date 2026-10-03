@@ -1,34 +1,34 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.45-dev**
+Current development checkpoint: **0.6.46-dev**
 
-Archive filename: `omegavault-mvp-0.6.45-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.45-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.45-dev.review-index.json`
+Archive filename: `omegavault-mvp-0.6.46-dev.zip`
+Checkpoint sidecar filename: `omegavault-mvp-0.6.46-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.46-dev.review-index.json`
 
-## 0.6.45 delta
+## 0.6.46 delta
 
-- Added append-only `omegavault.reviewer-trust-policy-anchor-history-entry.v1` records.
-- Every entry binds the exact prior entry digest and prior policy-anchor digest.
-- Added a head snapshot binding entry count, current anchor, checkpoint and trust-policy snapshot.
-- Receipt verification can require the supplied anchor to be the current lineage head.
-- Valid-prefix rollback, reordered/skipped lineage, duplicates, reviewer changes and non-increasing timestamps fail closed.
-- Public append/verify CLIs refuse output overwrite and accept no private-key material.
+- Added unsigned publication-head receipts binding the exact verified anchor-history snapshot and head.
+- Added optional detached Ed25519 publisher authentication scoped only to the publication receipt.
+- Stale histories, rolled-back snapshots, substituted heads, publisher tampering, wrong keys and altered authority fail closed.
+- Creation tooling refuses publisher private-key, secret-key, seed and key-output arguments and protects existing output.
+- Publisher authentication remains separate from reviewer trust, anchoring-authority trust, chain maturity, evidence promotion, deployment authority and wallet authority.
+- Removed one stale `npm run check` reference to a nonexistent XRPL source file; no XRPL behavior changed.
 
 ## Verification
 
-- Focused review-receipt/trust/anchor slice: **31/31 passed**.
-- Broad dependency-free offline regression: **338/338 passed**.
+- Focused review-receipt/trust/anchor/publication slice: **36/36 passed**.
+- Broad dependency-free offline regression: **292/292 passed**.
 - `npm run check`: **passed**.
-- Full suite: **338 passed / 9 known workstation-gated files failed to load**.
+- Full discovery: **292 passed / 11 dependency-gated files failed to load / 3 pre-existing operator-audit mismatches remain at the starting head**.
 
 ## Promotion boundary
 
-No chain is newly promoted. Anchor lineage remains audit metadata only and cannot satisfy chain promotion gates.
+No chain is newly promoted. Publication receipts remain audit metadata only and cannot satisfy trust, chain, deployment or wallet gates.
 
 ## Next offline gate
 
-Bind an independently controlled publication receipt to the current anchor-history snapshot so repository-history access alone cannot silently replace the advertised lineage head.
+Add explicit successor lineage for independently authenticated publication receipts so an older valid publication record cannot be replayed as the current publication head when the current publication history is supplied.
 
 ## Workstation gate
 

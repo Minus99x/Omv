@@ -241,6 +241,30 @@ verification accepts `--trust-policy-anchor-history` plus
 anchor. These files remain public integrity metadata with no promotion
 authority.
 
+The current anchor-history head can also be advertised through an independently
+controlled, unsigned publication receipt:
+
+```bash
+npm run review:publication -- \
+  --anchor-history reviewer-trust-policy-anchor-history.json \
+  --anchor-history-snapshot reviewer-trust-policy-anchor-history.snapshot.json \
+  --publisher independent-release-registry \
+  --published-at 2026-10-03T13:00:00.000Z \
+  --output anchor-history.publication.json
+
+npm run review:publication:verify -- \
+  --receipt anchor-history.publication.json \
+  --anchor-history reviewer-trust-policy-anchor-history.json \
+  --anchor-history-snapshot reviewer-trust-policy-anchor-history.snapshot.json
+```
+
+The creation command refuses publisher private-key, secret-key, seed and key
+output arguments. Optional Ed25519 publisher authentication is a detached
+record verified with `--signature` and `--public-key`; it authenticates only
+the exact publication receipt. Neither the unsigned receipt nor detached
+authentication grants reviewer trust, anchoring-authority trust, chain
+maturity, evidence promotion, deployment authority or wallet authority.
+
 The full 0.6.16 development package currently passes **186 JavaScript tests** with zero failures plus **7/7 Aiken on-chain tests**. `npm run check` syntax-checks the existing JavaScript modules and verifies the pinned EVM/TRON artifacts. `npm run check:xrpl` verifies deterministic signer preimages, signatures and canonical multisigned-binary evidence. `npm run check:solana` verifies native-source hashes, exact PDA derivation and instruction/account-meta evidence without claiming Rust compilation. `npm run check:bitcoin` verifies the Bitcoin Core descriptor/PSBTv2 evidence. `npm run check:cardano` formats, tests and compiles the pinned Aiken Plutus V3 project, reapplies the non-deployable fixture parameters, verifies script identities/addresses, validates the epoch-316 protocol snapshot, and checks deterministic signed-size, fee, minimum-ADA, collateral and zero-budget Ogmios evaluation-request evidence while preserving the independent-node live-construction block.
 
 ## Important limitations
