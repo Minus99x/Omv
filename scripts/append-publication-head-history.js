@@ -41,3 +41,4 @@ try {
   process.stderr.write(`Publication-history append failed: ${error.message}\n`);
   process.exitCode=1;
 }
+

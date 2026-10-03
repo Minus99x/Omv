@@ -15,3 +15,4 @@ try {
   writeFileSync(resolve(outputPath),`${JSON.stringify(receipt,null,2)}\n`,{encoding:'utf8',flag:'wx'});
   process.stdout.write(`${JSON.stringify({output:resolve(outputPath),sha256:receipt.sha256,headAnchorSha256:receipt.anchorHistory.headAnchorSha256,signatureStatus:'unsigned',publisherSecretHandled:false,promotionAuthority:false},null,2)}\n`);
 } catch(error) { process.stderr.write(`Publication-head receipt creation failed: ${error.message}\n`); process.exitCode=1; }
+

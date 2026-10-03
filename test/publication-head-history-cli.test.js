@@ -105,3 +105,4 @@ test('publication receipt verifier can require the supplied receipt to be curren
   assert.equal(JSON.parse(rejected.stdout).publisherAuthenticated,true);
   assert.equal(JSON.parse(rejected.stdout).publicationReceiptCurrent,false);
 });
+

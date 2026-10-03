@@ -10,3 +10,4 @@ The 0.6.46 checkpoint binds an independently controlled publication record to th
 - Neither the base receipt nor its detached authentication grants reviewer trust, anchoring-authority trust, chain maturity, evidence promotion, deployment authority or wallet authority.
 
 The next gate is append-only publication-receipt successor lineage to make valid older publication records distinguishable from the current publication head when current publication history is supplied.
+

@@ -5,6 +5,10 @@ import { verifyReviewerTrustPolicyAnchorHistory, verifyReviewerTrustPolicyAnchor
 const SHA256 = /^[0-9a-f]{64}$/i;
 
 function validDigest(value) { return typeof value === 'string' && SHA256.test(value); }
+function exactKeys(value, expected) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
+}
 function requiredText(value, label) {
   const normalized = typeof value === 'string' ? value.trim() : '';
   if (!normalized) throw new TypeError(`${label} is required.`);
@@ -73,6 +77,8 @@ export function createPublicationHeadReceipt({ history, historySnapshot, publish
 export function verifyPublicationHeadReceipt(receipt, { history, historySnapshot }) {
   const errors = [];
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) return Object.freeze({ ok:false, current:false, errors:Object.freeze(['Publication receipt must be an object.']) });
+  if (!exactKeys(receipt,['schema','publisher','publishedAt','anchorHistory','authority','signatureStatus','sha256'])) errors.push('Publication receipt fields are not canonical.');
+  if (!exactKeys(receipt.anchorHistory,['snapshotSha256','reviewer','entryCount','headEntrySha256','headAnchorSha256','checkpointRef','trustPolicySnapshotSha256'])) errors.push('Publication receipt anchorHistory fields are not canonical.');
   if (receipt.schema !== 'omegavault.reviewer-trust-policy-anchor-history-publication-receipt.v1') errors.push('Unexpected publication-receipt schema.');
   if (typeof receipt.publisher !== 'string' || !receipt.publisher.trim()) errors.push('Publication receipt publisher is required.');
   if (typeof receipt.publishedAt !== 'string' || !Number.isFinite(Date.parse(receipt.publishedAt)) || new Date(receipt.publishedAt).toISOString() !== receipt.publishedAt) errors.push('Publication receipt timestamp must be canonical ISO.');
@@ -117,6 +123,7 @@ export function createDetachedPublicationHeadReceiptSignature({ receipt, private
 export function verifyDetachedPublicationHeadReceiptSignature(signature, receipt, publicKey) {
   const errors = [];
   if (!signature || typeof signature !== 'object' || Array.isArray(signature)) return Object.freeze({ ok:false, authenticated:false, errors:Object.freeze(['Detached publisher signature must be an object.']) });
+  if (!exactKeys(signature,['schema','algorithm','publisher','publicationReceiptSha256','publicKeySpkiSha256','signatureBase64','authority','sha256'])) errors.push('Detached publisher-signature fields are not canonical.');
   if (signature.schema !== 'omegavault.reviewer-trust-policy-anchor-history-publication-signature.v1') errors.push('Unexpected detached publisher-signature schema.');
   if (signature.algorithm !== 'ed25519') errors.push('Detached publisher signature algorithm must be ed25519.');
   if (signature.publisher !== receipt?.publisher) errors.push('Detached publisher identity does not match the publication receipt.');

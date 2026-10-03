@@ -36,3 +36,4 @@ try {
   process.stderr.write(`Publication-history verification failed: ${error.message}\n`);
   process.exitCode=1;
 }
+

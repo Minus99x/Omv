@@ -79,3 +79,4 @@ try {
   process.stderr.write(`Publication-head receipt verification failed: ${error.message}\n`);
   process.exitCode=1;
 }
+

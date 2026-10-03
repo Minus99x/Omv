@@ -52,6 +52,22 @@ test('stale histories, substituted heads, publisher tampering and altered author
   assert.equal(verifyPublicationHeadReceipt(elevated,{history,historySnapshot:snapshot}).ok,false);
 });
 
+test('publication receipt and detached signature reject non-canonical extra fields', () => {
+  const { history, snapshot } = fixture();
+  const receipt=createPublicationHeadReceipt({history,historySnapshot:snapshot,publisher:'release-registry',publishedAt:'2026-10-03T14:05:00.000Z'});
+  const extraReceipt=structuredClone(receipt);
+  extraReceipt.anchorHistory.unexpected='ambiguous';
+  extraReceipt.sha256=evidenceDigest(Object.fromEntries(Object.entries(extraReceipt).filter(([key])=>key!=='sha256')));
+  assert.equal(verifyPublicationHeadReceipt(extraReceipt,{history,historySnapshot:snapshot}).ok,false);
+
+  const key=generateKeyPairSync('ed25519');
+  const signature=createDetachedPublicationHeadReceiptSignature({receipt,privateKey:key.privateKey});
+  const extraSignature=structuredClone(signature);
+  extraSignature.unexpected=false;
+  extraSignature.sha256=evidenceDigest(Object.fromEntries(Object.entries(extraSignature).filter(([field])=>field!=='sha256')));
+  assert.equal(verifyDetachedPublicationHeadReceiptSignature(extraSignature,receipt,key.publicKey).authenticated,false);
+});
+
 test('detached publisher authentication is valid only for the exact receipt and public key', () => {
   const {history,snapshot}=fixture();
   const receipt=createPublicationHeadReceipt({history,historySnapshot:snapshot,publisher:'registry',publishedAt:'2026-10-03T10:03:00.000Z'});

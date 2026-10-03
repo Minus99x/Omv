@@ -59,3 +59,4 @@ test('verify CLI authenticates only an exact detached publisher signature', () =
   const wrongKey=generateKeyPairSync('ed25519').publicKey.export({type:'spki',format:'pem'}); fs.writeFileSync(files.publicKey,wrongKey);
   assert.equal(run('scripts/verify-publication-head-receipt.js',args).status,1);
 });
+

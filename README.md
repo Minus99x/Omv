@@ -265,6 +265,29 @@ the exact publication receipt. Neither the unsigned receipt nor detached
 authentication grants reviewer trust, anchoring-authority trust, chain
 maturity, evidence promotion, deployment authority or wallet authority.
 
+Successive publication receipts can be recorded in a separate append-only
+history. This distinguishes an authenticated receipt from the receipt currently
+advertised by the publication lineage:
+
+```bash
+npm run review:publication:append -- \
+  --receipt anchor-history.publication.json \
+  --history publication-history.json \
+  --output publication-history.next.json \
+  --snapshot-output publication-history.snapshot.next.json
+
+npm run review:publication:history:verify -- \
+  --receipt anchor-history.publication.json \
+  --history publication-history.next.json \
+  --history-snapshot publication-history.snapshot.next.json
+```
+
+`review:publication:verify` also accepts `--publication-history` and
+`--publication-history-snapshot`. With those supplied, an older receipt fails
+as non-current even if its detached Ed25519 signature remains valid. Lineage
+and signature authentication still confer no publisher trust or chain-related
+authority.
+
 The full 0.6.16 development package currently passes **186 JavaScript tests** with zero failures plus **7/7 Aiken on-chain tests**. `npm run check` syntax-checks the existing JavaScript modules and verifies the pinned EVM/TRON artifacts. `npm run check:xrpl` verifies deterministic signer preimages, signatures and canonical multisigned-binary evidence. `npm run check:solana` verifies native-source hashes, exact PDA derivation and instruction/account-meta evidence without claiming Rust compilation. `npm run check:bitcoin` verifies the Bitcoin Core descriptor/PSBTv2 evidence. `npm run check:cardano` formats, tests and compiles the pinned Aiken Plutus V3 project, reapplies the non-deployable fixture parameters, verifies script identities/addresses, validates the epoch-316 protocol snapshot, and checks deterministic signed-size, fee, minimum-ADA, collateral and zero-budget Ogmios evaluation-request evidence while preserving the independent-node live-construction block.
 
 ## Important limitations

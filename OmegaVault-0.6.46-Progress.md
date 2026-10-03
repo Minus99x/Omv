@@ -24,3 +24,4 @@ The base publication receipt remains unsigned. Detached publisher authentication
 ## Next priority
 
 Add append-only successor lineage for publication receipts so an older validly authenticated publication record cannot be replayed as the current publication head when current publication history is available.
+

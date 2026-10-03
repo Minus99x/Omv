@@ -3,6 +3,10 @@ import { evidenceDigest } from './evidence.js';
 const SHA256 = /^[0-9a-f]{64}$/i;
 
 function validDigest(value) { return typeof value === 'string' && SHA256.test(value); }
+function exactKeys(value, expected) {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    && JSON.stringify(Object.keys(value).sort()) === JSON.stringify([...expected].sort());
+}
 
 function noAuthority(authority, scope) {
   const expectedKeys=[
@@ -32,6 +36,8 @@ function noAuthority(authority, scope) {
 function verifyPublicationReceiptSelf(receipt) {
   const errors = [];
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) return Object.freeze({ ok:false, errors:Object.freeze(['Publication receipt must be an object.']) });
+  if (!exactKeys(receipt,['schema','publisher','publishedAt','anchorHistory','authority','signatureStatus','sha256'])) errors.push('Publication receipt fields are not canonical.');
+  if (!exactKeys(receipt.anchorHistory,['snapshotSha256','reviewer','entryCount','headEntrySha256','headAnchorSha256','checkpointRef','trustPolicySnapshotSha256'])) errors.push('Publication receipt anchorHistory fields are not canonical.');
   if (receipt.schema !== 'omegavault.reviewer-trust-policy-anchor-history-publication-receipt.v1') errors.push('Unexpected publication-receipt schema.');
   if (!validDigest(receipt.sha256)) errors.push('Publication-receipt SHA-256 is invalid.');
   else {
@@ -103,6 +109,7 @@ export function createPublicationHeadHistoryEntry({ receipt, previousEntry = nul
 export function verifyPublicationHeadHistoryEntry(entry) {
   const errors = [];
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return Object.freeze({ ok:false, errors:Object.freeze(['Publication-history entry must be an object.']) });
+  if (!exactKeys(entry,['schema','sequence','publisher','publicationReceiptSha256','anchorHistorySnapshotSha256','headEntrySha256','headAnchorSha256','checkpointRef','previousEntrySha256','previousPublicationReceiptSha256','publishedAt','authority','sha256'])) errors.push('Publication-history entry fields are not canonical.');
   if (entry.schema !== 'omegavault.reviewer-trust-policy-publication-history-entry.v1') errors.push('Unexpected publication-history entry schema.');
   if (!Number.isSafeInteger(entry.sequence) || entry.sequence < 1) errors.push('Publication-history sequence must be a positive safe integer.');
   if (typeof entry.publisher !== 'string' || !entry.publisher.trim()) errors.push('Publication-history publisher is required.');
@@ -180,6 +187,7 @@ export function createPublicationHeadHistorySnapshot(history) {
 export function verifyPublicationHeadHistorySnapshot(snapshot, history) {
   const errors = [];
   if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return Object.freeze({ ok:false, errors:Object.freeze(['Publication-history snapshot must be an object.']) });
+  if (!exactKeys(snapshot,['schema','publisher','entryCount','headEntrySha256','headPublicationReceiptSha256','currentAnchorHistorySnapshotSha256','currentHeadAnchorSha256','currentCheckpointRef','authority','sha256'])) errors.push('Publication-history snapshot fields are not canonical.');
   if (snapshot.schema !== 'omegavault.reviewer-trust-policy-publication-history-snapshot.v1') errors.push('Unexpected publication-history snapshot schema.');
   if (!validDigest(snapshot.sha256)) errors.push('Publication-history snapshot SHA-256 is invalid.');
   else {

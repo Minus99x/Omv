@@ -102,3 +102,21 @@ test('duplicate and non-increasing publication receipts cannot be appended', () 
   older.sha256=evidenceDigest(Object.fromEntries(Object.entries(older).filter(([key])=>key!=='sha256')));
   assert.throws(()=>createPublicationHeadHistoryEntry({receipt:older,previousEntry:firstEntry}),/increase strictly/i);
 });
+
+test('publication lineage rejects non-canonical receipt, entry and snapshot fields', () => {
+  const {first,firstEntry,history,snapshot}=fixture();
+  const extraReceipt=structuredClone(first);
+  extraReceipt.anchorHistory.unexpected='ambiguous';
+  extraReceipt.sha256=evidenceDigest(Object.fromEntries(Object.entries(extraReceipt).filter(([key])=>key!=='sha256')));
+  assert.throws(()=>createPublicationHeadHistoryEntry({receipt:extraReceipt}),/not canonical/i);
+
+  const extraEntry=structuredClone(firstEntry);
+  extraEntry.unexpected=false;
+  extraEntry.sha256=evidenceDigest(Object.fromEntries(Object.entries(extraEntry).filter(([key])=>key!=='sha256')));
+  assert.equal(verifyPublicationHeadHistory([extraEntry]).ok,false);
+
+  const extraSnapshot=structuredClone(snapshot);
+  extraSnapshot.unexpected=false;
+  extraSnapshot.sha256=evidenceDigest(Object.fromEntries(Object.entries(extraSnapshot).filter(([key])=>key!=='sha256')));
+  assert.equal(verifyPublicationHeadHistorySnapshot(extraSnapshot,history).ok,false);
+});
