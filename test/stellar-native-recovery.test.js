@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Keypair } from '@stellar/stellar-sdk';
+import { Keypair, TransactionBuilder } from '@stellar/stellar-sdk';
 import {
   assessRecoverySubmissionResult,
   buildRecoveryEnvelopeArtifact,
@@ -13,10 +13,12 @@ import {
   createSignerSetupPlan,
   estimateReserveImpact,
   validateRecoveryAccountSnapshot,
-  verifyRecoveryEnvelopeArtifact
+  verifyRecoveryEnvelopeArtifact,
+  verifySignedRecoveryEnvelopeArtifact
 } from '../src/chains/stellar/native-recovery.js';
 
-const G = n => Keypair.fromRawEd25519Seed(new Uint8Array(32).fill(n)).publicKey();
+const KP = n => Keypair.fromRawEd25519Seed(new Uint8Array(32).fill(n));
+const G = n => KP(n).publicKey();
 
 function recoveryPlan() {
   return createRecoveryEnvelopePlan({
@@ -159,4 +161,65 @@ test('an applied failed recovery consumes the one-time signer and requires a reb
   const rejected = assessRecoverySubmissionResult({ includedInLedger: false, successful: false, resultCode: 'txBAD_SEQ' });
   assert.equal(rejected.preAuthSignerConsumed, false);
   assert.match(rejected.action, /preflight/i);
+});
+
+
+test('Stellar signed recovery envelope verifies the exact configured contact signature set', () => {
+  const plan = recoveryPlan();
+  const artifact = buildRecoveryEnvelopeArtifact(plan);
+  const signed = TransactionBuilder.fromXdr(artifact.transactionXdr, plan.networkPassphrase);
+  signed.sign(KP(3), KP(4));
+  const result = verifySignedRecoveryEnvelopeArtifact({
+    plan,
+    artifact,
+    signedTransactionXdr:signed.toXdr()
+  });
+  assert.equal(result.valid, true, result.errors.join('; '));
+  assert.equal(result.exactSignatureSet, true);
+  assert.equal(result.signatureCount, 2);
+  assert.deepEqual(result.verifiedContactSigners, [G(3), G(4)]);
+});
+
+test('Stellar signed recovery verification rejects missing and extra signatures', () => {
+  const plan = recoveryPlan();
+  const artifact = buildRecoveryEnvelopeArtifact(plan);
+
+  const missing = TransactionBuilder.fromXdr(artifact.transactionXdr, plan.networkPassphrase);
+  missing.sign(KP(3));
+  const missingResult = verifySignedRecoveryEnvelopeArtifact({
+    plan, artifact, signedTransactionXdr:missing.toXdr()
+  });
+  assert.equal(missingResult.valid, false);
+  assert.ok(missingResult.errors.some(error => /missing or invalid/i.test(error)));
+
+  const extra = TransactionBuilder.fromXdr(artifact.transactionXdr, plan.networkPassphrase);
+  extra.sign(KP(3), KP(4), KP(8));
+  const extraResult = verifySignedRecoveryEnvelopeArtifact({
+    plan, artifact, signedTransactionXdr:extra.toXdr()
+  });
+  assert.equal(extraResult.valid, false);
+  assert.ok(extraResult.errors.some(error => /exactly 2 contact signature/i.test(error)));
+  assert.ok(extraResult.errors.some(error => /unknown, duplicate or otherwise unapproved/i.test(error)));
+});
+
+test('Stellar signed recovery verification rejects a correctly signed substituted transaction', () => {
+  const originalPlan = recoveryPlan();
+  const originalArtifact = buildRecoveryEnvelopeArtifact(originalPlan);
+  const substitutedPlan = createRecoveryEnvelopePlan({
+    vaultAccount:G(1), rescueDestination:G(2), currentSequence:'1000', inactivitySeconds:2592000,
+    contacts:[G(3), G(4)], threshold:2,
+    assets:['native', { code:'USDC', issuer:G(6) }],
+    amounts:{ native:'11', [`USDC:${G(6)}`]:'20.5' }
+  });
+  const substitutedArtifact = buildRecoveryEnvelopeArtifact(substitutedPlan);
+  const signed = TransactionBuilder.fromXdr(substitutedArtifact.transactionXdr, substitutedPlan.networkPassphrase);
+  signed.sign(KP(3), KP(4));
+
+  const result = verifySignedRecoveryEnvelopeArtifact({
+    plan:originalPlan,
+    artifact:originalArtifact,
+    signedTransactionXdr:signed.toXdr()
+  });
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some(error => /hash does not match/i.test(error)));
 });
