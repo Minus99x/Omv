@@ -189,3 +189,16 @@ test('publication verifier requires complete publisher-trust configuration when 
   assert.equal(halfTrust.status,2);
   assert.match(halfTrust.stderr,/Usage:/);
 });
+
+test('publication verifier explicitly rejects secret-bearing arguments',()=> {
+  for (const forbidden of ['private-key','secret-key','seed','key-output']) {
+    const result=run('scripts/verify-publication-head-receipt.js',[
+      '--receipt','missing.json',
+      '--anchor-history','missing-history.json',
+      '--anchor-history-snapshot','missing-snapshot.json',
+      `--${forbidden}`,'secret'
+    ]);
+    assert.equal(result.status,2);
+    assert.match(result.stderr,/secret input .* forbidden/i);
+  }
+});
