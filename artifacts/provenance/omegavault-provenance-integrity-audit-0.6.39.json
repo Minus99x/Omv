@@ -1,0 +1,211 @@
+{
+  "schema": "omegavault.provenance-integrity-audit.v1",
+  "semantics": {
+    "promotionAuthority": "backend-capability-contract-only",
+    "lineageAuthority": "explicit-cryptographic-parent-bindings-only",
+    "historyRelation": "evidence-checkpoint-order-not-source-ancestry"
+  },
+  "inventory": {
+    "chainCount": 14,
+    "provenanceRecordCount": 10,
+    "evidenceCheckpointCount": 9,
+    "diagnosticsChainCount": 14
+  },
+  "integrity": {
+    "maturityCoverageOk": true,
+    "provenanceHealthyChainCount": 14,
+    "provenanceErrorCount": 0,
+    "evidenceGapChainCount": 14,
+    "promotionEligibleChainCount": 0
+  },
+  "lineageRecovery": {
+    "status": "not-recorded",
+    "recoveredBindingCount": 0,
+    "unrecordedRefCount": 10,
+    "recovered": [],
+    "unrecordedRefs": [
+      "0.6.21:SOLANA_TOKEN_SWEEP_SOURCE",
+      "0.6.22:XRPL_PERMISSION_DELEGATION",
+      "0.6.23:BITCOIN_FINALIZER_SOURCE",
+      "0.6.24:TRON_TVM_PROOF_HARDENING",
+      "0.6.25:CARDANO_EVIDENCE_BINDING",
+      "0.6.26:EVM_XDC_PROOF_BINDING",
+      "0.6.28:EVM_XDC_FINALITY_BINDING",
+      "0.6.28:XDC_NETWORK_FINALITY",
+      "0.6.30:PROOF_PROVENANCE_RESUME",
+      "0.6.31:REPRODUCIBLE_CHECKPOINT_MANIFEST"
+    ],
+    "note": "No existing provenance record contains an explicit cryptographic parent-bundle digest. No lineage is inferred from checkpoint/version order."
+  },
+  "chains": [
+    {
+      "chainId": "arbitrum",
+      "name": "Arbitrum",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 0,
+      "missingGateCount": 15,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "avalanche",
+      "name": "Avalanche C-Chain",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 0,
+      "missingGateCount": 15,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "base",
+      "name": "Base",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 0,
+      "missingGateCount": 15,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "bitcoin",
+      "name": "Bitcoin",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 1,
+      "missingGateCount": 12,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "bsc",
+      "name": "BNB Smart Chain",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 0,
+      "missingGateCount": 15,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "cardano",
+      "name": "Cardano",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 2,
+      "missingGateCount": 11,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "ethereum",
+      "name": "Ethereum",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 0,
+      "missingGateCount": 15,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "optimism",
+      "name": "OP Mainnet / OP Stack",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 0,
+      "missingGateCount": 15,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "polygon",
+      "name": "Polygon PoS",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 0,
+      "missingGateCount": 15,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "solana",
+      "name": "Solana",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 1,
+      "missingGateCount": 13,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "stellar",
+      "name": "Stellar",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 0,
+      "missingGateCount": 15,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "tron",
+      "name": "TRON",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 2,
+      "missingGateCount": 11,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "xdc",
+      "name": "XDC Network",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 4,
+      "missingGateCount": 10,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    },
+    {
+      "chainId": "xrpl",
+      "name": "XRP Ledger",
+      "promotionEligible": false,
+      "provenanceHealthy": true,
+      "severity": "gaps-present",
+      "evidenceRefCount": 1,
+      "missingGateCount": 13,
+      "insufficientEvidenceGateCount": 0,
+      "blockerCount": 1,
+      "explicitLineageStatus": "not-recorded"
+    }
+  ],
+  "sha256": "f4491a2bb7d711e5556939a788996eb9f4a3eb3bb50618eca4f4f84fde2a97ae"
+}
