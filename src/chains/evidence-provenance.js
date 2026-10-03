@@ -3,10 +3,11 @@ import { CHAIN_MATURITY_PROFILES } from './maturity-profiles.js';
 const SHA256 = /^[0-9a-f]{64}$/i;
 const REF_PATTERN = /^(0\.6\.\d+):([A-Z0-9_]+)$/;
 
-function record({ ref, archiveSha256, chainIds, scope, artifactPaths, summary }) {
+function record({ ref, archiveSha256, chainIds, scope, artifactPaths, summary, parentBundleSha256 = null }) {
   const match = String(ref).match(REF_PATTERN);
   if (!match) throw new TypeError(`Invalid evidence provenance ref: ${ref}`);
   if (!SHA256.test(String(archiveSha256))) throw new TypeError(`Invalid archive SHA-256 for ${ref}.`);
+  if (parentBundleSha256 != null && !SHA256.test(String(parentBundleSha256))) throw new TypeError(`Invalid parent bundle SHA-256 for ${ref}.`);
   if (!Array.isArray(chainIds) || chainIds.length < 1 || new Set(chainIds).size !== chainIds.length) throw new TypeError(`Invalid chainIds for ${ref}.`);
   if (!Array.isArray(artifactPaths) || artifactPaths.length < 1 || artifactPaths.some(path => typeof path !== 'string' || !path || path.startsWith('/') || path.includes('..'))) throw new TypeError(`Invalid artifactPaths for ${ref}.`);
   const version = match[1];
@@ -15,6 +16,7 @@ function record({ ref, archiveSha256, chainIds, scope, artifactPaths, summary })
     checkpointRef: `${version}-dev`,
     archiveFilename: `omegavault-mvp-${version}-dev.zip`,
     archiveSha256: archiveSha256.toLowerCase(),
+    parentBundleSha256: parentBundleSha256 == null ? null : String(parentBundleSha256).toLowerCase(),
     chainIds: Object.freeze([...chainIds]),
     scope,
     artifactPaths: Object.freeze([...artifactPaths]),
