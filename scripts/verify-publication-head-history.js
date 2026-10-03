@@ -3,12 +3,14 @@ import { resolve } from 'node:path';
 import { verifyCurrentPublicationHeadReceipt } from '../src/core/publication-head-history.js';
 
 function arg(name) { const index=process.argv.indexOf(`--${name}`); return index >= 0 ? process.argv[index+1] : null; }
+const forbidden=['--private-key','--secret-key','--seed','--key-output'].find(flag=>process.argv.includes(flag));
 
 const receiptPath=arg('receipt');
 const historyPath=arg('history');
 const snapshotPath=arg('history-snapshot');
 
-if (!receiptPath || !historyPath || !snapshotPath) {
+if (forbidden || !receiptPath || !historyPath || !snapshotPath) {
+  if (forbidden) process.stderr.write(`Secret input is forbidden in publication-history tooling: ${forbidden}\n`);
   process.stderr.write('Usage: node scripts/verify-publication-head-history.js --receipt <publication-receipt.json> --history <publication-history.json> --history-snapshot <publication-history-snapshot.json>\n');
   process.exit(2);
 }
