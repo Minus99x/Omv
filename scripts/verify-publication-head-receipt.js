@@ -103,6 +103,7 @@ try {
     publicationReceiptSha256:receipt?.sha256 ?? null,
     headAnchorSha256:receipt?.anchorHistory?.headAnchorSha256 ?? null,
     promotionAuthority:false,
+    publisherTrustAuthority:false,
     reviewerTrustAuthority:false,
     anchoringAuthorityTrust:false,
     deploymentAuthority:false,
