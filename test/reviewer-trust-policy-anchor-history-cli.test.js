@@ -36,3 +36,37 @@ test('policy-anchor history CLIs append safely and reject an old current anchor'
   const overwrite=run('scripts/append-reviewer-trust-policy-anchor-history.js',['--anchor',files.second,'--history',files.history1,'--output',files.history2,'--snapshot-output',path.join(dir,'unused.json')]);
   assert.equal(overwrite.status,1);
 });
+
+test('policy-anchor history append preflights both outputs and leaves no partial history', () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'omegavault-anchor-history-preflight-'));
+  const key=generateKeyPairSync('ed25519');
+  const trustHistory=[createReviewerTrustEvent({reviewer:'audit-team',publicKey:key.publicKey,action:'enroll',configuredBy:'policy',configuredAt:'2026-10-03T23:00:00Z'})];
+  const trustSnapshot=createReviewerTrustHistorySnapshot(trustHistory);
+  const anchor=createReviewerTrustPolicyAnchor({
+    externalReviewIndex:index('0.6.47-dev','4'),
+    trustHistory,
+    trustHistorySnapshot:trustSnapshot,
+    anchoredBy:'registry',
+    anchoredAt:'2026-10-03T23:01:00Z'
+  });
+  const anchorPath=path.join(dir,'anchor.json');
+  const historyOutput=path.join(dir,'history.json');
+  const existingSnapshot=path.join(dir,'existing-snapshot.json');
+  fs.writeFileSync(anchorPath,JSON.stringify(anchor));
+  fs.writeFileSync(existingSnapshot,'already here');
+
+  const collision=run('scripts/append-reviewer-trust-policy-anchor-history.js',[
+    '--anchor',anchorPath,'--output',historyOutput,'--snapshot-output',existingSnapshot
+  ]);
+  assert.equal(collision.status,1);
+  assert.match(collision.stderr,/snapshot output already exists/i);
+  assert.equal(fs.existsSync(historyOutput),false);
+
+  const samePath=path.join(dir,'same.json');
+  const same=run('scripts/append-reviewer-trust-policy-anchor-history.js',[
+    '--anchor',anchorPath,'--output',samePath,'--snapshot-output',samePath
+  ]);
+  assert.equal(same.status,1);
+  assert.match(same.stderr,/different paths/i);
+  assert.equal(fs.existsSync(samePath),false);
+});
