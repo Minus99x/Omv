@@ -3,6 +3,7 @@ import { createCapabilityUiModel, selectCapabilityContracts } from './capability
 import { createEvidenceProvenanceUiModel, resolveEvidenceReference } from './evidence-provenance-ui.js';
 import { createEvidenceHistoryUiModel, selectEvidenceHistory } from './evidence-history-ui.js';
 import { createEvidenceDiagnosticsUiModel, selectEvidenceDiagnostics } from './evidence-diagnostics-ui.js';
+import { createProvenanceAuditUiModel, serializeValidatedProvenanceAudit } from './provenance-audit-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const selectedChainId = 'ethereum';
@@ -24,6 +25,7 @@ let capabilityUiModel = null;
 let evidenceProvenanceUiModel = null;
 let evidenceHistoryUiModel = null;
 let evidenceDiagnosticsUiModel = null;
+let provenanceAuditUiModel = null;
 
 function toast(message, duration = 4200) {
   const el = $('toast');
@@ -116,10 +118,11 @@ function appendEvidenceProvenance(container, refs, chainId) {
       const checkpoint = document.createElement('div'); checkpoint.textContent = `Checkpoint: ${provenance.checkpointRef}`;
       const archive = document.createElement('div'); archive.className = 'mono'; archive.textContent = `Archive: ${provenance.archiveFilename}`;
       const digest = document.createElement('div'); digest.className = 'mono provenance-digest'; digest.textContent = `SHA-256: ${provenance.archiveSha256}`;
+      const parent = document.createElement('div'); parent.className = 'mono provenance-parent'; parent.textContent = provenance.parentBundleSha256 ? `Parent bundle SHA-256: ${provenance.parentBundleSha256}` : 'Parent bundle: not recorded';
       const description = document.createElement('div'); description.textContent = provenance.summary;
       const artifacts = document.createElement('ul'); artifacts.className = 'provenance-artifacts';
       for (const path of provenance.artifactPaths) { const item = document.createElement('li'); item.className = 'mono'; item.textContent = path; artifacts.append(item); }
-      body.append(scope, checkpoint, archive, digest, description, artifacts);
+      body.append(scope, checkpoint, archive, digest, parent, description, artifacts);
       details.append(body);
     }
     wrapper.append(details);
@@ -236,26 +239,30 @@ function renderCapabilityDashboard(model) {
 
 async function loadCapabilityDashboard() {
   try {
-    const [capabilityEnvelope, provenanceEnvelope, evidenceHistoryEnvelope, evidenceDiagnosticsEnvelope] = await Promise.all([
+    const [capabilityEnvelope, provenanceEnvelope, evidenceHistoryEnvelope, evidenceDiagnosticsEnvelope, provenanceAuditEnvelope] = await Promise.all([
       api('/api/chain-capabilities'),
       api('/api/evidence-provenance'),
       api('/api/evidence-history'),
-      api('/api/evidence-diagnostics')
+      api('/api/evidence-diagnostics'),
+      api('/api/provenance-audit')
     ]);
     capabilityUiModel = createCapabilityUiModel(capabilityEnvelope);
     evidenceProvenanceUiModel = createEvidenceProvenanceUiModel(provenanceEnvelope);
     evidenceHistoryUiModel = createEvidenceHistoryUiModel(evidenceHistoryEnvelope);
     evidenceDiagnosticsUiModel = createEvidenceDiagnosticsUiModel(evidenceDiagnosticsEnvelope);
+    provenanceAuditUiModel = createProvenanceAuditUiModel(provenanceAuditEnvelope);
   } catch (error) {
     capabilityUiModel = createCapabilityUiModel(null);
     capabilityUiModel = Object.freeze({ ...capabilityUiModel, reason: `Capability API request failed: ${error.message}` });
     evidenceProvenanceUiModel = createEvidenceProvenanceUiModel(null);
     evidenceHistoryUiModel = createEvidenceHistoryUiModel(null);
     evidenceDiagnosticsUiModel = createEvidenceDiagnosticsUiModel(null);
+    provenanceAuditUiModel = createProvenanceAuditUiModel(null);
   }
   renderCapabilityDashboard(capabilityUiModel);
   renderEvidenceHistory(evidenceHistoryUiModel);
   renderEvidenceDiagnostics(evidenceDiagnosticsUiModel);
+  renderProvenanceAudit(provenanceAuditUiModel);
 }
 
 $('capabilityFilter')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
@@ -338,6 +345,25 @@ function renderEvidenceDiagnostics(model) {
     if(row.unresolvedEvidenceRefs.length||row.crossWiredEvidenceRefs.length){const integrity=document.createElement('details');integrity.open=true;const is=document.createElement('summary');is.textContent='Provenance integrity errors';integrity.append(is);appendList(integrity,row.unresolvedEvidenceRefs,'No unresolved refs.');appendList(integrity,row.crossWiredEvidenceRefs,'No cross-wired refs.');card.append(integrity);}
     container.append(card);
   }
+}
+
+function renderProvenanceAudit(model) {
+  const status = $('provenanceAuditStatus');
+  const summary = $('provenanceAuditSummary');
+  const exportButton = $('provenanceAuditExport');
+  if (!status || !summary || !exportButton) return;
+  if (!model?.available) {
+    status.textContent = 'Audit unavailable';
+    status.className = 'status status-unavailable';
+    summary.textContent = model?.reason || 'No backend-validated provenance audit was received.';
+    exportButton.disabled = true;
+    return;
+  }
+  const audit = model.audit;
+  status.textContent = `Audit ${audit.sha256.slice(0, 12)}… · backend validated`;
+  status.className = 'status status-validated';
+  summary.textContent = `${audit.inventory.provenanceRecordCount} provenance refs · ${audit.inventory.evidenceCheckpointCount} evidence checkpoints · lineage ${audit.lineageRecovery.status} (${audit.lineageRecovery.recoveredBindingCount} recovered, ${audit.lineageRecovery.unrecordedRefCount} not recorded).`;
+  exportButton.disabled = false;
 }
 
 function permissionHas(address) {
@@ -826,6 +852,24 @@ async function refreshOnChainState() {
   renderChainState(state);
   return state;
 }
+
+$('provenanceAuditExport')?.addEventListener('click', () => {
+  try {
+    const jsonText = serializeValidatedProvenanceAudit(provenanceAuditUiModel);
+    const blob = new Blob([jsonText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `omegavault-provenance-integrity-audit-${provenanceAuditUiModel.audit.sha256.slice(0, 12)}.json`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    toast('Backend-validated provenance audit exported as JSON.');
+  } catch (error) {
+    toast(error.message, 8500);
+  }
+});
 
 $('exportEvidence').addEventListener('click', exportTestEvidence);
 
