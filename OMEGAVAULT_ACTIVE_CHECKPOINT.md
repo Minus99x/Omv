@@ -3,36 +3,36 @@
 Current development checkpoint: **0.6.40-dev**
 
 Archive filename: `omegavault-mvp-0.6.40-dev.zip`
-Sidecar filename: `omegavault-mvp-0.6.40-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.40-dev.external-review-index.json`
+Checkpoint sidecar filename: `omegavault-mvp-0.6.40-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.40-dev.review-index.json`
 
-The archive SHA-256 and external sidecar/index digests are intentionally recorded outside the archive after sealing, so the ZIP never attempts to contain its own hash.
+The archive's own SHA-256 is deliberately not embedded inside the archive. External checkpoint identity is carried by the checkpoint sidecar, and the external review index binds that sidecar to the internal audit/history/provenance review basis.
 
 ## 0.6.40 delta
 
-- Added deterministic `omegavault.operator-audit-index.v1` tying together the current provenance-audit SHA-256 and evidence-history SHA-256.
-- Added backend/API/browser support for the operator audit index at `/api/operator-audit-index`.
-- Added fail-closed validation for checkpoint drift, provenance-audit drift and evidence-history digest drift.
-- Added `scripts/generate-external-review-index.js` / `npm run audit:review-index`.
-- External review index generation occurs only after archive + checkpoint sidecar sealing.
-- The external review index binds the exact archive filename/SHA-256, sidecar filename/file SHA-256, logical checkpoint-manifest SHA-256, source-tree SHA-256 and dependency-lock binding SHA-256.
-- Verification semantics explicitly state `archiveSelfHashEmbedded: false` and preserve cryptographic-parent-only lineage authority.
-- Browser review-index presentation remains read-only and cannot alter chain maturity or promotion state.
+- Added deterministic `omegavault.external-review-basis.v1` binding the current provenance audit SHA-256, evidence-history SHA-256, evidence-provenance SHA-256 and review semantics.
+- Added validated API envelope `omegavault.api.external-review-basis.v1` at `/api/review-basis`.
+- Added `omegavault.external-review-index.v1`, generated only after the archive and checkpoint sidecar exist.
+- The external review index binds the exact archive filename/SHA-256, checkpoint-sidecar file SHA-256 and logical SHA-256, source-tree digest, dependency-lock digest, provenance-audit digest, evidence-history digest and evidence-provenance digest.
+- Added `npm run review:index` to generate the external review index.
+- Added `npm run review:verify` to independently verify the ZIP, checkpoint sidecar and current internal review basis.
+- Swapped archives, altered sidecars, stale audit/history state and tampered review-index fields fail closed.
+- Review metadata explicitly states that archive identity comes from the external checkpoint sidecar and that version/timeline order does not establish source ancestry.
 
 ## Verification
 
-- Operator/external review-index focused slice: **13/13 passed**.
-- Broad dependency-free offline regression: **308/308 passed**.
+- External review basis/index/API/CLI focused slice: **12/12 passed**.
+- Broad dependency-free offline regression: **307/307 passed**.
 - `npm run check`: **passed**.
-- Full suite: **308 passed / 9 workstation-gated files failed to load**, exactly the known missing pinned SDK/toolchain boundary.
+- Full suite: **307 passed / 9 workstation-gated files failed to load**, exactly the known missing pinned SDK/toolchain boundary.
 
 ## Promotion boundary
 
-No chain is newly promoted. Review-index metadata improves external auditability only.
+No chain is newly promoted. External-review metadata is audit infrastructure only and cannot change chain maturity.
 
 ## Next offline gate
 
-Seal the deterministic ZIP, generate/verify the external checkpoint sidecar, then generate/verify the external review index against the sealed artifacts. After that, harden portable review bundles and machine-readable verification instructions for third-party review.
+Add a signed-or-detached review receipt format that can record an external review result without granting that receipt authority over chain promotion. Keep signatures optional and never claim authenticity without a real signing key/signature.
 
 ## Workstation gate
 

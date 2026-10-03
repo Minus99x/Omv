@@ -6,7 +6,7 @@ import { validateMaturityEvidenceProvenanceCoverage, resolveEvidenceProvenance }
 import { createEvidenceHistoryCatalog } from '../chains/evidence-history.js';
 import { createEvidenceDiagnosticsCatalog } from '../chains/evidence-diagnostics.js';
 import { verifyProvenanceIntegrityAudit } from '../chains/provenance-audit.js';
-import { CURRENT_AUDIT_INDEX_CHECKPOINT, verifyOperatorAuditIndex } from '../chains/operator-audit-index.js';
+import { verifyExternalReviewBasis } from '../chains/review-basis.js';
 import { getChainCapabilityContract } from '../chains/capability-catalog.js';
 
 const evidenceRank = new Map(EVIDENCE_LEVELS.map((level, index) => [level, index]));
@@ -297,17 +297,19 @@ export function createValidatedProvenanceIntegrityAuditResponse(audit) {
 }
 
 
-export function validateOperatorAuditIndexResponse(index) {
-  plainObject(index, 'operatorAuditIndex');
-  if (index.schema !== 'omegavault.operator-audit-index.v1') throw new Error('Unexpected operator audit-index schema.');
-  if (index.checkpointRef !== CURRENT_AUDIT_INDEX_CHECKPOINT) throw new Error('Operator audit index checkpoint does not match the active review-index checkpoint.');
-  const verification = verifyOperatorAuditIndex(index, { checkpointRef: CURRENT_AUDIT_INDEX_CHECKPOINT });
-  if (!verification.ok) throw new Error(`Invalid operator audit index: ${verification.errors.join('; ')}`);
-  if (index.externalCheckpointIdentity !== 'attached-after-archive-seal') throw new Error('Operator audit index external-checkpoint identity semantics are invalid.');
-  return Object.freeze({ ok: true, checkpointRef: index.checkpointRef, sha256: index.sha256 });
+export function validateExternalReviewBasisResponse(basis) {
+  plainObject(basis, 'reviewBasis');
+  const verification = verifyExternalReviewBasis(basis);
+  if (!verification.ok) throw new Error(`Invalid external review basis: ${verification.errors.join('; ')}`);
+  plainObject(basis.provenanceAudit, 'reviewBasis.provenanceAudit');
+  plainObject(basis.evidenceHistory, 'reviewBasis.evidenceHistory');
+  plainObject(basis.evidenceProvenance, 'reviewBasis.evidenceProvenance');
+  plainObject(basis.semantics, 'reviewBasis.semantics');
+  if (basis.semantics.externalCheckpointIdentity !== 'checkpoint-sidecar-only') throw new Error('Unexpected external checkpoint identity authority.');
+  return Object.freeze({ ok: true, sha256: basis.sha256, lineageStatus: basis.provenanceAudit.lineageStatus });
 }
 
-export function createValidatedOperatorAuditIndexResponse(index) {
-  const validation = validateOperatorAuditIndexResponse(index);
-  return Object.freeze({ schema: 'omegavault.api.operator-audit-index.v1', data: index, validation });
+export function createValidatedExternalReviewBasisResponse(basis) {
+  const validation = validateExternalReviewBasisResponse(basis);
+  return Object.freeze({ schema: 'omegavault.api.external-review-basis.v1', data: basis, validation });
 }

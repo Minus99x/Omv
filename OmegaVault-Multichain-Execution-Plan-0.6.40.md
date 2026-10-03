@@ -2,11 +2,12 @@
 
 ## Immediate offline sequence
 
-1. Seal the deterministic 0.6.40 ZIP.
+1. Build the deterministic checkpoint ZIP.
 2. Generate and verify the external checkpoint sidecar.
-3. Generate the external review index from the sealed ZIP + sidecar.
-4. Verify archive, sidecar, operator audit index and review-index digests fail closed on drift.
-5. Keep external review metadata separate from the archive where self-reference would otherwise occur.
+3. Generate the deterministic internal external-review basis.
+4. Generate the external review index only after archive and sidecar identities exist.
+5. Verify the review index against the actual ZIP, actual sidecar bytes and current internal review basis.
+6. Keep review metadata separate from chain promotion authority.
 
 ## Workstation sequence
 

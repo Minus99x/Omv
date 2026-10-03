@@ -1,11 +1,12 @@
-# OmegaVault 0.6.40-dev — External review audit index
+# OmegaVault 0.6.40-dev — External review index
 
-- Added deterministic operator audit index binding provenance-audit and evidence-history state.
-- Added validated API/browser presentation for the operator review core.
-- Added post-seal external review-index generator binding final archive + sidecar identity.
-- Explicitly avoids archive self-hash cycles.
-- Missing cryptographic parent lineage remains `not-recorded`; no ancestry is synthesized.
+- Added deterministic internal review basis for provenance audit, evidence history and evidence provenance.
+- Added validated `/api/review-basis` response.
+- Added external review index generated after ZIP + checkpoint sidecar creation.
+- External index binds archive/sidecar/source/dependency/audit/history/provenance identities without archive self-reference.
+- Added independent generation and verification CLIs.
+- Swapped archive, altered sidecar, stale basis and tampered index fail closed.
 
-Verification: focused review-index 13/13 PASS; dependency-free regression 308/308 PASS; global check PASS.
+Verification: focused 12/12 PASS; dependency-free regression 307/307 PASS; global check PASS.
 
 No chain promotion is claimed.

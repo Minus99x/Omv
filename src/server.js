@@ -21,8 +21,8 @@ import { createEvidenceProvenanceCatalog } from './chains/evidence-provenance.js
 import { createEvidenceHistoryCatalog } from './chains/evidence-history.js';
 import { createEvidenceDiagnosticsCatalog } from './chains/evidence-diagnostics.js';
 import { createProvenanceIntegrityAudit } from './chains/provenance-audit.js';
-import { createOperatorAuditIndex } from './chains/operator-audit-index.js';
-import { createValidatedCapabilityCatalogResponse, createValidatedEvidenceProvenanceCatalogResponse, createValidatedEvidenceHistoryCatalogResponse, createValidatedEvidenceDiagnosticsCatalogResponse, createValidatedProvenanceIntegrityAuditResponse, createValidatedOperatorAuditIndexResponse } from './api/response-contracts.js';
+import { createExternalReviewBasis } from './chains/review-basis.js';
+import { createValidatedCapabilityCatalogResponse, createValidatedEvidenceProvenanceCatalogResponse, createValidatedEvidenceHistoryCatalogResponse, createValidatedEvidenceDiagnosticsCatalogResponse, createValidatedProvenanceIntegrityAuditResponse, createValidatedExternalReviewBasisResponse } from './api/response-contracts.js';
 import { ensureSolcCompiler, SOLC_0_8_24 } from './ethereum/compiler-cache.js';
 
 const APP_VERSION = '0.4.3';
@@ -184,9 +184,9 @@ async function handleApi(req, res, url) {
     const audit = createProvenanceIntegrityAudit();
     return json(res, 200, createValidatedProvenanceIntegrityAuditResponse(audit));
   }
-  if (req.method === 'GET' && p === '/api/operator-audit-index') {
-    const index = createOperatorAuditIndex();
-    return json(res, 200, createValidatedOperatorAuditIndexResponse(index));
+  if (req.method === 'GET' && p === '/api/review-basis') {
+    const basis = createExternalReviewBasis();
+    return json(res, 200, createValidatedExternalReviewBasisResponse(basis));
   }
   if (req.method === 'GET' && p === '/api/vaults') return json(res, 200, { vaults: store.all().map(publicRecord) });
   if (req.method === 'GET' && p === '/api/ethereum/contract-source') {
