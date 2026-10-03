@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import { assessReviewerKeyTrust } from '../src/core/review-receipt.js';
 import { assessReviewerTrustHistory } from '../src/core/reviewer-trust-history.js';
 import { verifyReviewerTrustPolicyAnchor } from '../src/core/reviewer-trust-policy-anchor.js';
+import { verifyCurrentReviewerTrustPolicyAnchor } from '../src/core/reviewer-trust-policy-anchor-history.js';
 
 function arg(name) {
   const index = process.argv.indexOf(`--${name}`);
@@ -16,11 +17,13 @@ const trustArg = arg('trust');
 const trustHistoryArg = arg('trust-history');
 const trustHistorySnapshotArg = arg('trust-history-snapshot');
 const trustPolicyAnchorArg = arg('trust-policy-anchor');
+const trustPolicyAnchorHistoryArg = arg('trust-policy-anchor-history');
+const trustPolicyAnchorHistorySnapshotArg = arg('trust-policy-anchor-history-snapshot');
 const externalReviewIndexArg = arg('external-review-index');
 const requireTrusted = process.argv.includes('--require-trusted-reviewer');
 
-if (!receiptArg || !signatureArg || !publicKeyArg || (trustArg && trustHistoryArg) || (trustHistorySnapshotArg && !trustHistoryArg) || Boolean(trustPolicyAnchorArg) !== Boolean(externalReviewIndexArg) || (trustPolicyAnchorArg && (!trustHistoryArg || !trustHistorySnapshotArg)) || (requireTrusted && !trustArg && !trustHistoryArg)) {
-  process.stderr.write('Usage: node scripts/verify-review-receipt.js --receipt <receipt.json> --signature <signature.json> --public-key <reviewer-public.pem> [--trust <reviewer-trust.json> | --trust-history <reviewer-trust-history.json> [--trust-history-snapshot <snapshot.json> --trust-policy-anchor <anchor.json> --external-review-index <index.json>]] [--require-trusted-reviewer]\n');
+if (!receiptArg || !signatureArg || !publicKeyArg || (trustArg && trustHistoryArg) || (trustHistorySnapshotArg && !trustHistoryArg) || Boolean(trustPolicyAnchorArg) !== Boolean(externalReviewIndexArg) || (trustPolicyAnchorArg && (!trustHistoryArg || !trustHistorySnapshotArg)) || Boolean(trustPolicyAnchorHistoryArg) !== Boolean(trustPolicyAnchorHistorySnapshotArg) || (trustPolicyAnchorHistoryArg && !trustPolicyAnchorArg) || (requireTrusted && !trustArg && !trustHistoryArg)) {
+  process.stderr.write('Usage: node scripts/verify-review-receipt.js --receipt <receipt.json> --signature <signature.json> --public-key <reviewer-public.pem> [--trust <reviewer-trust.json> | --trust-history <reviewer-trust-history.json> [--trust-history-snapshot <snapshot.json> --trust-policy-anchor <anchor.json> --external-review-index <index.json> [--trust-policy-anchor-history <anchor-history.json> --trust-policy-anchor-history-snapshot <anchor-history-snapshot.json>]]] [--require-trusted-reviewer]\n');
   process.exit(2);
 }
 
@@ -45,15 +48,25 @@ try {
   }) : null;
   const anchorErrors = anchorVerification?.errors.map(error => `Trust policy anchor: ${error}`) ?? [];
   if (anchorVerification?.ok && receipt?.reviewIndex?.sha256 !== externalReviewIndex?.sha256) anchorErrors.push('Trust policy anchor: external review index does not match the receipt review-index digest.');
-  const reviewerTrusted = result.reviewerTrusted && (!anchorVerification || anchorVerification.ok);
+  const trustPolicyAnchorHistory = trustPolicyAnchorHistoryArg ? JSON.parse(readFileSync(resolve(trustPolicyAnchorHistoryArg), 'utf8')) : null;
+  const trustPolicyAnchorHistorySnapshot = trustPolicyAnchorHistorySnapshotArg ? JSON.parse(readFileSync(resolve(trustPolicyAnchorHistorySnapshotArg), 'utf8')) : null;
+  const anchorHistoryVerification = trustPolicyAnchorHistory ? verifyCurrentReviewerTrustPolicyAnchor({
+    anchor:trustPolicyAnchor,
+    history:trustPolicyAnchorHistory,
+    historySnapshot:trustPolicyAnchorHistorySnapshot
+  }) : null;
+  const anchorHistoryErrors = anchorHistoryVerification?.errors.map(error => `Trust policy anchor history: ${error}`) ?? [];
+  const reviewerTrusted = result.reviewerTrusted && (!anchorVerification || anchorVerification.ok) && (!anchorHistoryVerification || anchorHistoryVerification.ok);
   const finalResult = Object.freeze({
     ...result,
-    ok:result.ok && anchorErrors.length === 0,
+    ok:result.ok && anchorErrors.length === 0 && anchorHistoryErrors.length === 0,
     reviewerTrusted,
     trustPolicyAnchorConfigured:Boolean(trustPolicyAnchor),
     trustPolicyAnchored:anchorVerification?.ok ?? false,
+    trustPolicyAnchorHistoryConfigured:Boolean(trustPolicyAnchorHistory),
+    trustPolicyAnchorCurrent:anchorHistoryVerification?.current ?? false,
     decision:reviewerTrusted ? 'trusted-authenticated' : (result.signatureAuthenticated ? 'authenticated-untrusted' : 'unauthenticated'),
-    errors:Object.freeze([...result.errors, ...anchorErrors])
+    errors:Object.freeze([...result.errors, ...anchorErrors, ...anchorHistoryErrors])
   });
   const output = Object.freeze({
     ...finalResult,

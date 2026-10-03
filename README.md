@@ -213,6 +213,17 @@ npm run review:trust:anchor:verify -- \
   --external-review-index checkpoint.review-index.json \
   --trust-history reviewer-trust-history.json \
   --trust-history-snapshot reviewer-trust-history.snapshot.json
+
+npm run review:trust:anchor:append -- \
+  --anchor reviewer-trust-policy.anchor.json \
+  --history reviewer-trust-policy-anchor-history.json \
+  --output reviewer-trust-policy-anchor-history.next.json \
+  --snapshot-output reviewer-trust-policy-anchor-history.snapshot.next.json
+
+npm run review:trust:anchor:history:verify -- \
+  --anchor reviewer-trust-policy.anchor.json \
+  --history reviewer-trust-policy-anchor-history.next.json \
+  --history-snapshot reviewer-trust-policy-anchor-history.snapshot.next.json
 ```
 
 Receipt verification can require that anchor with `--trust-policy-anchor` and
@@ -220,6 +231,14 @@ Receipt verification can require that anchor with `--trust-policy-anchor` and
 digest already bound into the receipt. This prevents a valid stale policy pair
 or a policy from another checkpoint from being accepted as current. The anchor
 is integrity metadata, not reviewer identity authentication or promotion
+authority.
+
+Successive policy anchors can be kept in an append-only digest-linked history.
+Each entry binds the exact predecessor entry and predecessor anchor. A separate
+head snapshot binds the current entry count and head digests, and receipt
+verification accepts `--trust-policy-anchor-history` plus
+`--trust-policy-anchor-history-snapshot` to reject an otherwise-valid older
+anchor. These files remain public integrity metadata with no promotion
 authority.
 
 The full 0.6.16 development package currently passes **186 JavaScript tests** with zero failures plus **7/7 Aiken on-chain tests**. `npm run check` syntax-checks the existing JavaScript modules and verifies the pinned EVM/TRON artifacts. `npm run check:xrpl` verifies deterministic signer preimages, signatures and canonical multisigned-binary evidence. `npm run check:solana` verifies native-source hashes, exact PDA derivation and instruction/account-meta evidence without claiming Rust compilation. `npm run check:bitcoin` verifies the Bitcoin Core descriptor/PSBTv2 evidence. `npm run check:cardano` formats, tests and compiles the pinned Aiken Plutus V3 project, reapplies the non-deployable fixture parameters, verifies script identities/addresses, validates the epoch-316 protocol snapshot, and checks deterministic signed-size, fee, minimum-ADA, collateral and zero-budget Ogmios evaluation-request evidence while preserving the independent-node live-construction block.
