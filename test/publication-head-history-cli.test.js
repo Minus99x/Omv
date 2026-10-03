@@ -312,3 +312,34 @@ test('authenticated-only verification remains backward compatible without publis
   assert.equal(output.publisherTrustStatus,'unconfigured');
   assert.equal(output.publisherTrustDecision,'authenticated-untrusted');
 });
+
+test('publication history append preflights both outputs and leaves no partial history',()=> {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'omegavault-publication-history-preflight-'));
+  const currentAnchor=anchorFixture('0.6.47-dev','4','2026-10-03T23:10:00.000Z');
+  const receipt=createPublicationHeadReceipt({
+    history:currentAnchor.history,
+    historySnapshot:currentAnchor.snapshot,
+    publisher:'release-registry',
+    publishedAt:'2026-10-03T23:11:00.000Z'
+  });
+  const receiptPath=path.join(dir,'receipt.json');
+  const historyOutput=path.join(dir,'history.json');
+  const existingSnapshot=path.join(dir,'existing-snapshot.json');
+  fs.writeFileSync(receiptPath,JSON.stringify(receipt));
+  fs.writeFileSync(existingSnapshot,'already here');
+
+  const collision=run('scripts/append-publication-head-history.js',[
+    '--receipt',receiptPath,'--output',historyOutput,'--snapshot-output',existingSnapshot
+  ]);
+  assert.equal(collision.status,1);
+  assert.match(collision.stderr,/snapshot output already exists/i);
+  assert.equal(fs.existsSync(historyOutput),false);
+
+  const samePath=path.join(dir,'same.json');
+  const same=run('scripts/append-publication-head-history.js',[
+    '--receipt',receiptPath,'--output',samePath,'--snapshot-output',samePath
+  ]);
+  assert.equal(same.status,1);
+  assert.match(same.stderr,/different paths/i);
+  assert.equal(fs.existsSync(samePath),false);
+});
