@@ -29,10 +29,9 @@ function anchorHistory(ref,byte,time) {
 }
 
 function fixture() {
-  const firstAnchor=anchorHistory('0.6.45-dev','1','2026-10-03T14:01:00.000Z');
-  const secondAnchor=anchorHistory('0.6.46-dev','2','2026-10-03T14:02:00.000Z');
-  const first=createPublicationHeadReceipt({history:firstAnchor.history,historySnapshot:firstAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T14:03:00.000Z'});
-  const second=createPublicationHeadReceipt({history:secondAnchor.history,historySnapshot:secondAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T14:04:00.000Z'});
+  const currentAnchor=anchorHistory('0.6.46-dev','2','2026-10-03T14:02:00.000Z');
+  const first=createPublicationHeadReceipt({history:currentAnchor.history,historySnapshot:currentAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T14:03:00.000Z'});
+  const second=createPublicationHeadReceipt({history:currentAnchor.history,historySnapshot:currentAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T14:04:00.000Z'});
   const firstEntry=createPublicationHeadHistoryEntry({receipt:first});
   const secondEntry=createPublicationHeadHistoryEntry({receipt:second,previousEntry:firstEntry});
   const history=[firstEntry,secondEntry];
