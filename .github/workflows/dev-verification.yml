@@ -34,6 +34,9 @@ jobs:
       - name: Focused review audit suite
         run: npm run test:review-audit
 
+      - name: Focused Stellar native suite
+        run: npm run test:stellar-native
+
       - name: Full test suite
         run: npm test
 
