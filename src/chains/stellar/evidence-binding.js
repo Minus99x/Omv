@@ -42,6 +42,17 @@ function stellarAccount(value, label) {
   return account;
 }
 
+function preAuthSigner(value, label) {
+  const signer = requiredText(value, label);
+  try {
+    const decoded = StrKey.decodePreAuthTx(signer);
+    if (StrKey.encodePreAuthTx(decoded) !== signer) throw new Error('non-canonical preAuthTx encoding');
+  } catch {
+    throw new TypeError(`${label} must be a canonical Stellar preAuthTx signer.`);
+  }
+  return signer;
+}
+
 function rejectionAttempt(input, label, recoveryHash) {
   exactKeys(input, ['transactionHashHex', 'observedAt', 'includedInLedger', 'successful', 'resultCode'], label);
   const observed = isoTime(input.observedAt, `${label}.observedAt`);
@@ -170,8 +181,7 @@ function normalize(input) {
   ], 'Stellar recovery evidence input');
   if (input.networkRef !== 'stellar:testnet') throw new TypeError('Stellar recovery evidence must target stellar:testnet.');
   const recoveryTransactionHashHex = hashHex(input.recoveryTransactionHashHex, 'recoveryTransactionHashHex');
-  const preAuthTxSigner = requiredText(input.preAuthTxSigner, 'preAuthTxSigner');
-  if (!StrKey.isValidPreAuthTx(preAuthTxSigner)) throw new TypeError('preAuthTxSigner must be a valid Stellar preAuthTx signer.');
+  const preAuthTxSigner = preAuthSigner(input.preAuthTxSigner, 'preAuthTxSigner');
   const recoverySequence = integerString(input.recoverySequence, 'recoverySequence', { positive: true });
   const initialTooEarly = rejectionAttempt(input.initialTooEarly, 'initialTooEarly', recoveryTransactionHashHex);
   const heartbeat = heartbeatEvidence(input.heartbeat);
