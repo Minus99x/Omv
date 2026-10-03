@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPublicationHeadHistoryEntry, createPublicationHeadHistorySnapshot, verifyPublicationHeadHistory } from '../src/core/publication-head-history.js';
 
@@ -17,6 +17,11 @@ if (forbidden || !receiptPath || !outputPath || !snapshotOutputPath) {
 }
 
 try {
+  const resolvedOutputPath=resolve(outputPath);
+  const resolvedSnapshotOutputPath=resolve(snapshotOutputPath);
+  if (resolvedOutputPath===resolvedSnapshotOutputPath) throw new Error('History output and snapshot output must use different paths.');
+  if (existsSync(resolvedOutputPath)) throw new Error(`Output already exists: ${resolvedOutputPath}`);
+  if (existsSync(resolvedSnapshotOutputPath)) throw new Error(`Snapshot output already exists: ${resolvedSnapshotOutputPath}`);
   const history=historyPath ? JSON.parse(readFileSync(resolve(historyPath),'utf8')) : [];
   if (!Array.isArray(history)) throw new TypeError('Existing publication history must be a JSON array.');
   if (history.length) {
@@ -27,11 +32,11 @@ try {
   const entry=createPublicationHeadHistoryEntry({receipt,previousEntry:history.at(-1)??null});
   const updated=Object.freeze([...history,entry]);
   const snapshot=createPublicationHeadHistorySnapshot(updated);
-  writeFileSync(resolve(outputPath),`${JSON.stringify(updated,null,2)}\n`,{encoding:'utf8',flag:'wx'});
-  writeFileSync(resolve(snapshotOutputPath),`${JSON.stringify(snapshot,null,2)}\n`,{encoding:'utf8',flag:'wx'});
+  writeFileSync(resolvedOutputPath,`${JSON.stringify(updated,null,2)}\n`,{encoding:'utf8',flag:'wx'});
+  writeFileSync(resolvedSnapshotOutputPath,`${JSON.stringify(snapshot,null,2)}\n`,{encoding:'utf8',flag:'wx'});
   process.stdout.write(`${JSON.stringify({
-    output:resolve(outputPath),
-    snapshotOutput:resolve(snapshotOutputPath),
+    output:resolvedOutputPath,
+    snapshotOutput:resolvedSnapshotOutputPath,
     entryCount:updated.length,
     headPublicationReceiptSha256:entry.publicationReceiptSha256,
     historySnapshotSha256:snapshot.sha256,
