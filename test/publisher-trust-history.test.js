@@ -98,3 +98,84 @@ test('publisher trust metadata rejects authority elevation and non-canonical fie
   extra.sha256=evidenceDigest(Object.fromEntries(Object.entries(extra).filter(([key])=>key!=='sha256')));
   assert.equal(verifyPublisherTrustHistory([extra]).ok,false);
 });
+
+test('publisher trust history rejects invalid initial actions, same-key rotation and mismatched revocation', () => {
+  const first=generateKeyPairSync('ed25519');
+  const second=generateKeyPairSync('ed25519');
+
+  assert.throws(()=>createPublisherTrustEvent({
+    publisher:'release-registry',publicKey:first.publicKey,action:'revoke',
+    configuredBy:'release-policy',configuredAt:'2026-10-03T18:10:00.000Z'
+  }),/first publisher trust event must be enroll/i);
+
+  const enroll=createPublisherTrustEvent({
+    publisher:'release-registry',publicKey:first.publicKey,action:'enroll',
+    configuredBy:'release-policy',configuredAt:'2026-10-03T18:11:00.000Z'
+  });
+
+  assert.throws(()=>createPublisherTrustEvent({
+    publisher:'release-registry',publicKey:first.publicKey,action:'rotate',
+    configuredBy:'release-policy',configuredAt:'2026-10-03T18:12:00.000Z',previousEvent:enroll
+  }),/different publisher key/i);
+
+  assert.throws(()=>createPublisherTrustEvent({
+    publisher:'release-registry',publicKey:second.publicKey,action:'revoke',
+    configuredBy:'release-policy',configuredAt:'2026-10-03T18:12:00.000Z',previousEvent:enroll
+  }),/currently active publisher key/i);
+});
+
+test('publisher trust history rejects non-increasing timestamps and forged predecessor metadata', () => {
+  const first=generateKeyPairSync('ed25519');
+  const second=generateKeyPairSync('ed25519');
+  const enroll=createPublisherTrustEvent({
+    publisher:'release-registry',publicKey:first.publicKey,action:'enroll',
+    configuredBy:'release-policy',configuredAt:'2026-10-03T18:20:00.000Z'
+  });
+  const stale=createPublisherTrustEvent({
+    publisher:'release-registry',publicKey:second.publicKey,action:'rotate',
+    configuredBy:'release-policy',configuredAt:'2026-10-03T18:19:00.000Z',previousEvent:enroll
+  });
+  assert.equal(verifyPublisherTrustHistory([enroll,stale]).ok,false);
+
+  const validRotate=createPublisherTrustEvent({
+    publisher:'release-registry',publicKey:second.publicKey,action:'rotate',
+    configuredBy:'release-policy',configuredAt:'2026-10-03T18:21:00.000Z',previousEvent:enroll
+  });
+  const forged=structuredClone(validRotate);
+  forged.previousPublicKeySpkiSha256='aa'.repeat(32);
+  forged.sha256=evidenceDigest(Object.fromEntries(Object.entries(forged).filter(([key])=>key!=='sha256')));
+  assert.equal(verifyPublisherTrustHistory([enroll,forged]).ok,false);
+});
+
+test('publisher trust snapshots reject authority elevation and non-canonical fields', () => {
+  const {enroll,rotate}=trustFixture();
+  const snapshot=createPublisherTrustHistorySnapshot([enroll,rotate]);
+
+  const elevated=structuredClone(snapshot);
+  elevated.authority.publisherTrust=true;
+  elevated.sha256=evidenceDigest(Object.fromEntries(Object.entries(elevated).filter(([key])=>key!=='sha256')));
+  assert.equal(verifyPublisherTrustHistorySnapshot(elevated,[enroll,rotate]).ok,false);
+
+  const extra=structuredClone(snapshot);
+  extra.unexpected='ambiguous';
+  extra.sha256=evidenceDigest(Object.fromEntries(Object.entries(extra).filter(([key])=>key!=='sha256')));
+  assert.equal(verifyPublisherTrustHistorySnapshot(extra,[enroll,rotate]).ok,false);
+});
+
+test('publisher identity mismatch cannot be upgraded by a valid trusted key', () => {
+  const key=generateKeyPairSync('ed25519');
+  const trust=[createPublisherTrustEvent({
+    publisher:'approved-registry',publicKey:key.publicKey,action:'enroll',
+    configuredBy:'release-policy',configuredAt:'2026-10-03T18:30:00.000Z'
+  })];
+  const receipt=publicationReceipt();
+  const signature=createDetachedPublicationHeadReceiptSignature({receipt,privateKey:key.privateKey});
+  const result=assessPublisherTrustHistory({
+    receipt,signature,publicKey:key.publicKey,trustHistory:trust,
+    trustHistorySnapshot:createPublisherTrustHistorySnapshot(trust)
+  });
+  assert.equal(result.signatureAuthenticated,true);
+  assert.equal(result.publisherIdentityMatched,false);
+  assert.equal(result.publisherTrusted,false);
+  assert.equal(result.decision,'authenticated-untrusted');
+});
