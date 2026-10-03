@@ -14,11 +14,14 @@ test('catalog exposes implementation label separately from evidence-backed promo
   assert.equal(ethereum.stage, 'legacy-live-proof');
   assert.equal(ethereum.promotion.eligible, false);
 });
-test('Stellar catalog entry survives without importing Stellar SDK', () => {
+test('Stellar catalog entry is offline-verified without pretending public-testnet proof exists', () => {
   const stellar = getChainCapabilityContract('stellar');
   assert.equal(stellar.name, 'Stellar');
   assert.equal(stellar.networks[0].id, 'stellar:testnet');
-  assert.ok(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')));
+  assert.equal(stellar.stage, 'offline-verified');
+  assert.equal(stellar.promotion.eligible, false);
+  assert.ok(stellar.blockers.some(value => /Stellar Testnet execution proof/.test(value)));
+  assert.equal(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')), false);
 });
 test('XDC catalog exposes offline evidence but blocks live promotion', () => {
   const xdc = getChainCapabilityContract('xdc');
