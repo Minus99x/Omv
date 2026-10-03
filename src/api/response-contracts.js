@@ -324,7 +324,7 @@ export function validateOperatorAuditIndexResponse(index) {
   plainObject(index.lineageRecovery, 'operatorAuditIndex.lineageRecovery');
   if (index.externalCheckpointIdentity !== 'attached-after-archive-seal') throw new Error('Unexpected operator audit-index external checkpoint identity semantics.');
   if (!['not-recorded','partial','complete'].includes(index.lineageRecovery.status)) throw new Error('Unknown operator audit-index lineage recovery status.');
-  if (index.promotionAuthority !== false) throw new Error('Operator audit index must not confer promotion authority.');
+  if (index.promotionAuthority !== 'backend-capability-contract-only') throw new Error('Operator audit index must defer promotion authority to the backend capability contract.');
   return Object.freeze({ ok:true, sha256:index.sha256, checkpointRef:index.checkpointRef });
 }
 
