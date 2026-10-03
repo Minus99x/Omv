@@ -998,3 +998,16 @@ async function init() {
     $('runtimePill').textContent = `${appConfig.mode.toUpperCase()} · ${appConfig.ethereumProof.allowedNetwork.name.toUpperCase()} ONLY`;
     $('footerVersion').textContent = `OmegaVault MVP ${appConfig.appVersion}`;
   } catch (e) {
+    toast(`Unable to read OmegaVault runtime configuration: ${e.message}`, 7000);
+  }
+
+  await loadCapabilityDashboard();
+  await refreshWallet({ request: false }).catch(() => {});
+  await loadLatestVault({ announce: false }).catch(() => {});
+  if (currentVault?.chainBindings?.ethereum && walletNetwork?.isSepolia) {
+    await refreshOnChainState().catch(() => {});
+  }
+  renderLiveLayer();
+}
+
+init();
