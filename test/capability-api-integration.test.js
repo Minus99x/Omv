@@ -7,7 +7,7 @@ import path from 'node:path';
 process.env.OMEGAVAULT_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-capability-api-'));
 const { createOmegaVaultServer } = await import('../src/server.js');
 
-test('HTTP capability API is validated and keeps dependency-blocked Stellar visible', async (t) => {
+test('HTTP capability API is validated and keeps offline-verified Stellar blocked from promotion', async (t) => {
   const server = createOmegaVaultServer();
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
@@ -19,7 +19,9 @@ test('HTTP capability API is validated and keeps dependency-blocked Stellar visi
   const stellar = body.data.contracts.find(contract => contract.chainId === 'stellar');
   assert.ok(stellar);
   assert.equal(stellar.promotion.eligible, false);
-  assert.ok(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')));
+  assert.equal(stellar.stage, 'offline-verified');
+  assert.ok(stellar.blockers.some(value => /Stellar Testnet execution proof/.test(value)));
+  assert.equal(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')), false);
   const xdc = body.data.contracts.find(contract => contract.chainId === 'xdc');
   assert.ok(xdc);
   assert.equal(xdc.promotion.eligible, false);
