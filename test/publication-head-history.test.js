@@ -76,6 +76,21 @@ test('rollback, reorder, skipped links, duplicate receipts, publisher changes an
   changed.sha256=evidenceDigest(Object.fromEntries(Object.entries(changed).filter(([key])=>key!=='sha256')));
   assert.equal(verifyPublicationHeadHistory([firstEntry,changed]).ok,false);
 
+  const elevated=structuredClone(secondEntry);
+  elevated.authority.publisherTrust=true;
+  elevated.sha256=evidenceDigest(Object.fromEntries(Object.entries(elevated).filter(([key])=>key!=='sha256')));
+  assert.equal(verifyPublicationHeadHistory([firstEntry,elevated]).ok,false);
+
+  const extended=structuredClone(secondEntry);
+  extended.authority.unexpectedAuthority=false;
+  extended.sha256=evidenceDigest(Object.fromEntries(Object.entries(extended).filter(([key])=>key!=='sha256')));
+  assert.equal(verifyPublicationHeadHistory([firstEntry,extended]).ok,false);
+
+  const snapshotExtended=structuredClone(snapshot);
+  snapshotExtended.authority.unexpectedAuthority=false;
+  snapshotExtended.sha256=evidenceDigest(Object.fromEntries(Object.entries(snapshotExtended).filter(([key])=>key!=='sha256')));
+  assert.equal(verifyPublicationHeadHistorySnapshot(snapshotExtended,history).ok,false);
+
   assert.equal(verifyPublicationHeadHistory(history).ok,true);
 });
 
