@@ -4,6 +4,31 @@ const SHA256 = /^[0-9a-f]{64}$/i;
 
 function validDigest(value) { return typeof value === 'string' && SHA256.test(value); }
 
+function noAuthority(authority, scope) {
+  const expectedKeys=[
+    'anchoringAuthorityTrust',
+    'chainMaturity',
+    'chainPromotion',
+    'deploymentAuthority',
+    'evidencePromotion',
+    'publisherTrust',
+    'reviewerTrust',
+    'scope',
+    'walletAuthority'
+  ];
+  return authority && typeof authority === 'object' && !Array.isArray(authority)
+    && JSON.stringify(Object.keys(authority).sort()) === JSON.stringify(expectedKeys)
+    && authority.publisherTrust === false
+    && authority.reviewerTrust === false
+    && authority.anchoringAuthorityTrust === false
+    && authority.chainMaturity === false
+    && authority.chainPromotion === false
+    && authority.evidencePromotion === false
+    && authority.deploymentAuthority === false
+    && authority.walletAuthority === false
+    && authority.scope === scope;
+}
+
 function verifyPublicationReceiptSelf(receipt) {
   const errors = [];
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt)) return Object.freeze({ ok:false, errors:Object.freeze(['Publication receipt must be an object.']) });
@@ -19,14 +44,18 @@ function verifyPublicationReceiptSelf(receipt) {
   if (!validDigest(receipt.anchorHistory?.headEntrySha256)) errors.push('Publication receipt anchor-history head-entry digest is invalid.');
   if (!validDigest(receipt.anchorHistory?.headAnchorSha256)) errors.push('Publication receipt anchor-history head-anchor digest is invalid.');
   if (receipt.signatureStatus !== 'unsigned') errors.push('Base publication receipt must remain unsigned.');
-  if (receipt.authority?.reviewerTrust !== false
-    || receipt.authority?.anchoringAuthorityTrust !== false
-    || receipt.authority?.chainMaturity !== false
-    || receipt.authority?.chainPromotion !== false
-    || receipt.authority?.evidencePromotion !== false
-    || receipt.authority?.deploymentAuthority !== false
-    || receipt.authority?.walletAuthority !== false
-    || receipt.authority?.scope !== 'anchor-history-head-publication-only') {
+  const receiptAuthorityKeys=['anchoringAuthorityTrust','chainMaturity','chainPromotion','deploymentAuthority','evidencePromotion','reviewerTrust','scope','walletAuthority'];
+  const receiptAuthority=receipt.authority;
+  if (!receiptAuthority || typeof receiptAuthority !== 'object' || Array.isArray(receiptAuthority)
+    || JSON.stringify(Object.keys(receiptAuthority).sort()) !== JSON.stringify(receiptAuthorityKeys)
+    || receiptAuthority.reviewerTrust !== false
+    || receiptAuthority.anchoringAuthorityTrust !== false
+    || receiptAuthority.chainMaturity !== false
+    || receiptAuthority.chainPromotion !== false
+    || receiptAuthority.evidencePromotion !== false
+    || receiptAuthority.deploymentAuthority !== false
+    || receiptAuthority.walletAuthority !== false
+    || receiptAuthority.scope !== 'anchor-history-head-publication-only') {
     errors.push('Publication receipt authority boundary is invalid.');
   }
   return Object.freeze({ ok:errors.length === 0, errors:Object.freeze(errors) });
@@ -57,6 +86,7 @@ export function createPublicationHeadHistoryEntry({ receipt, previousEntry = nul
     previousPublicationReceiptSha256:previousEntry?.publicationReceiptSha256 ?? null,
     publishedAt:receipt.publishedAt,
     authority:Object.freeze({
+      publisherTrust:false,
       reviewerTrust:false,
       anchoringAuthorityTrust:false,
       chainMaturity:false,
@@ -86,8 +116,7 @@ export function verifyPublicationHeadHistoryEntry(entry) {
   if (entry.previousPublicationReceiptSha256 !== null && !validDigest(entry.previousPublicationReceiptSha256)) errors.push('Previous publication-receipt digest is invalid.');
   if (typeof entry.checkpointRef !== 'string' || !entry.checkpointRef.trim()) errors.push('Publication-history checkpoint reference is required.');
   if (typeof entry.publishedAt !== 'string' || !Number.isFinite(Date.parse(entry.publishedAt)) || new Date(entry.publishedAt).toISOString() !== entry.publishedAt) errors.push('Publication-history timestamp must be canonical ISO.');
-  const a=entry.authority;
-  if (a?.reviewerTrust !== false || a?.anchoringAuthorityTrust !== false || a?.chainMaturity !== false || a?.chainPromotion !== false || a?.evidencePromotion !== false || a?.deploymentAuthority !== false || a?.walletAuthority !== false || a?.scope !== 'publication-receipt-lineage-only') errors.push('Publication-history entry must have lineage-only authority.');
+  if (!noAuthority(entry.authority, 'publication-receipt-lineage-only')) errors.push('Publication-history entry must have lineage-only authority.');
   if (!validDigest(entry.sha256)) errors.push('Publication-history entry SHA-256 is invalid.');
   else {
     const { sha256, ...unsigned } = entry;
@@ -134,6 +163,7 @@ export function createPublicationHeadHistorySnapshot(history) {
     currentHeadAnchorSha256:head.headAnchorSha256,
     currentCheckpointRef:head.checkpointRef,
     authority:Object.freeze({
+      publisherTrust:false,
       reviewerTrust:false,
       anchoringAuthorityTrust:false,
       chainMaturity:false,
@@ -164,8 +194,7 @@ export function verifyPublicationHeadHistorySnapshot(snapshot, history) {
       if (snapshot[field] !== expected[field]) errors.push(`Publication-history snapshot ${field} mismatch.`);
     }
   }
-  const a=snapshot.authority;
-  if (a?.reviewerTrust !== false || a?.anchoringAuthorityTrust !== false || a?.chainMaturity !== false || a?.chainPromotion !== false || a?.evidencePromotion !== false || a?.deploymentAuthority !== false || a?.walletAuthority !== false || a?.scope !== 'publication-receipt-lineage-integrity-only') errors.push('Publication-history snapshot authority boundary is invalid.');
+  if (!noAuthority(snapshot.authority, 'publication-receipt-lineage-integrity-only')) errors.push('Publication-history snapshot authority boundary is invalid.');
   return Object.freeze({ ok:errors.length === 0, errors:Object.freeze(errors) });
 }
 
