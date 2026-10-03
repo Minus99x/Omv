@@ -136,8 +136,14 @@
         <div class="audit-actions"><div id="provenanceAuditSummary" class="muted small" role="status" aria-live="polite">Waiting for validated provenance audit.</div><button id="provenanceAuditExport" type="button" disabled>Export audit JSON</button></div>
       </article>
 
+      <article class="card wide operator-audit-index-card">
+        <div class="section-head"><div><span class="step">08</span><h2>External review index</h2></div><span id="operatorAuditIndexStatus" class="status status-unavailable" role="status" aria-live="polite">Loading validated review index…</span></div>
+        <div class="inline-info"><strong>No self-reference:</strong> the in-app index binds the provenance audit and evidence history. The final archive hash and checkpoint-sidecar identity are attached only after the archive is sealed.</div>
+        <div id="operatorAuditIndexSummary" class="muted small" role="status" aria-live="polite">Waiting for the backend-validated review index.</div>
+      </article>
+
       <article class="card wide live-card">
-        <div class="section-head"><div><span class="step">08</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
+        <div class="section-head"><div><span class="step">09</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
         <div id="liveEmpty" class="empty">Create an OmegaVault policy first. The same neutral policy will then be expressed through the Ethereum adapter.</div>
         <div id="livePanel" class="hidden">
           <div class="proof-banner"><strong>Guardrail:</strong> this build will not deploy or send proof-contract actions on Ethereum mainnet. The only live proof network accepted by the application and server binding layer is Sepolia.</div>

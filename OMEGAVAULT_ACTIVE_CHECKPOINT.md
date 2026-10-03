@@ -1,37 +1,38 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.39-dev**
+Current development checkpoint: **0.6.40-dev**
 
-Archive filename: `omegavault-mvp-0.6.39-dev.zip`
-Sidecar filename: `omegavault-mvp-0.6.39-dev.checkpoint-manifest.json`
+Archive filename: `omegavault-mvp-0.6.40-dev.zip`
+Sidecar filename: `omegavault-mvp-0.6.40-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.40-dev.external-review-index.json`
 
-The archive SHA-256 is deliberately recorded only in the external sidecar manifest so the archive does not attempt to contain its own digest.
+The archive SHA-256 and external sidecar/index digests are intentionally recorded outside the archive after sealing, so the ZIP never attempts to contain its own hash.
 
-## 0.6.39 delta
+## 0.6.40 delta
 
-- Every provenance record now explicitly exposes `parentBundleSha256`, using `null` when no cryptographic parent bundle is actually recorded.
-- Existing evidence was scanned for explicit parent-bundle lineage; no real parent-bundle digest is present in the current evidence set, so lineage remains **not recorded** rather than inferred.
-- Added deterministic `omegavault.provenance-integrity-audit.v1` snapshots covering capability, provenance, evidence-history and diagnostics state.
-- Audit snapshots are SHA-256 bound and revalidated against current backend state.
-- Added `npm run audit:provenance` / `scripts/export-provenance-audit.js` for local JSON export.
-- Added validated API envelope `omegavault.api.provenance-integrity-audit.v1` at `/api/provenance-audit`.
-- Browser can export the backend-validated audit JSON and cannot export an unvalidated audit.
-- Provenance details visibly distinguish a real parent digest from `Parent bundle: not recorded`.
+- Added deterministic `omegavault.operator-audit-index.v1` tying together the current provenance-audit SHA-256 and evidence-history SHA-256.
+- Added backend/API/browser support for the operator audit index at `/api/operator-audit-index`.
+- Added fail-closed validation for checkpoint drift, provenance-audit drift and evidence-history digest drift.
+- Added `scripts/generate-external-review-index.js` / `npm run audit:review-index`.
+- External review index generation occurs only after archive + checkpoint sidecar sealing.
+- The external review index binds the exact archive filename/SHA-256, sidecar filename/file SHA-256, logical checkpoint-manifest SHA-256, source-tree SHA-256 and dependency-lock binding SHA-256.
+- Verification semantics explicitly state `archiveSelfHashEmbedded: false` and preserve cryptographic-parent-only lineage authority.
+- Browser review-index presentation remains read-only and cannot alter chain maturity or promotion state.
 
 ## Verification
 
-- Provenance audit/export/provenance focused slice: **27/27 passed**.
-- Broad dependency-free offline regression: **295/295 passed**.
+- Operator/external review-index focused slice: **13/13 passed**.
+- Broad dependency-free offline regression: **308/308 passed**.
 - `npm run check`: **passed**.
-- Full suite: **295 passed / 9 workstation-gated files failed to load**, exactly the known missing pinned SDK/toolchain boundary.
+- Full suite: **308 passed / 9 workstation-gated files failed to load**, exactly the known missing pinned SDK/toolchain boundary.
 
 ## Promotion boundary
 
-No chain is newly promoted. The audit describes current integrity/evidence state and cannot modify promotion eligibility.
+No chain is newly promoted. Review-index metadata improves external auditability only.
 
 ## Next offline gate
 
-Add export verification metadata suitable for external review, plus a deterministic operator audit index that can cross-reference audit SHA-256, evidence checkpoint history and checkpoint sidecar identity without embedding the archive's own digest inside itself.
+Seal the deterministic ZIP, generate/verify the external checkpoint sidecar, then generate/verify the external review index against the sealed artifacts. After that, harden portable review bundles and machine-readable verification instructions for third-party review.
 
 ## Workstation gate
 

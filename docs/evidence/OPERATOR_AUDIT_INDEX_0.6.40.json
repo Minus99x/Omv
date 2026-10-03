@@ -1,0 +1,22 @@
+{
+  "schema": "omegavault.operator-audit-index.v1",
+  "checkpointRef": "0.6.40-dev",
+  "provenanceAuditSha256": "f4491a2bb7d711e5556939a788996eb9f4a3eb3bb50618eca4f4f84fde2a97ae",
+  "evidenceHistorySha256": "ec4ee41a2e0bd502f24a782b0cd6462348d9467bd8ed12989b04a1fa7bc172d8",
+  "evidenceHistory": {
+    "checkpointCount": 9,
+    "evidenceRefCount": 10,
+    "earliestCheckpointRef": "0.6.21-dev",
+    "latestCheckpointRef": "0.6.31-dev",
+    "relationSemantics": "evidence-checkpoint-order-not-source-ancestry"
+  },
+  "lineageRecovery": {
+    "status": "not-recorded",
+    "recoveredBindingCount": 0,
+    "unrecordedRefCount": 10,
+    "authority": "explicit-cryptographic-parent-bindings-only"
+  },
+  "promotionAuthority": "backend-capability-contract-only",
+  "externalCheckpointIdentity": "attached-after-archive-seal",
+  "sha256": "e02976611f129e0f023d2e24e11e46c3b4df7f00dea1676e43f488deb8dcc79d"
+}

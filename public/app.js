@@ -4,6 +4,7 @@ import { createEvidenceProvenanceUiModel, resolveEvidenceReference } from './evi
 import { createEvidenceHistoryUiModel, selectEvidenceHistory } from './evidence-history-ui.js';
 import { createEvidenceDiagnosticsUiModel, selectEvidenceDiagnostics } from './evidence-diagnostics-ui.js';
 import { createProvenanceAuditUiModel, serializeValidatedProvenanceAudit } from './provenance-audit-ui.js';
+import { createOperatorAuditIndexUiModel } from './operator-audit-index-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const selectedChainId = 'ethereum';
@@ -26,6 +27,7 @@ let evidenceProvenanceUiModel = null;
 let evidenceHistoryUiModel = null;
 let evidenceDiagnosticsUiModel = null;
 let provenanceAuditUiModel = null;
+let operatorAuditIndexUiModel = null;
 
 function toast(message, duration = 4200) {
   const el = $('toast');
@@ -255,18 +257,20 @@ function renderCapabilityDashboard(model) {
 
 async function loadCapabilityDashboard() {
   try {
-    const [capabilityEnvelope, provenanceEnvelope, evidenceHistoryEnvelope, evidenceDiagnosticsEnvelope, provenanceAuditEnvelope] = await Promise.all([
+    const [capabilityEnvelope, provenanceEnvelope, evidenceHistoryEnvelope, evidenceDiagnosticsEnvelope, provenanceAuditEnvelope, operatorAuditIndexEnvelope] = await Promise.all([
       api('/api/chain-capabilities'),
       api('/api/evidence-provenance'),
       api('/api/evidence-history'),
       api('/api/evidence-diagnostics'),
-      api('/api/provenance-audit')
+      api('/api/provenance-audit'),
+      api('/api/operator-audit-index')
     ]);
     capabilityUiModel = createCapabilityUiModel(capabilityEnvelope);
     evidenceProvenanceUiModel = createEvidenceProvenanceUiModel(provenanceEnvelope);
     evidenceHistoryUiModel = createEvidenceHistoryUiModel(evidenceHistoryEnvelope);
     evidenceDiagnosticsUiModel = createEvidenceDiagnosticsUiModel(evidenceDiagnosticsEnvelope);
     provenanceAuditUiModel = createProvenanceAuditUiModel(provenanceAuditEnvelope);
+    operatorAuditIndexUiModel = createOperatorAuditIndexUiModel(operatorAuditIndexEnvelope);
   } catch (error) {
     capabilityUiModel = createCapabilityUiModel(null);
     capabilityUiModel = Object.freeze({ ...capabilityUiModel, reason: `Capability API request failed: ${error.message}` });
@@ -274,11 +278,13 @@ async function loadCapabilityDashboard() {
     evidenceHistoryUiModel = createEvidenceHistoryUiModel(null);
     evidenceDiagnosticsUiModel = createEvidenceDiagnosticsUiModel(null);
     provenanceAuditUiModel = createProvenanceAuditUiModel(null);
+    operatorAuditIndexUiModel = createOperatorAuditIndexUiModel(null);
   }
   renderCapabilityDashboard(capabilityUiModel);
   renderEvidenceHistory(evidenceHistoryUiModel);
   renderEvidenceDiagnostics(evidenceDiagnosticsUiModel);
   renderProvenanceAudit(provenanceAuditUiModel);
+  renderOperatorAuditIndex(operatorAuditIndexUiModel);
 }
 
 $('capabilityFilter')?.addEventListener('change', () => renderCapabilityDashboard(capabilityUiModel));
@@ -378,6 +384,22 @@ function renderProvenanceAudit(model) {
   status.className = 'status status-validated';
   summary.textContent = `${audit.inventory.provenanceRecordCount} provenance refs · ${audit.inventory.evidenceCheckpointCount} evidence checkpoints · lineage ${audit.lineageRecovery.status} (${audit.lineageRecovery.recoveredBindingCount} recovered, ${audit.lineageRecovery.unrecordedRefCount} not recorded).`;
   exportButton.disabled = false;
+}
+
+function renderOperatorAuditIndex(model) {
+  const status = $('operatorAuditIndexStatus');
+  const summary = $('operatorAuditIndexSummary');
+  if (!status || !summary) return;
+  if (!model?.available) {
+    status.textContent = 'Review index unavailable';
+    status.className = 'status status-unavailable';
+    summary.textContent = model?.reason || 'No backend-validated operator audit index was received.';
+    return;
+  }
+  const index = model.index;
+  status.textContent = `Index ${index.sha256.slice(0, 12)}… · backend validated`;
+  status.className = 'status status-validated';
+  summary.textContent = `${index.checkpointRef} · provenance audit ${index.provenanceAuditSha256.slice(0, 12)}… · evidence history ${index.evidenceHistorySha256.slice(0, 12)}… · external archive/sidecar identity attaches after archive seal.`;
 }
 
 function permissionHas(address) {
@@ -976,16 +998,3 @@ async function init() {
     $('runtimePill').textContent = `${appConfig.mode.toUpperCase()} · ${appConfig.ethereumProof.allowedNetwork.name.toUpperCase()} ONLY`;
     $('footerVersion').textContent = `OmegaVault MVP ${appConfig.appVersion}`;
   } catch (e) {
-    toast(`Unable to read OmegaVault runtime configuration: ${e.message}`, 7000);
-  }
-
-  await loadCapabilityDashboard();
-  await refreshWallet({ request: false }).catch(() => {});
-  await loadLatestVault({ announce: false }).catch(() => {});
-  if (currentVault?.chainBindings?.ethereum && walletNetwork?.isSepolia) {
-    await refreshOnChainState().catch(() => {});
-  }
-  renderLiveLayer();
-}
-
-init();
