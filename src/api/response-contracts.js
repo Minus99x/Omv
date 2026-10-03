@@ -5,6 +5,7 @@ import { validateEvidenceRecord } from '../core/evidence.js';
 import { validateMaturityEvidenceProvenanceCoverage, resolveEvidenceProvenance } from '../chains/evidence-provenance.js';
 import { createEvidenceHistoryCatalog } from '../chains/evidence-history.js';
 import { createEvidenceDiagnosticsCatalog } from '../chains/evidence-diagnostics.js';
+import { verifyProvenanceIntegrityAudit } from '../chains/provenance-audit.js';
 import { getChainCapabilityContract } from '../chains/capability-catalog.js';
 
 const evidenceRank = new Map(EVIDENCE_LEVELS.map((level, index) => [level, index]));
@@ -138,6 +139,7 @@ export function validateEvidenceProvenanceCatalogResponse(catalog) {
     if (item.checkpointRef !== `${match[1]}-dev`) throw new Error(`Checkpoint ref mismatch for ${ref}.`);
     if (item.archiveFilename !== `omegavault-mvp-${match[1]}-dev.zip`) throw new Error(`Archive filename mismatch for ${ref}.`);
     if (typeof item.archiveSha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(item.archiveSha256)) throw new Error(`Archive SHA-256 is invalid for ${ref}.`);
+    if (item.parentBundleSha256 != null && (typeof item.parentBundleSha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(item.parentBundleSha256))) throw new Error(`Parent bundle SHA-256 is invalid for ${ref}.`);
     const chainIds = stringArray(item.chainIds, `provenanceCatalog.records[${index}].chainIds`);
     const artifactPaths = stringArray(item.artifactPaths, `provenanceCatalog.records[${index}].artifactPaths`);
     if (chainIds.length < 1) throw new Error(`Provenance record ${ref} must name at least one chain.`);
@@ -263,4 +265,24 @@ export function validateEvidenceDiagnosticsCatalogResponse(catalog) {
 export function createValidatedEvidenceDiagnosticsCatalogResponse(catalog = createEvidenceDiagnosticsCatalog()) {
   const validation=validateEvidenceDiagnosticsCatalogResponse(catalog);
   return Object.freeze({schema:'omegavault.api.evidence-diagnostics.v1',data:catalog,validation});
+}
+
+
+export function validateProvenanceIntegrityAuditResponse(audit) {
+  plainObject(audit, 'provenanceAudit');
+  const verification = verifyProvenanceIntegrityAudit(audit);
+  if (!verification.ok) throw new Error(`Invalid provenance-integrity audit: ${verification.errors.join('; ')}`);
+  plainObject(audit.inventory, 'provenanceAudit.inventory');
+  plainObject(audit.integrity, 'provenanceAudit.integrity');
+  plainObject(audit.lineageRecovery, 'provenanceAudit.lineageRecovery');
+  if (!['not-recorded','partial','complete'].includes(audit.lineageRecovery.status)) throw new Error('Unknown lineage recovery status.');
+  if (!Array.isArray(audit.lineageRecovery.recovered) || !Array.isArray(audit.lineageRecovery.unrecordedRefs)) throw new TypeError('Lineage recovery arrays are required.');
+  if (audit.lineageRecovery.recoveredBindingCount !== audit.lineageRecovery.recovered.length) throw new Error('Recovered lineage count mismatch.');
+  if (audit.lineageRecovery.unrecordedRefCount !== audit.lineageRecovery.unrecordedRefs.length) throw new Error('Unrecorded lineage count mismatch.');
+  return Object.freeze({ ok: true, sha256: audit.sha256, lineageStatus: audit.lineageRecovery.status });
+}
+
+export function createValidatedProvenanceIntegrityAuditResponse(audit) {
+  const validation = validateProvenanceIntegrityAuditResponse(audit);
+  return Object.freeze({ schema: 'omegavault.api.provenance-integrity-audit.v1', data: audit, validation });
 }
