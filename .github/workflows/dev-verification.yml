@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: omegavault-dev-verification
+  group: omegavault-dev-verification-v2
   cancel-in-progress: true
 
 jobs:
