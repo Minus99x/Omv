@@ -108,7 +108,11 @@ export function validateCapabilityCatalogResponse(catalog) {
 
 export function createValidatedCapabilityCatalogResponse(catalog) {
   const validation = validateCapabilityCatalogResponse(catalog);
-  return Object.freeze({ schema: 'omegavault.api.chain-capabilities.v1', data: catalog, validation });
+  return Object.freeze({
+    schema: 'omegavault.api.chain-capabilities.v1',
+    data: catalog,
+    validation
+  });
 }
 
 export function validateEvidenceApiPayload(record) {
@@ -122,7 +126,11 @@ export function validateEvidenceApiPayload(record) {
 
 export function createValidatedEvidenceApiResponse(record) {
   const validation = validateEvidenceApiPayload(record);
-  return Object.freeze({ schema: 'omegavault.api.evidence.v1', data: record, validation });
+  return Object.freeze({
+    schema: 'omegavault.api.evidence.v1',
+    data: record,
+    validation
+  });
 }
 
 
