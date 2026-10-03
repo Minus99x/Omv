@@ -354,10 +354,10 @@ export function createClassicAssetPreflight({ asset, vaultTrustline, rescueTrust
 }
 
 
-function decoratedSignatureBytes(signature) {
-  const bytes = signature?.signature?.();
-  if (!bytes || typeof bytes.length !== 'number') throw new TypeError('Stellar decorated signature is malformed.');
-  return Uint8Array.from(bytes);
+function decoratedSignatureValue(signature) {
+  const value = signature?.signature;
+  if (!value) throw new TypeError('Stellar decorated signature is malformed.');
+  return value;
 }
 
 export function verifySignedRecoveryEnvelopeArtifact({ plan, artifact, signedTransactionXdr }) {
@@ -398,9 +398,9 @@ export function verifySignedRecoveryEnvelopeArtifact({ plan, artifact, signedTra
     let matchIndex = -1;
     for (let index = 0; index < signatures.length; index += 1) {
       if (matchedIndexes.has(index)) continue;
-      let signatureBytes;
-      try { signatureBytes = decoratedSignatureBytes(signatures[index]); } catch { continue; }
-      if (keypair.verify(hash, signatureBytes)) {
+      let signatureValue;
+      try { signatureValue = decoratedSignatureValue(signatures[index]); } catch { continue; }
+      if (keypair.verify(hash, signatureValue)) {
         matchIndex = index;
         break;
       }
