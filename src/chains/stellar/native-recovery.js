@@ -35,6 +35,7 @@ export function createHeartbeatPlan({ vaultAccount, currentSequence }) {
   const current = asSequence(currentSequence, 'currentSequence');
   if (current + 2n > MAX_INT64) throw new Error('Sequence number is too high for a heartbeat bump.');
   return Object.freeze({
+    networkRef: 'stellar:testnet',
     sourceAccount: vaultAccount,
     transactionSequence: (current + 1n).toString(),
     operations: Object.freeze([{ type: 'bumpSequence', bumpTo: (current + 2n).toString() }]),
@@ -96,6 +97,7 @@ export function createRecoveryEnvelopePlan({
   if (contacts.includes(vaultAccount) || contacts.includes(rescueDestination)) throw new TypeError('contacts must differ from the vault and rescue accounts.');
   if (!Number.isInteger(threshold) || threshold !== contacts.length) throw new TypeError('Exact native Stellar recovery currently supports N-of-N contact approval only; M-of-N requires the Soroban fallback.');
   if (!Number.isInteger(inactivitySeconds) || inactivitySeconds < 1) throw new TypeError('inactivitySeconds must be positive.');
+  if (networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Exact native Stellar recovery is currently testnet-only; networkPassphrase must match Stellar Testnet.');
   const baseFee = BigInt(baseFeeStroops);
   if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
   const sequence = chooseRecoverySequence({ currentSequence });
@@ -438,6 +440,7 @@ export function buildHeartbeatEnvelopeArtifact({
   networkPassphrase = TESTNET_PASSPHRASE
 }) {
   const plan = createHeartbeatPlan({ vaultAccount, currentSequence });
+  if (networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Stellar heartbeat proof is currently testnet-only; networkPassphrase must match Stellar Testnet.');
   const baseFee = BigInt(baseFeeStroops);
   if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
   const source = new Account(plan.sourceAccount, String(currentSequence));
@@ -485,6 +488,7 @@ export function verifyHeartbeatEnvelopeArtifact({ plan, artifact }) {
     throw new TypeError('Heartbeat plan and artifact are required.');
   }
   const errors = [];
+  if (artifact.networkPassphrase !== TESTNET_PASSPHRASE) errors.push('Heartbeat artifact must use the Stellar Testnet network passphrase.');
   let transaction;
   try {
     transaction = TransactionBuilder.fromXdr(artifact.transactionXdr, artifact.networkPassphrase ?? TESTNET_PASSPHRASE);
