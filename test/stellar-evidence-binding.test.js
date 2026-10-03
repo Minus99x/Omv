@@ -146,3 +146,14 @@ test('tampered Stellar Testnet evidence digest fails closed', () => {
   assert.equal(result.ok, false);
   assert.ok(result.errors.some(error => /delta|digest/i.test(error)));
 });
+
+
+test('Stellar Testnet evidence requires exact too-early and success result codes', () => {
+  const wrongEarly = fixture();
+  wrongEarly.initialTooEarly = { ...wrongEarly.initialTooEarly, resultCode:'txFAILED' };
+  assert.throws(() => createStellarTestnetRecoveryEvidenceBundle(wrongEarly), /txTOO_EARLY/);
+
+  const wrongSuccess = fixture();
+  wrongSuccess.eligibleSubmission = { ...wrongSuccess.eligibleSubmission, resultCode:'txFAILED' };
+  assert.throws(() => createStellarTestnetRecoveryEvidenceBundle(wrongSuccess), /txSUCCESS/);
+});
