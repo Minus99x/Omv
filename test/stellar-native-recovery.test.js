@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Keypair, TransactionBuilder } from '@stellar/stellar-sdk';
 import {
   assessRecoverySubmissionResult,
+  buildHeartbeatEnvelopeArtifact,
   buildRecoveryEnvelopeArtifact,
   chooseRecoverySequence,
   coordinateRecoverySigners,
@@ -13,7 +14,9 @@ import {
   createSignerSetupPlan,
   estimateReserveImpact,
   validateRecoveryAccountSnapshot,
+  verifyHeartbeatEnvelopeArtifact,
   verifyRecoveryEnvelopeArtifact,
+  verifySignedHeartbeatEnvelopeArtifact,
   verifySignedRecoveryEnvelopeArtifact
 } from '../src/chains/stellar/native-recovery.js';
 
@@ -222,4 +225,51 @@ test('Stellar signed recovery verification rejects a correctly signed substitute
   });
   assert.equal(result.valid, false);
   assert.ok(result.errors.some(error => /hash does not match/i.test(error)));
+});
+
+
+test('Stellar heartbeat artifact round-trips the exact sequence bump', () => {
+  const plan = createHeartbeatPlan({ vaultAccount:G(1), currentSequence:'1000' });
+  const artifact = buildHeartbeatEnvelopeArtifact({ vaultAccount:G(1), currentSequence:'1000' });
+  assert.equal(artifact.sourceAccount, G(1));
+  assert.equal(artifact.transactionSequence, '1001');
+  assert.equal(artifact.bumpTo, '1002');
+  assert.equal(artifact.totalFeeStroops, '100');
+  assert.equal(artifact.roundTripVerified, true);
+  assert.match(artifact.transactionHashHex, /^[a-f0-9]{64}$/);
+  const verified = verifyHeartbeatEnvelopeArtifact({ plan, artifact });
+  assert.equal(verified.valid, true, verified.errors.join('; '));
+});
+
+test('Stellar signed heartbeat requires exactly the vault owner signature', () => {
+  const plan = createHeartbeatPlan({ vaultAccount:G(1), currentSequence:'1000' });
+  const artifact = buildHeartbeatEnvelopeArtifact({ vaultAccount:G(1), currentSequence:'1000' });
+  const signed = TransactionBuilder.fromXdr(artifact.transactionXdr, artifact.networkPassphrase);
+  signed.sign(KP(1));
+  const result = verifySignedHeartbeatEnvelopeArtifact({ plan, artifact, signedTransactionXdr:signed.toXdr() });
+  assert.equal(result.valid, true, result.errors.join('; '));
+  assert.equal(result.ownerSignatureVerified, true);
+  assert.equal(result.signatureCount, 1);
+});
+
+test('Stellar signed heartbeat rejects a wrong owner signature', () => {
+  const plan = createHeartbeatPlan({ vaultAccount:G(1), currentSequence:'1000' });
+  const artifact = buildHeartbeatEnvelopeArtifact({ vaultAccount:G(1), currentSequence:'1000' });
+  const signed = TransactionBuilder.fromXdr(artifact.transactionXdr, artifact.networkPassphrase);
+  signed.sign(KP(2));
+  const result = verifySignedHeartbeatEnvelopeArtifact({ plan, artifact, signedTransactionXdr:signed.toXdr() });
+  assert.equal(result.valid, false);
+  assert.equal(result.ownerSignatureVerified, false);
+  assert.ok(result.errors.some(error => /vault owner/i.test(error)));
+});
+
+test('Stellar signed heartbeat rejects extra signatures', () => {
+  const plan = createHeartbeatPlan({ vaultAccount:G(1), currentSequence:'1000' });
+  const artifact = buildHeartbeatEnvelopeArtifact({ vaultAccount:G(1), currentSequence:'1000' });
+  const signed = TransactionBuilder.fromXdr(artifact.transactionXdr, artifact.networkPassphrase);
+  signed.sign(KP(1), KP(2));
+  const result = verifySignedHeartbeatEnvelopeArtifact({ plan, artifact, signedTransactionXdr:signed.toXdr() });
+  assert.equal(result.valid, false);
+  assert.equal(result.signatureCount, 2);
+  assert.ok(result.errors.some(error => /exactly one owner signature/i.test(error)));
 });
