@@ -142,3 +142,33 @@ test('publisher trust transitions reject stale timestamps, repeated enrollment a
   const verified=run('scripts/verify-publisher-trust-history.js',['--history',historyPath,'--snapshot',snapshotPath]);
   assert.equal(verified.status,1);
 });
+
+test('publisher trust append preflights both output paths and never leaves a partial history write',()=> {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'omegavault-publisher-trust-output-preflight-'));
+  const key=generateKeyPairSync('ed25519');
+  const keyPath=path.join(dir,'publisher.pem');
+  fs.writeFileSync(keyPath,pem(key));
+
+  const historyOutput=path.join(dir,'history.json');
+  const existingSnapshot=path.join(dir,'existing-snapshot.json');
+  fs.writeFileSync(existingSnapshot,'already here');
+
+  const collision=run('scripts/append-publisher-trust-event.js',[
+    '--publisher','release-registry','--public-key',keyPath,'--action','enroll',
+    '--configured-by','release-policy','--configured-at','2026-10-03T21:50:00.000Z',
+    '--output',historyOutput,'--snapshot-output',existingSnapshot
+  ]);
+  assert.equal(collision.status,1);
+  assert.match(collision.stderr,/snapshot output already exists/i);
+  assert.equal(fs.existsSync(historyOutput),false);
+
+  const samePath=path.join(dir,'same.json');
+  const same=run('scripts/append-publisher-trust-event.js',[
+    '--publisher','release-registry','--public-key',keyPath,'--action','enroll',
+    '--configured-by','release-policy','--configured-at','2026-10-03T21:51:00.000Z',
+    '--output',samePath,'--snapshot-output',samePath
+  ]);
+  assert.equal(same.status,1);
+  assert.match(same.stderr,/different paths/i);
+  assert.equal(fs.existsSync(samePath),false);
+});
