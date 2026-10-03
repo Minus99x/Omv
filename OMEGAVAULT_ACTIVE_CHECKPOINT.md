@@ -1,35 +1,34 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.43-dev**
+Current development checkpoint: **0.6.44-dev**
 
-Archive filename: `omegavault-mvp-0.6.43-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.43-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.43-dev.review-index.json`
+Archive filename: `omegavault-mvp-0.6.44-dev.zip`
+Checkpoint sidecar filename: `omegavault-mvp-0.6.44-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.44-dev.review-index.json`
 
-## 0.6.43 delta
+## 0.6.44 delta
 
-- Added digest-linked reviewer enrollment, rotation and terminal revocation events.
-- Rotation binds the preceding event SHA-256 and preceding SPKI fingerprint; only the current key may confer trust.
-- Added policy snapshots binding event count and head digest to reject valid-prefix rollback.
-- Extended receipt verification with trust-history and snapshot enforcement.
-- Added public-key-only trust-history append tooling with fail-closed output overwrite protection.
-- Trust events and snapshots retain zero chain- or evidence-promotion authority.
-- Normal tooling creates, reads and persists no reviewer private keys; tests use ephemeral Ed25519 keys only.
+- Added `omegavault.reviewer-trust-policy-anchor.v1` sidecars binding a trust-policy snapshot to one exact external review index.
+- Anchor identity includes the review-index digest, checkpoint reference and archive digest.
+- Receipt verification requires the receipt's review-index digest to equal the anchored external review index.
+- Stale history/snapshot pairs, cross-checkpoint indexes, substituted indexes and tampered authority fail closed.
+- Added public create/verify CLIs with output-overwrite protection and no private-key inputs.
+- Policy anchors retain zero chain- or evidence-promotion authority and do not authenticate their named anchoring authority by themselves.
 
 ## Verification
 
-- Focused receipt/signature/trust-history/CLI slice: **20/20 passed**.
-- Broad dependency-free offline regression: **327/327 passed**.
-- `npm run check`: **passed**; new trust-history core and CLIs also passed explicit syntax checks.
-- Full suite: **327 passed / 9 known workstation-gated files failed to load**.
+- Focused reviewer trust-policy anchor and receipt-integration slice: **26/26 passed**.
+- Broad dependency-free offline regression: **333/333 passed**.
+- `npm run check`: **passed**; new anchor core and CLIs also passed explicit syntax checks.
+- Full suite: **333 passed / 9 known workstation-gated files failed to load**.
 
 ## Promotion boundary
 
-No chain is newly promoted. Cryptographic authentication and reviewer trust history remain audit metadata only and cannot satisfy chain promotion gates.
+No chain is newly promoted. Reviewer trust-policy anchors remain audit metadata only and cannot satisfy chain promotion gates.
 
 ## Next offline gate
 
-Bind the reviewer trust-policy snapshot into an independently anchored audit index or policy registry.
+Add explicit predecessor lineage for successive policy anchors without inferring source ancestry.
 
 ## Workstation gate
 

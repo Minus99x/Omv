@@ -1,6 +1,6 @@
 {
   "name": "omegavault-mvp",
-  "version": "0.6.43-dev",
+  "version": "0.6.44-dev",
   "private": true,
   "type": "module",
   "description": "Chain-agnostic non-custodial recovery-wallet MVP; Ethereum proof complete, multichain offline verification and recovery-mechanism scaffolding in active development.",
@@ -23,7 +23,9 @@
     "review:verify": "node scripts/verify-external-review-index.js",
     "review:receipt": "node scripts/create-review-receipt.js",
     "review:receipt:verify": "node scripts/verify-review-receipt.js",
-    "review:trust:append": "node scripts/append-reviewer-trust-event.js"
+    "review:trust:append": "node scripts/append-reviewer-trust-event.js",
+    "review:trust:anchor": "node scripts/create-reviewer-trust-policy-anchor.js",
+    "review:trust:anchor:verify": "node scripts/verify-reviewer-trust-policy-anchor.js"
   },
   "engines": {
     "node": ">=22.12"

@@ -196,6 +196,32 @@ Revocation is terminal. A separately stored snapshot binds the expected event
 count and head digest so a valid historical prefix cannot be replayed as the
 current trust policy.
 
+The current trust-policy snapshot can be bound to one exact external review
+index in a separate audit sidecar:
+
+```bash
+npm run review:trust:anchor -- \
+  --external-review-index checkpoint.review-index.json \
+  --trust-history reviewer-trust-history.json \
+  --trust-history-snapshot reviewer-trust-history.snapshot.json \
+  --anchored-by independent-policy-registry \
+  --anchored-at 2026-10-03T07:00:00Z \
+  --output reviewer-trust-policy.anchor.json
+
+npm run review:trust:anchor:verify -- \
+  --anchor reviewer-trust-policy.anchor.json \
+  --external-review-index checkpoint.review-index.json \
+  --trust-history reviewer-trust-history.json \
+  --trust-history-snapshot reviewer-trust-history.snapshot.json
+```
+
+Receipt verification can require that anchor with `--trust-policy-anchor` and
+`--external-review-index`. The external review-index digest must also match the
+digest already bound into the receipt. This prevents a valid stale policy pair
+or a policy from another checkpoint from being accepted as current. The anchor
+is integrity metadata, not reviewer identity authentication or promotion
+authority.
+
 The full 0.6.16 development package currently passes **186 JavaScript tests** with zero failures plus **7/7 Aiken on-chain tests**. `npm run check` syntax-checks the existing JavaScript modules and verifies the pinned EVM/TRON artifacts. `npm run check:xrpl` verifies deterministic signer preimages, signatures and canonical multisigned-binary evidence. `npm run check:solana` verifies native-source hashes, exact PDA derivation and instruction/account-meta evidence without claiming Rust compilation. `npm run check:bitcoin` verifies the Bitcoin Core descriptor/PSBTv2 evidence. `npm run check:cardano` formats, tests and compiles the pinned Aiken Plutus V3 project, reapplies the non-deployable fixture parameters, verifies script identities/addresses, validates the epoch-316 protocol snapshot, and checks deterministic signed-size, fee, minimum-ADA, collateral and zero-budget Ogmios evaluation-request evidence while preserving the independent-node live-construction block.
 
 ## Important limitations
