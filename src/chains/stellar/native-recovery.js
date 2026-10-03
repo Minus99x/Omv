@@ -429,3 +429,120 @@ export function verifySignedRecoveryEnvelopeArtifact({ plan, artifact, signedTra
     errors:Object.freeze(errors)
   });
 }
+
+
+export function buildHeartbeatEnvelopeArtifact({
+  vaultAccount,
+  currentSequence,
+  baseFeeStroops = '100',
+  networkPassphrase = TESTNET_PASSPHRASE
+}) {
+  const plan = createHeartbeatPlan({ vaultAccount, currentSequence });
+  const baseFee = BigInt(baseFeeStroops);
+  if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
+  const source = new Account(plan.sourceAccount, String(currentSequence));
+  const transaction = new TransactionBuilder(source, {
+    fee: baseFee.toString(),
+    networkPassphrase
+  })
+    .addOperation(Operation.bumpSequence({ bumpTo: plan.operations[0].bumpTo }))
+    .setTimeout(0)
+    .build();
+
+  const transactionXdr = transaction.toXdr();
+  const transactionHashHex = toHex(transaction.hash());
+  const decoded = TransactionBuilder.fromXdr(transactionXdr, networkPassphrase);
+  const operation = decoded.operations[0];
+  if (decoded.toXdr() !== transactionXdr || toHex(decoded.hash()) !== transactionHashHex) {
+    throw new Error('Stellar heartbeat XDR round-trip verification failed.');
+  }
+  if (decoded.source !== plan.sourceAccount || decoded.sequence !== plan.transactionSequence) {
+    throw new Error('Stellar heartbeat envelope does not match its source/sequence plan.');
+  }
+  if (decoded.operations.length !== 1 || operation?.type !== 'bumpSequence' || String(operation.bumpTo) !== plan.operations[0].bumpTo) {
+    throw new Error('Stellar heartbeat envelope does not contain the exact planned bumpSequence operation.');
+  }
+
+  return Object.freeze({
+    format: 'stellar-heartbeat-envelope-xdr',
+    sdk: Object.freeze({ package: '@stellar/stellar-sdk', version: STELLAR_SDK_VERSION }),
+    networkPassphrase,
+    sourceAccount: plan.sourceAccount,
+    transactionSequence: plan.transactionSequence,
+    bumpTo: plan.operations[0].bumpTo,
+    baseFeeStroops: baseFee.toString(),
+    totalFeeStroops: transaction.fee,
+    transactionXdr,
+    transactionHashHex,
+    ownerAuthorizationRequired: true,
+    roundTripVerified: true,
+    livenessEffect: plan.livenessEffect
+  });
+}
+
+export function verifyHeartbeatEnvelopeArtifact({ plan, artifact }) {
+  if (!plan || !artifact?.transactionXdr || !artifact?.transactionHashHex) {
+    throw new TypeError('Heartbeat plan and artifact are required.');
+  }
+  const errors = [];
+  let transaction;
+  try {
+    transaction = TransactionBuilder.fromXdr(artifact.transactionXdr, artifact.networkPassphrase ?? TESTNET_PASSPHRASE);
+  } catch (error) {
+    return Object.freeze({ valid: false, errors: Object.freeze([`Heartbeat XDR could not be decoded: ${error.message}`]) });
+  }
+  const operation = transaction.operations[0];
+  const recomputedHashHex = toHex(transaction.hash());
+  if (recomputedHashHex !== artifact.transactionHashHex) errors.push('Heartbeat transaction hash does not match XDR.');
+  if (transaction.source !== plan.sourceAccount) errors.push('Heartbeat source account does not match plan.');
+  if (transaction.sequence !== plan.transactionSequence) errors.push('Heartbeat transaction sequence does not match plan.');
+  if (transaction.operations.length !== 1 || operation?.type !== 'bumpSequence') errors.push('Heartbeat must contain exactly one bumpSequence operation.');
+  else if (String(operation.bumpTo) !== plan.operations[0].bumpTo) errors.push('Heartbeat bump target does not match plan.');
+  if (artifact.sourceAccount !== plan.sourceAccount || artifact.transactionSequence !== plan.transactionSequence || artifact.bumpTo !== plan.operations[0].bumpTo) {
+    errors.push('Heartbeat artifact metadata does not match plan.');
+  }
+  return Object.freeze({ valid: errors.length === 0, errors: Object.freeze(errors), recomputedHashHex });
+}
+
+export function verifySignedHeartbeatEnvelopeArtifact({ plan, artifact, signedTransactionXdr }) {
+  const base = verifyHeartbeatEnvelopeArtifact({ plan, artifact });
+  const errors = base.valid ? [] : base.errors.map(error => `Unsigned heartbeat artifact: ${error}`);
+  if (typeof signedTransactionXdr !== 'string' || !signedTransactionXdr.trim()) {
+    throw new TypeError('signedTransactionXdr is required.');
+  }
+
+  let transaction;
+  try {
+    transaction = TransactionBuilder.fromXdr(signedTransactionXdr, artifact.networkPassphrase ?? TESTNET_PASSPHRASE);
+  } catch (error) {
+    return Object.freeze({
+      valid: false,
+      transactionHashHex: null,
+      ownerSignatureVerified: false,
+      signatureCount: 0,
+      errors: Object.freeze([...errors, `Signed heartbeat envelope could not be decoded: ${error.message}`])
+    });
+  }
+
+  const transactionHashHex = toHex(transaction.hash());
+  if (transactionHashHex !== artifact.transactionHashHex) errors.push('Signed heartbeat hash does not match the heartbeat artifact.');
+  const signatures = Array.isArray(transaction.signatures) ? transaction.signatures : [];
+  let ownerSignatureVerified = false;
+  if (signatures.length === 1) {
+    try {
+      ownerSignatureVerified = Keypair.fromPublicKey(plan.sourceAccount).verify(transaction.hash(), decoratedSignatureValue(signatures[0]));
+    } catch {
+      ownerSignatureVerified = false;
+    }
+  }
+  if (!ownerSignatureVerified) errors.push('Heartbeat is not signed exactly once by the vault owner/master key.');
+  if (signatures.length !== 1) errors.push(`Heartbeat must contain exactly one owner signature; found ${signatures.length}.`);
+
+  return Object.freeze({
+    valid: errors.length === 0,
+    transactionHashHex,
+    ownerSignatureVerified,
+    signatureCount: signatures.length,
+    errors: Object.freeze(errors)
+  });
+}
