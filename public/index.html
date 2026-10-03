@@ -129,8 +129,14 @@
         <div id="evidenceDiagnosticsList" class="diagnostic-list" role="list" aria-label="Validated evidence health diagnostics"><div class="empty">Loading evidence diagnostics…</div></div>
       </article>
 
+      <article class="card wide provenance-audit-card">
+        <div class="section-head"><div><span class="step">07</span><h2>Provenance integrity audit</h2></div><span id="provenanceAuditStatus" class="status status-unavailable" role="status" aria-live="polite">Loading validated audit…</span></div>
+        <div class="inline-info"><strong>Exportable audit:</strong> this snapshot records provenance coverage, evidence gaps, and only cryptographic parent bindings actually present. Missing lineage stays “not recorded.”</div>
+        <div class="audit-actions"><div id="provenanceAuditSummary" class="muted small" role="status" aria-live="polite">Waiting for validated provenance audit.</div><button id="provenanceAuditExport" type="button" disabled>Export audit JSON</button></div>
+      </article>
+
       <article class="card wide live-card">
-        <div class="section-head"><div><span class="step">07</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
+        <div class="section-head"><div><span class="step">08</span><h2>Ethereum live proof</h2></div><span id="sepoliaStatus" class="status">Create a vault first</span></div>
         <div id="liveEmpty" class="empty">Create an OmegaVault policy first. The same neutral policy will then be expressed through the Ethereum adapter.</div>
         <div id="livePanel" class="hidden">
           <div class="proof-banner"><strong>Guardrail:</strong> this build will not deploy or send proof-contract actions on Ethereum mainnet. The only live proof network accepted by the application and server binding layer is Sepolia.</div>
