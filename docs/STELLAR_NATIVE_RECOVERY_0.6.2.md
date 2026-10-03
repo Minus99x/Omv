@@ -45,6 +45,12 @@ The deterministic test fixture currently binds hash `32bf2e38816f6f50b5f765593f3
 - CAP-15 fee-bump transactions: <https://github.com/stellar/stellar-protocol/blob/master/core/cap-0015.md>
 - SDK releases: <https://github.com/stellar/js-stellar-sdk/releases>
 
+## Current maturity
+
+The dependency-restoration gate is cleared. The pinned `@stellar/stellar-sdk` 17.1.0 stack now executes in clean CI and on Windows, including deterministic XDR round-trip verification and exact external contact-signature verification.
+
+The connector is now `offline-verified`, not `live-proof`. Offline evidence does not satisfy public-testnet promotion gates.
+
 ## Remaining promotion gate
 
-This connector remains `scaffold`, not `live-proof`. The remaining gate is a complete Stellar Testnet run with too-early rejection, heartbeat reset, eligible N-of-N execution, fee-bump submission, rescue-balance verification, failed-operation handling and exported digest-bound evidence.
+A complete Stellar Testnet run is still required with too-early rejection, heartbeat reset, eligible N-of-N execution, fee-bump submission, rescue-balance verification, failed-operation handling and exported digest-bound evidence.
