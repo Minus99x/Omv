@@ -25,10 +25,9 @@ function anchorFixture(ref,byte,anchorTime){
 
 test('publication-history CLIs append successors and reject an old publication as current',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'omegavault-publication-history-'));
-  const firstAnchor=anchorFixture('0.6.45-dev','1','2026-10-03T15:01:00.000Z');
-  const secondAnchor=anchorFixture('0.6.46-dev','2','2026-10-03T15:02:00.000Z');
-  const first=createPublicationHeadReceipt({history:firstAnchor.history,historySnapshot:firstAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T15:03:00.000Z'});
-  const second=createPublicationHeadReceipt({history:secondAnchor.history,historySnapshot:secondAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T15:04:00.000Z'});
+  const currentAnchor=anchorFixture('0.6.46-dev','2','2026-10-03T15:02:00.000Z');
+  const first=createPublicationHeadReceipt({history:currentAnchor.history,historySnapshot:currentAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T15:03:00.000Z'});
+  const second=createPublicationHeadReceipt({history:currentAnchor.history,historySnapshot:currentAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T15:04:00.000Z'});
 
   const files={
     first:path.join(dir,'first.json'),
@@ -62,10 +61,9 @@ test('publication-history CLIs append successors and reject an old publication a
 
 test('publication receipt verifier can require the supplied receipt to be current in publication history',()=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'omegavault-publication-current-'));
-  const firstAnchor=anchorFixture('0.6.45-dev','1','2026-10-03T15:11:00.000Z');
-  const secondAnchor=anchorFixture('0.6.46-dev','2','2026-10-03T15:12:00.000Z');
-  const first=createPublicationHeadReceipt({history:firstAnchor.history,historySnapshot:firstAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T15:13:00.000Z'});
-  const second=createPublicationHeadReceipt({history:secondAnchor.history,historySnapshot:secondAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T15:14:00.000Z'});
+  const currentAnchor=anchorFixture('0.6.46-dev','2','2026-10-03T15:12:00.000Z');
+  const first=createPublicationHeadReceipt({history:currentAnchor.history,historySnapshot:currentAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T15:13:00.000Z'});
+  const second=createPublicationHeadReceipt({history:currentAnchor.history,historySnapshot:currentAnchor.snapshot,publisher:'release-registry',publishedAt:'2026-10-03T15:14:00.000Z'});
 
   const files={
     first:path.join(dir,'first.json'),second:path.join(dir,'second.json'),
@@ -74,8 +72,8 @@ test('publication receipt verifier can require the supplied receipt to be curren
   };
   fs.writeFileSync(files.first,JSON.stringify(first));
   fs.writeFileSync(files.second,JSON.stringify(second));
-  fs.writeFileSync(files.anchorHistory,JSON.stringify(secondAnchor.history));
-  fs.writeFileSync(files.anchorSnapshot,JSON.stringify(secondAnchor.snapshot));
+  fs.writeFileSync(files.anchorHistory,JSON.stringify(currentAnchor.history));
+  fs.writeFileSync(files.anchorSnapshot,JSON.stringify(currentAnchor.snapshot));
 
   const history1=path.join(dir,'history-1.json');
   const snapshot1=path.join(dir,'snapshot-1.json');
