@@ -5,6 +5,16 @@ import { verifyCurrentPublicationHeadReceipt } from '../src/core/publication-hea
 import { assessPublisherTrustHistory } from '../src/core/publisher-trust-history.js';
 
 function arg(name) { const index=process.argv.indexOf(`--${name}`); return index >= 0 ? process.argv[index+1] : null; }
+function rejectSecretArgs() {
+  for (const name of ['private-key','secret-key','seed','key-output']) {
+    if (process.argv.includes(`--${name}`)) throw new Error(`Secret input --${name} is forbidden; publication verification accepts public verification material only.`);
+  }
+}
+
+try { rejectSecretArgs(); } catch (error) {
+  process.stderr.write(`Publication-head receipt verification failed: ${error.message}\n`);
+  process.exit(2);
+}
 
 const receiptPath=arg('receipt');
 const historyPath=arg('anchor-history');
