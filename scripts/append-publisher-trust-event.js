@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createPublisherTrustEvent, createPublisherTrustHistorySnapshot, verifyPublisherTrustHistory } from '../src/core/publisher-trust-history.js';
 
@@ -29,6 +29,12 @@ try {
     process.exit(2);
   }
 
+  const resolvedOutputPath = resolve(outputPath);
+  const resolvedSnapshotOutputPath = snapshotOutputPath ? resolve(snapshotOutputPath) : null;
+  if (resolvedSnapshotOutputPath && resolvedSnapshotOutputPath === resolvedOutputPath) throw new Error('History output and snapshot output must use different paths.');
+  if (existsSync(resolvedOutputPath)) throw new Error(`Output already exists: ${resolvedOutputPath}`);
+  if (resolvedSnapshotOutputPath && existsSync(resolvedSnapshotOutputPath)) throw new Error(`Snapshot output already exists: ${resolvedSnapshotOutputPath}`);
+
   const history = historyPath ? JSON.parse(readFileSync(resolve(historyPath), 'utf8')) : [];
   if (!Array.isArray(history)) throw new TypeError('Existing publisher trust history must be a JSON array.');
   if (history.length > 0) {
@@ -49,12 +55,12 @@ try {
   const verification = verifyPublisherTrustHistory(updated);
   if (!verification.ok) throw new Error(`Updated publisher trust history is invalid: ${verification.errors.join('; ')}`);
 
-  writeFileSync(resolve(outputPath), `${JSON.stringify(updated, null, 2)}\n`, { encoding:'utf8', flag:'wx' });
   const snapshot = createPublisherTrustHistorySnapshot(updated);
-  if (snapshotOutputPath) writeFileSync(resolve(snapshotOutputPath), `${JSON.stringify(snapshot, null, 2)}\n`, { encoding:'utf8', flag:'wx' });
+  writeFileSync(resolvedOutputPath, `${JSON.stringify(updated, null, 2)}\n`, { encoding:'utf8', flag:'wx' });
+  if (resolvedSnapshotOutputPath) writeFileSync(resolvedSnapshotOutputPath, `${JSON.stringify(snapshot, null, 2)}\n`, { encoding:'utf8', flag:'wx' });
 
   process.stdout.write(`${JSON.stringify({
-    output:resolve(outputPath),
+    output:resolvedOutputPath,
     publisher:verification.publisher,
     status:verification.status,
     eventCount:updated.length,
