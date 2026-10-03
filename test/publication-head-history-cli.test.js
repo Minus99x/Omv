@@ -144,6 +144,7 @@ test('publication verifier distinguishes authenticated publisher from separately
   assert.equal(trustedOutput.publisherAuthenticated,true);
   assert.equal(trustedOutput.publisherTrusted,true);
   assert.equal(trustedOutput.publisherTrustDecision,'trusted-authenticated');
+  assert.equal(trustedOutput.publisherTrustAuthority,false);
 
   const rotated=run('scripts/verify-publication-head-receipt.js',[...common,'--publisher-trust-history',files.rotatedHistory,'--publisher-trust-history-snapshot',files.rotatedSnapshot]);
   assert.equal(rotated.status,1);
