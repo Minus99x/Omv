@@ -59,12 +59,14 @@ function rejectionAttempt(input, label, recoveryHash) {
   const transactionHashHex = hashHex(input.transactionHashHex, `${label}.transactionHashHex`);
   if (transactionHashHex !== recoveryHash) throw new Error(`${label} is not bound to the recovery transaction hash.`);
   if (input.includedInLedger !== false || input.successful !== false) throw new Error(`${label} must prove rejection before ledger inclusion.`);
+  const resultCode = requiredText(input.resultCode, `${label}.resultCode`);
+  if (resultCode !== 'txTOO_EARLY') throw new Error(`${label} must prove Stellar txTOO_EARLY semantics.`);
   return Object.freeze({
     transactionHashHex,
     observedAt: observed.text,
     includedInLedger: false,
     successful: false,
-    resultCode: requiredText(input.resultCode, `${label}.resultCode`)
+    resultCode
   });
 }
 
@@ -74,13 +76,15 @@ function successAttempt(input, recoveryHash) {
   const innerTransactionHashHex = hashHex(input.innerTransactionHashHex, `${label}.innerTransactionHashHex`);
   if (innerTransactionHashHex !== recoveryHash) throw new Error('Eligible submission is not bound to the recovery transaction hash.');
   if (input.includedInLedger !== true || input.successful !== true) throw new Error('Eligible recovery submission must be successfully included in a ledger.');
+  const resultCode = requiredText(input.resultCode, `${label}.resultCode`);
+  if (resultCode !== 'txSUCCESS') throw new Error('Eligible recovery submission must prove Stellar txSUCCESS semantics.');
   return Object.freeze({
     innerTransactionHashHex,
     outerTransactionHashHex: hashHex(input.outerTransactionHashHex, `${label}.outerTransactionHashHex`),
     observedAt: isoTime(input.observedAt, `${label}.observedAt`).text,
     includedInLedger: true,
     successful: true,
-    resultCode: requiredText(input.resultCode, `${label}.resultCode`),
+    resultCode,
     ledger: integerString(input.ledger, `${label}.ledger`, { positive: true })
   });
 }
