@@ -203,3 +203,72 @@ test('publication verifier explicitly rejects secret-bearing arguments',()=> {
     assert.match(result.stderr,/secret input .* forbidden/i);
   }
 });
+
+test('trusted publisher status cannot override stale publication lineage',()=> {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'omegavault-trusted-stale-publication-'));
+  const currentAnchor=anchorFixture('0.6.47-dev','4','2026-10-03T22:00:00.000Z');
+  const first=createPublicationHeadReceipt({
+    history:currentAnchor.history,historySnapshot:currentAnchor.snapshot,
+    publisher:'release-registry',publishedAt:'2026-10-03T22:01:00.000Z'
+  });
+  const second=createPublicationHeadReceipt({
+    history:currentAnchor.history,historySnapshot:currentAnchor.snapshot,
+    publisher:'release-registry',publishedAt:'2026-10-03T22:02:00.000Z'
+  });
+
+  const key=generateKeyPairSync('ed25519');
+  const trust=[createPublisherTrustEvent({
+    publisher:'release-registry',publicKey:key.publicKey,action:'enroll',
+    configuredBy:'release-policy',configuredAt:'2026-10-03T22:03:00.000Z'
+  })];
+  const trustSnapshot=createPublisherTrustHistorySnapshot(trust);
+
+  const files={
+    first:path.join(dir,'first.json'),second:path.join(dir,'second.json'),
+    firstSignature:path.join(dir,'first-signature.json'),secondSignature:path.join(dir,'second-signature.json'),
+    publicKey:path.join(dir,'publisher-public.pem'),
+    anchorHistory:path.join(dir,'anchor-history.json'),anchorSnapshot:path.join(dir,'anchor-snapshot.json'),
+    publicationHistory:path.join(dir,'publication-history.json'),publicationSnapshot:path.join(dir,'publication-snapshot.json'),
+    trustHistory:path.join(dir,'trust-history.json'),trustSnapshot:path.join(dir,'trust-snapshot.json')
+  };
+  fs.writeFileSync(files.first,JSON.stringify(first));
+  fs.writeFileSync(files.second,JSON.stringify(second));
+  fs.writeFileSync(files.firstSignature,JSON.stringify(createDetachedPublicationHeadReceiptSignature({receipt:first,privateKey:key.privateKey})));
+  fs.writeFileSync(files.secondSignature,JSON.stringify(createDetachedPublicationHeadReceiptSignature({receipt:second,privateKey:key.privateKey})));
+  fs.writeFileSync(files.publicKey,key.publicKey.export({type:'spki',format:'pem'}));
+  fs.writeFileSync(files.anchorHistory,JSON.stringify(currentAnchor.history));
+  fs.writeFileSync(files.anchorSnapshot,JSON.stringify(currentAnchor.snapshot));
+  fs.writeFileSync(files.trustHistory,JSON.stringify(trust));
+  fs.writeFileSync(files.trustSnapshot,JSON.stringify(trustSnapshot));
+
+  const history1=path.join(dir,'history-1.json');
+  const snapshot1=path.join(dir,'snapshot-1.json');
+  assert.equal(run('scripts/append-publication-head-history.js',['--receipt',files.first,'--output',history1,'--snapshot-output',snapshot1]).status,0);
+  assert.equal(run('scripts/append-publication-head-history.js',['--receipt',files.second,'--history',history1,'--output',files.publicationHistory,'--snapshot-output',files.publicationSnapshot]).status,0);
+
+  const common=[
+    '--anchor-history',files.anchorHistory,'--anchor-history-snapshot',files.anchorSnapshot,
+    '--publication-history',files.publicationHistory,'--publication-history-snapshot',files.publicationSnapshot,
+    '--publisher-trust-history',files.trustHistory,'--publisher-trust-history-snapshot',files.trustSnapshot,
+    '--public-key',files.publicKey,'--require-authenticated-publisher','--require-trusted-publisher'
+  ];
+
+  const current=run('scripts/verify-publication-head-receipt.js',[
+    '--receipt',files.second,'--signature',files.secondSignature,...common
+  ]);
+  assert.equal(current.status,0,current.stderr);
+  const currentOutput=JSON.parse(current.stdout);
+  assert.equal(currentOutput.publisherAuthenticated,true);
+  assert.equal(currentOutput.publisherTrusted,true);
+  assert.equal(currentOutput.publicationReceiptCurrent,true);
+
+  const stale=run('scripts/verify-publication-head-receipt.js',[
+    '--receipt',files.first,'--signature',files.firstSignature,...common
+  ]);
+  assert.equal(stale.status,1);
+  const staleOutput=JSON.parse(stale.stdout);
+  assert.equal(staleOutput.publisherAuthenticated,true);
+  assert.equal(staleOutput.publisherTrusted,true);
+  assert.equal(staleOutput.publicationReceiptCurrent,false);
+  assert.match(staleOutput.errors.join('\n'),/not the current publication-history head/i);
+});
