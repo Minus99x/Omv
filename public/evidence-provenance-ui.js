@@ -4,11 +4,12 @@ function text(value){ return typeof value === 'string' && value.trim() ? value.t
 function textArray(value){ if(!Array.isArray(value)||value.some(item=>!text(item))) return null; if(new Set(value).size!==value.length) return null; return [...value]; }
 function view(item){
   if(!item||typeof item!=='object'||Array.isArray(item)) return null;
-  const ref=text(item.ref), checkpointRef=text(item.checkpointRef), archiveFilename=text(item.archiveFilename), archiveSha256=text(item.archiveSha256), scope=text(item.scope), summary=text(item.summary);
+  const ref=text(item.ref), checkpointRef=text(item.checkpointRef), archiveFilename=text(item.archiveFilename), archiveSha256=text(item.archiveSha256), parentBundleSha256=item.parentBundleSha256==null?null:text(item.parentBundleSha256), scope=text(item.scope), summary=text(item.summary);
   const chainIds=textArray(item.chainIds), artifactPaths=textArray(item.artifactPaths);
   if(!ref||!checkpointRef||!archiveFilename||!archiveSha256||!scope||!summary||!chainIds||!artifactPaths) return null;
+  if(item.parentBundleSha256!=null&&(!parentBundleSha256||!/^[0-9a-f]{64}$/i.test(parentBundleSha256))) return null;
   if(!/^0\.6\.\d+:[A-Z0-9_]+$/.test(ref)||!/^[0-9a-f]{64}$/i.test(archiveSha256)) return null;
-  return Object.freeze({ref,checkpointRef,archiveFilename,archiveSha256:archiveSha256.toLowerCase(),scope,summary,chainIds:Object.freeze(chainIds),artifactPaths:Object.freeze(artifactPaths)});
+  return Object.freeze({ref,checkpointRef,archiveFilename,archiveSha256:archiveSha256.toLowerCase(),parentBundleSha256:parentBundleSha256?.toLowerCase()??null,scope,summary,chainIds:Object.freeze(chainIds),artifactPaths:Object.freeze(artifactPaths)});
 }
 export function createEvidenceProvenanceUiModel(envelope){
   const unavailable=reason=>Object.freeze({schema:'omegavault.evidence-provenance-ui-model.v1',available:false,reason,records:Object.freeze([]),byRef:Object.freeze({})});
