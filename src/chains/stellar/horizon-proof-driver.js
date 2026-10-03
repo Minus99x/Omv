@@ -137,24 +137,31 @@ export function normalizeHorizonSubmissionError({ error, expectedTransactionHash
   });
 }
 
-export function normalizeHorizonFinality({ response, expectedTransactionHashHex, expectedLedger }) {
-  if (!response || typeof response !== 'object') throw new TypeError('Horizon transaction response is required.');
-  const hash = requiredText(response.hash, 'transaction.hash').toLowerCase();
+export function normalizeHorizonFinality({
+  transactionResponse,
+  ledgerResponse,
+  expectedTransactionHashHex,
+  expectedLedger
+}) {
+  if (!transactionResponse || typeof transactionResponse !== 'object') throw new TypeError('Horizon transaction response is required.');
+  if (!ledgerResponse || typeof ledgerResponse !== 'object') throw new TypeError('Horizon ledger response is required.');
+  const hash = requiredText(transactionResponse.hash, 'transaction.hash').toLowerCase();
   if (hash !== String(expectedTransactionHashHex).toLowerCase()) throw new Error('Horizon finality response is for a different transaction.');
-  const ledger = integerString(response.ledger, 'transaction.ledger', { positive: true });
+  const ledger = integerString(transactionResponse.ledger, 'transaction.ledger', { positive: true });
   if (ledger !== String(expectedLedger)) throw new Error('Horizon finality response ledger does not match the inclusion ledger.');
-  if (response.successful !== true) throw new Error('Horizon finality response is not successful.');
-  const ledgerHash = requiredText(
-    response.ledger_hash ?? response.ledgerHash,
-    'transaction.ledger_hash'
-  ).toLowerCase();
+  if (transactionResponse.successful !== true) throw new Error('Horizon finality response is not successful.');
+
+  const ledgerSequence = integerString(ledgerResponse.sequence, 'ledger.sequence', { positive: true });
+  if (ledgerSequence !== ledger) throw new Error('Horizon ledger response does not match the transaction ledger.');
+  const ledgerHash = requiredText(ledgerResponse.hash, 'ledger.hash').toLowerCase();
   if (!/^[a-f0-9]{64}$/.test(ledgerHash)) throw new TypeError('Horizon ledger hash must be a 32-byte hexadecimal digest.');
+
   return Object.freeze({
     status: 'finalized',
     transactionHashHex: hash,
     ledger,
     ledgerHash,
-    observedAt: requiredText(response.created_at, 'transaction.created_at')
+    observedAt: requiredText(ledgerResponse.closed_at, 'ledger.closed_at')
   });
 }
 
@@ -164,7 +171,7 @@ export function createInjectedStellarTestnetHorizonDriver({
   clock = () => new Date().toISOString()
 }) {
   if (horizonUrl !== TESTNET_HORIZON_URL) throw new TypeError('OmegaVault Stellar proof driver is restricted to the official Stellar Testnet Horizon endpoint.');
-  for (const method of ['loadAccount', 'submitTransactionXdr', 'loadTransaction', 'waitUntilEligible']) {
+  for (const method of ['loadAccount', 'submitTransactionXdr', 'loadTransaction', 'loadLedger', 'waitUntilEligible']) {
     if (typeof transport?.[method] !== 'function') throw new TypeError(`Injected Horizon transport requires ${method}().`);
   }
   if (typeof clock !== 'function') throw new TypeError('clock must be a function.');
@@ -200,9 +207,13 @@ export function createInjectedStellarTestnetHorizonDriver({
     },
 
     async observeFinality({ transactionHashHex, ledger }) {
-      const response = await transport.loadTransaction(transactionHashHex);
+      const transactionResponse = await transport.loadTransaction(transactionHashHex);
+      const transactionLedger = integerString(transactionResponse?.ledger, 'transaction.ledger', { positive: true });
+      if (transactionLedger !== String(ledger)) throw new Error('Horizon transaction lookup returned a different inclusion ledger.');
+      const ledgerResponse = await transport.loadLedger(transactionLedger);
       return normalizeHorizonFinality({
-        response,
+        transactionResponse,
+        ledgerResponse,
         expectedTransactionHashHex: transactionHashHex,
         expectedLedger: ledger
       });
