@@ -53,3 +53,44 @@ test('trust-history CLI refuses private-key-free invalid lineage and output over
   assert.equal(overwrite.status, 1);
   assert.match(overwrite.stderr, /already exists/i);
 });
+
+test('reviewer trust append preflights outputs and rejects secret-bearing arguments', () => {
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'omegavault-reviewer-trust-preflight-'));
+  const key=generateKeyPairSync('ed25519');
+  const publicKey=path.join(dir,'public.pem');
+  fs.writeFileSync(publicKey,key.publicKey.export({type:'spki',format:'pem'}));
+
+  const historyOutput=path.join(dir,'history.json');
+  const existingSnapshot=path.join(dir,'existing-snapshot.json');
+  fs.writeFileSync(existingSnapshot,'already here');
+
+  const collision=run([
+    '--reviewer','audit-team','--public-key',publicKey,'--action','enroll',
+    '--configured-by','test-policy','--configured-at','2026-10-03T23:20:00Z',
+    '--output',historyOutput,'--snapshot-output',existingSnapshot
+  ]);
+  assert.equal(collision.status,1);
+  assert.match(collision.stderr,/snapshot output already exists/i);
+  assert.equal(fs.existsSync(historyOutput),false);
+
+  const samePath=path.join(dir,'same.json');
+  const same=run([
+    '--reviewer','audit-team','--public-key',publicKey,'--action','enroll',
+    '--configured-by','test-policy','--configured-at','2026-10-03T23:21:00Z',
+    '--output',samePath,'--snapshot-output',samePath
+  ]);
+  assert.equal(same.status,1);
+  assert.match(same.stderr,/different paths/i);
+  assert.equal(fs.existsSync(samePath),false);
+
+  for (const forbidden of ['private-key','secret-key','seed','key-output']) {
+    const result=run([
+      '--reviewer','audit-team','--public-key',publicKey,'--action','enroll',
+      '--configured-by','test-policy','--configured-at','2026-10-03T23:22:00Z',
+      '--output',path.join(dir,`forbidden-${forbidden}.json`),
+      `--${forbidden}`,'secret'
+    ]);
+    assert.equal(result.status,2);
+    assert.match(result.stderr,/secret input is forbidden/i);
+  }
+});
