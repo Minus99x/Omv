@@ -9,7 +9,7 @@ import { evidenceDigest } from '../src/core/evidence.js';
 import { createReviewerTrustEvent, createReviewerTrustHistorySnapshot } from '../src/core/reviewer-trust-history.js';
 import { createReviewerTrustPolicyAnchor } from '../src/core/reviewer-trust-policy-anchor.js';
 import { createReviewerTrustPolicyAnchorHistoryEntry, createReviewerTrustPolicyAnchorHistorySnapshot } from '../src/core/reviewer-trust-policy-anchor-history.js';
-import { createPublicationHeadReceipt } from '../src/core/publication-head-receipt.js';
+import { createDetachedPublicationHeadReceiptSignature, createPublicationHeadReceipt } from '../src/core/publication-head-receipt.js';
 
 function run(script,args){return spawnSync(process.execPath,[script,...args],{cwd:process.cwd(),encoding:'utf8'});}
 function index(ref,byte){const core={schema:'omegavault.external-review-index.v1',checkpoint:{ref,archiveFilename:`${ref}.zip`,archiveSha256:byte.repeat(64)},checkpointManifest:{logicalSha256:'22'.repeat(32)},reviewBasis:{sha256:'33'.repeat(32)},verification:{sourceAncestryInference:false}};return {...core,sha256:evidenceDigest(core)};}
@@ -68,7 +68,8 @@ test('publication receipt verifier can require the supplied receipt to be curren
   const files={
     first:path.join(dir,'first.json'),second:path.join(dir,'second.json'),
     anchorHistory:path.join(dir,'anchor-history.json'),anchorSnapshot:path.join(dir,'anchor-snapshot.json'),
-    publicationHistory:path.join(dir,'publication-history.json'),publicationSnapshot:path.join(dir,'publication-snapshot.json')
+    publicationHistory:path.join(dir,'publication-history.json'),publicationSnapshot:path.join(dir,'publication-snapshot.json'),
+    firstSignature:path.join(dir,'first-signature.json'),secondSignature:path.join(dir,'second-signature.json'),publisherKey:path.join(dir,'publisher-public.pem')
   };
   fs.writeFileSync(files.first,JSON.stringify(first));
   fs.writeFileSync(files.second,JSON.stringify(second));
@@ -80,12 +81,19 @@ test('publication receipt verifier can require the supplied receipt to be curren
   assert.equal(run('scripts/append-publication-head-history.js',['--receipt',files.first,'--output',history1,'--snapshot-output',snapshot1]).status,0);
   assert.equal(run('scripts/append-publication-head-history.js',['--receipt',files.second,'--history',history1,'--output',files.publicationHistory,'--snapshot-output',files.publicationSnapshot]).status,0);
 
-  const common=['--anchor-history',files.anchorHistory,'--anchor-history-snapshot',files.anchorSnapshot,'--publication-history',files.publicationHistory,'--publication-history-snapshot',files.publicationSnapshot];
-  const accepted=run('scripts/verify-publication-head-receipt.js',['--receipt',files.second,...common]);
+  const publisherKey=generateKeyPairSync('ed25519');
+  fs.writeFileSync(files.publisherKey,publisherKey.publicKey.export({type:'spki',format:'pem'}));
+  fs.writeFileSync(files.firstSignature,JSON.stringify(createDetachedPublicationHeadReceiptSignature({receipt:first,privateKey:publisherKey.privateKey})));
+  fs.writeFileSync(files.secondSignature,JSON.stringify(createDetachedPublicationHeadReceiptSignature({receipt:second,privateKey:publisherKey.privateKey})));
+
+  const common=['--anchor-history',files.anchorHistory,'--anchor-history-snapshot',files.anchorSnapshot,'--publication-history',files.publicationHistory,'--publication-history-snapshot',files.publicationSnapshot,'--public-key',files.publisherKey,'--require-authenticated-publisher'];
+  const accepted=run('scripts/verify-publication-head-receipt.js',['--receipt',files.second,'--signature',files.secondSignature,...common]);
   assert.equal(accepted.status,0,accepted.stderr);
+  assert.equal(JSON.parse(accepted.stdout).publisherAuthenticated,true);
   assert.equal(JSON.parse(accepted.stdout).publicationReceiptCurrent,true);
 
-  const rejected=run('scripts/verify-publication-head-receipt.js',['--receipt',files.first,...common]);
+  const rejected=run('scripts/verify-publication-head-receipt.js',['--receipt',files.first,'--signature',files.firstSignature,...common]);
   assert.equal(rejected.status,1);
+  assert.equal(JSON.parse(rejected.stdout).publisherAuthenticated,true);
   assert.equal(JSON.parse(rejected.stdout).publicationReceiptCurrent,false);
 });
