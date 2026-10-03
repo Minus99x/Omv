@@ -28,12 +28,14 @@ test('UI model exposes evidence levels directly from contract gate evidence', ()
   assert.equal(address.evidenceSufficient, true);
 });
 
-test('UI model keeps dependency-blocked Stellar visible', () => {
+test('UI model keeps offline-verified Stellar visible without promotion', () => {
   const result = createCapabilityUiModel(envelope());
   const stellar = result.contracts.find(contract => contract.chainId === 'stellar');
   assert.ok(stellar);
   assert.equal(stellar.promotionEligible, false);
-  assert.ok(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')));
+  assert.equal(stellar.stage, 'offline-verified');
+  assert.ok(stellar.blockers.some(value => /Stellar Testnet execution proof/.test(value)));
+  assert.equal(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')), false);
 });
 
 test('UI fails closed if backend validation is absent', () => {
