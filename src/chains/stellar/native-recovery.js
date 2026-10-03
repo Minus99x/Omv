@@ -1,4 +1,4 @@
-import { Account, Asset, Operation, SignerKey, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
+import { Account, Asset, Keypair, Operation, SignerKey, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
 
 const MAX_INT64 = 9223372036854775807n;
 const STELLAR_SDK_VERSION = '17.1.0';
@@ -351,4 +351,81 @@ export function createClassicAssetPreflight({ asset, vaultTrustline, rescueTrust
   if (!Number.isFinite(amount) || amount <= 0 || amount > balance) errors.push('Recovery payment amount exceeds or does not validly fit vault balance.');
   if (Number(rescueTrustline?.limit ?? Infinity) - Number(rescueTrustline?.balance ?? 0) < amount) errors.push('Rescue trustline limit does not have enough capacity.');
   return Object.freeze({ asset: normalized, ready: errors.length === 0, errors: Object.freeze(errors) });
+}
+
+
+function decoratedSignatureBytes(signature) {
+  const bytes = signature?.signature?.();
+  if (!bytes || typeof bytes.length !== 'number') throw new TypeError('Stellar decorated signature is malformed.');
+  return Uint8Array.from(bytes);
+}
+
+export function verifySignedRecoveryEnvelopeArtifact({ plan, artifact, signedTransactionXdr }) {
+  if (!plan || !artifact) throw new TypeError('Stellar recovery plan and artifact are required.');
+  if (typeof signedTransactionXdr !== 'string' || !signedTransactionXdr.trim()) throw new TypeError('signedTransactionXdr is required.');
+
+  const baseVerification = verifyRecoveryEnvelopeArtifact({ plan, artifact });
+  const errors = baseVerification.valid
+    ? []
+    : baseVerification.errors.map(error => `Unsigned artifact: ${error}`);
+
+  let transaction;
+  try {
+    transaction = TransactionBuilder.fromXdr(signedTransactionXdr, plan.networkPassphrase);
+  } catch (error) {
+    return Object.freeze({
+      valid:false,
+      transactionHashHex:null,
+      verifiedContactSigners:Object.freeze([]),
+      signatureCount:0,
+      exactSignatureSet:false,
+      errors:Object.freeze([...errors, `Signed Stellar envelope could not be decoded: ${error.message}`])
+    });
+  }
+
+  const transactionHashHex = toHex(transaction.hash());
+  if (transactionHashHex !== artifact.transactionHashHex) {
+    errors.push('Signed envelope hash does not match the pre-authorized recovery artifact.');
+  }
+
+  const signatures = Array.isArray(transaction.signatures) ? transaction.signatures : [];
+  const verified = [];
+  const matchedIndexes = new Set();
+  const hash = transaction.hash();
+
+  for (const account of plan.signerPolicy.requiredExtraSigners) {
+    const keypair = Keypair.fromPublicKey(account);
+    let matchIndex = -1;
+    for (let index = 0; index < signatures.length; index += 1) {
+      if (matchedIndexes.has(index)) continue;
+      let signatureBytes;
+      try { signatureBytes = decoratedSignatureBytes(signatures[index]); } catch { continue; }
+      if (keypair.verify(hash, signatureBytes)) {
+        matchIndex = index;
+        break;
+      }
+    }
+    if (matchIndex < 0) {
+      errors.push(`Required contact signature is missing or invalid: ${account}`);
+      continue;
+    }
+    matchedIndexes.add(matchIndex);
+    verified.push(account);
+  }
+
+  if (signatures.length !== plan.signerPolicy.requiredExtraSigners.length) {
+    errors.push(`Signed recovery envelope must contain exactly ${plan.signerPolicy.requiredExtraSigners.length} contact signature(s); found ${signatures.length}.`);
+  }
+  if (matchedIndexes.size !== signatures.length) {
+    errors.push('Signed recovery envelope contains an unknown, duplicate or otherwise unapproved signature.');
+  }
+
+  return Object.freeze({
+    valid:errors.length === 0,
+    transactionHashHex,
+    verifiedContactSigners:Object.freeze(verified),
+    signatureCount:signatures.length,
+    exactSignatureSet:errors.length === 0 && verified.length === plan.signerPolicy.requiredExtraSigners.length,
+    errors:Object.freeze(errors)
+  });
 }
