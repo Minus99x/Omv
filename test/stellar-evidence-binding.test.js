@@ -169,7 +169,8 @@ test('Stellar failed-applied evidence proves one-time preAuth signer consumption
     preAuthTxSigner:StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => 0xaa)),
     recoverySequence:'1000',
     submission:{
-      transactionHashHex:recoveryTransactionHashHex,
+      innerTransactionHashHex:recoveryTransactionHashHex,
+      outerTransactionHashHex:H('c'),
       observedAt:'2026-10-03T00:04:00Z',
       includedInLedger:true,
       successful:false,
@@ -196,7 +197,8 @@ test('Stellar failed-applied evidence rejects non-applied failures and signer-su
     preAuthTxSigner:StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => 0xaa)),
     recoverySequence:'1000',
     submission:{
-      transactionHashHex:recoveryTransactionHashHex,
+      innerTransactionHashHex:recoveryTransactionHashHex,
+      outerTransactionHashHex:H('c'),
       observedAt:'2026-10-03T00:04:00Z',
       includedInLedger:true,
       successful:false,
@@ -224,7 +226,8 @@ test('tampered Stellar failed-applied evidence fails closed', () => {
     preAuthTxSigner:StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => 0xaa)),
     recoverySequence:'1000',
     submission:{
-      transactionHashHex:recoveryTransactionHashHex,
+      innerTransactionHashHex:recoveryTransactionHashHex,
+      outerTransactionHashHex:H('c'),
       observedAt:'2026-10-03T00:04:00Z',
       includedInLedger:true,
       successful:false,
