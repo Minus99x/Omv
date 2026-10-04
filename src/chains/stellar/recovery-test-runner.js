@@ -491,7 +491,8 @@ export async function runStellarFailedAppliedRecoveryProof(input) {
     preAuthTxSigner:recoveryArtifact.preAuthTxSigner,
     recoverySequence:recoveryPlan.sequence.recoverySequence,
     submission:{
-      transactionHashHex:recoveryArtifact.transactionHashHex,
+      innerTransactionHashHex:recoveryArtifact.transactionHashHex,
+      outerTransactionHashHex:feeBumpArtifact.feeBumpTransactionHashHex,
       observedAt:submission.observedAt,
       includedInLedger:true,
       successful:false,
