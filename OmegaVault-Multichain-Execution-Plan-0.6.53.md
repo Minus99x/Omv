@@ -1,6 +1,6 @@
 # OmegaVault Multichain Execution Plan 0.6.53
 
-## Objective block
+## Completed checkpoint work
 
 - [x] Create deterministic Cardano Preprod evaluation capture plan.
 - [x] Freeze zero-budget transaction body hash and exact Ogmios request before live interaction.
@@ -10,10 +10,21 @@
 - [x] Bind all captured components into deterministic tamper-detectable evidence.
 - [x] Keep wallet signing, submission, finality and promotion authority false.
 - [x] Add focused adversarial/offline harness tests.
-- [x] Pass focused Cardano Preprod evidence gate plus inherited verification stack.
-- [ ] Build deterministic archive, checkpoint manifest and external review index.
-- [ ] Pin 0.6.53 as the laptop-ready Preprod evidence-harness checkpoint.
+- [x] Pass Cardano Preprod harness and inherited verification stack.
+- [x] Pass full 443-test regression, offline resume and global checks.
+- [x] Build deterministic 0.6.53 archive, checkpoint manifest and external review index.
+- [x] Verify checkpoint/review bindings.
 
 ## Later laptop/network window
 
-The laptop phase should obtain actual synchronized Preprod node data and Ogmios responses only after explicit authorization. It should not begin with code-writing or schema design; those are prepared here.
+1. Start from the sealed 0.6.53 checkpoint.
+2. Acquire one Cardano Preprod node tip.
+3. Capture UTxO state and protocol parameters at that same tip.
+4. Submit only the prepared zero-budget `evaluateTransaction` request to Ogmios.
+5. Capture an independent phase-1 validation result at the same tip.
+6. Feed those observations into the prepared harness and verify the evidence digest.
+7. Stop before wallet signing or transaction submission unless those actions are separately and explicitly authorized.
+
+## Authority boundary
+
+No work in this plan authorizes production deployment, mainnet/live-value transactions, wallet signatures, secret handling or connector promotion.

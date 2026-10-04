@@ -1,27 +1,33 @@
 # OmegaVault 0.6.53 Progress
 
-## Cardano Preprod execution-evidence preparation
+## Completed Cardano Preprod evidence preparation
 
-- Added a deterministic Cardano Preprod evidence-capture plan around the existing zero-budget Ogmios evaluation candidate.
-- The capture plan freezes action, transaction CBOR/hash, JSON-RPC request id and expected redeemer pointers before any live node interaction.
-- Added synchronized evidence binding that accepts only one acquired Preprod tip across UTxO state, protocol parameters, Ogmios evaluation and independent phase-1 validation.
-- Normalizes returned execution units with the existing safety-margin and maxTxExUnits checks.
-- Reuses the existing Cardano evaluation-evidence bundle for component hashing and same-transaction/same-tip enforcement.
-- Adds a second top-level evidence digest so later capture artifacts are tamper-detectable and reproducible.
-- Explicitly forbids wallet-signing, transaction-submission, live-value and promotion authority in both capture-plan and evidence objects.
-- Added adversarial tests for cross-tip substitution, cross-transaction phase-1 substitution, non-independent phase-1 validation and post-capture tampering.
+- Added deterministic Cardano Preprod evidence-capture planning.
+- Freezes the zero-budget evaluation candidate, transaction body hash, Ogmios JSON-RPC id and expected redeemer pointers.
+- Added synchronized evidence binding across one acquired tip for UTxOs, protocol parameters, Ogmios evaluation and independent phase-1 validation.
+- Normalizes execution-unit results with the existing protocol-parameter limits and safety margin.
+- Reuses the existing Cardano component evidence bundle and adds a tamper-detectable top-level digest.
+- Added fail-closed tests for cross-tip substitution, cross-transaction substitution, non-independent phase-1 validation and evidence tampering.
+- Keeps all signing, submission, value movement and promotion authority false.
 
-## Laptop handoff intent
+## Verification
 
-A later authorized laptop/network window should need only the actual synchronized Preprod captures. The request construction, expected validators, binding rules and evidence schema are prepared in advance.
-
-## Boundary
-
-No live Preprod request is made by 0.6.53 source work. No wallet signing or transaction submission path exists in this harness.
-
-## Verified working-head baseline
-
+- Review/audit: **84/84 passed**.
+- Stellar recovery: **20/20 passed**.
+- Bitcoin recovery: **22/22 passed**.
+- Maturity/provenance: **21/21 passed**.
+- Cardano toolchain/evidence: **passed**.
+- Cardano reconciliation: **12/12 passed**.
 - Cardano Preprod evidence harness: **6/6 passed**.
 - Full suite: **443/443 passed**.
 - Offline resume: **ok: true**.
 - Global checks: **passed**.
+- Checkpoint/review binding generation and verification: **passed**.
+
+## Laptop handoff
+
+The later laptop/network phase should begin from this checkpoint and perform data capture only: acquire a Preprod tip, same-tip UTxOs/protocol parameters, Ogmios evaluation response and independent phase-1 result. The harness is prepared to bind those observations deterministically.
+
+## Promotion boundary
+
+No Cardano public-network recovery, wallet signing, submission, inclusion or finality proof is claimed by 0.6.53.
