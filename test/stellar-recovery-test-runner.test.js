@@ -10,6 +10,7 @@ import {
   createRecoveryEnvelopePlan
 } from '../src/chains/stellar/native-recovery.js';
 import { verifyStellarTestnetRecoveryEvidenceBundle } from '../src/chains/stellar/evidence-binding.js';
+import { createStellarTestnetExecutionInputManifest } from '../src/chains/stellar/execution-input-manifest.js';
 import { runStellarTestnetRecoveryProof } from '../src/chains/stellar/recovery-test-runner.js';
 
 const KP = n => Keypair.fromRawEd25519Seed(new Uint8Array(32).fill(n));
@@ -52,7 +53,7 @@ function proofInputs() {
   const signedFeeBump = TransactionBuilder.fromXdr(feeBumpArtifact.feeBumpTransactionXdr, feeBumpArtifact.networkPassphrase);
   signedFeeBump.sign(KP(7));
 
-  return {
+  const result = {
     recoveryPlan,
     recoveryArtifact,
     signedRecoveryTransactionXdr,
@@ -63,6 +64,7 @@ function proofInputs() {
     feeBumpArtifact,
     signedFeeBumpTransactionXdr:signedFeeBump.toXdr()
   };
+  return { ...result, executionManifest:createStellarTestnetExecutionInputManifest(result) };
 }
 
 function readySnapshot(inputs, sequence) {
@@ -209,7 +211,25 @@ test('Stellar Testnet proof runner refuses bad signed recovery before calling th
   const fake = fakeDriver(inputs);
   await assert.rejects(
     () => runStellarTestnetRecoveryProof({ ...inputs, driver:fake.driver }),
-    /Signed recovery artifact failed offline verification/
+    /Signed recovery artifact failed execution-manifest preflight/
+  );
+  assert.equal(fake.calls.length, 0);
+});
+
+test('Stellar Testnet proof runner requires the exact current execution manifest before calling the driver', async () => {
+  const inputs = proofInputs();
+  const fake = fakeDriver(inputs);
+  const { executionManifest, ...withoutManifest } = inputs;
+  await assert.rejects(
+    () => runStellarTestnetRecoveryProof({ ...withoutManifest, driver:fake.driver }),
+    /execution manifest failed preflight/
+  );
+  assert.equal(fake.calls.length, 0);
+
+  const stale = { ...inputs, executionManifest:{ ...executionManifest, expectedInitialSequence:'1000' } };
+  await assert.rejects(
+    () => runStellarTestnetRecoveryProof({ ...stale, driver:fake.driver }),
+    /execution manifest failed preflight/
   );
   assert.equal(fake.calls.length, 0);
 });

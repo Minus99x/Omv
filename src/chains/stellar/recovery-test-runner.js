@@ -8,6 +8,7 @@ import {
   createStellarTestnetRecoveryEvidenceBundle,
   verifyStellarTestnetRecoveryEvidenceBundle
 } from './evidence-binding.js';
+import { verifyStellarTestnetExecutionInputManifest } from './execution-input-manifest.js';
 
 function requireMethod(driver, name) {
   if (typeof driver?.[name] !== 'function') throw new TypeError(`Stellar Testnet recovery proof driver requires ${name}().`);
@@ -172,7 +173,8 @@ export async function runStellarTestnetRecoveryProof(input) {
     signedHeartbeatTransactionXdr,
     feeBumpPlan,
     feeBumpArtifact,
-    signedFeeBumpTransactionXdr
+    signedFeeBumpTransactionXdr,
+    executionManifest
   } = input ?? {};
 
   for (const method of ['readAccountSnapshot', 'readBalanceUnits', 'submitEnvelope', 'waitUntilEligible', 'observeFinality']) {
@@ -186,6 +188,24 @@ export async function runStellarTestnetRecoveryProof(input) {
   }
   if (!Array.isArray(recoveryPlan.operations) || recoveryPlan.operations.length < 1) {
     throw new TypeError('Stellar Testnet proof runner requires at least one fixed recovery payment operation.');
+  }
+
+  const manifestVerification = verifyStellarTestnetExecutionInputManifest({
+    manifest: executionManifest,
+    inputs: {
+      recoveryPlan,
+      recoveryArtifact,
+      signedRecoveryTransactionXdr,
+      heartbeatPlan,
+      heartbeatArtifact,
+      signedHeartbeatTransactionXdr,
+      feeBumpPlan,
+      feeBumpArtifact,
+      signedFeeBumpTransactionXdr
+    }
+  });
+  if (!manifestVerification.ok) {
+    throw new Error(`Stellar Testnet execution manifest failed preflight: ${manifestVerification.errors.join('; ')}`);
   }
 
   requireOfflineArtifacts({
