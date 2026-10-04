@@ -1,6 +1,6 @@
 {
   "name": "omegavault-mvp",
-  "version": "0.6.49-dev",
+  "version": "0.6.48-dev",
   "private": true,
   "type": "module",
   "description": "Chain-agnostic non-custodial recovery-wallet MVP; Ethereum proof complete, multichain offline verification and recovery-mechanism scaffolding in active development.",
