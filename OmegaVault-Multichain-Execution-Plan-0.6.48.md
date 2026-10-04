@@ -64,3 +64,8 @@ The sealed 0.6.48 archive remains the last distributable checkpoint until packag
 ## Authority boundary
 
 No post-seal work authorizes production deployment, mainnet/live-value transactions, wallet signatures, secret handling, chain promotion, deployment authority or wallet authority.
+
+
+### Solana integrity remediation
+
+The multichain audit discovered that the checked-in SBF binary does not match the historical build-evidence digest. Its current state is recorded as a stale/untrusted SBF artifact, not as verified output. The remediation path is fixed: restore pinned Rust/Agave/cargo-build-sbf, rebuild from the bound source, rerun SBF program-test, regenerate build evidence, then obtain Devnet execution evidence. Do not update the historical digest merely to match the current binary.
