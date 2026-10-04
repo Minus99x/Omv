@@ -1,6 +1,6 @@
 {
   "name": "omegavault-mvp",
-  "version": "0.6.50-dev",
+  "version": "0.6.51-dev",
   "private": true,
   "type": "module",
   "description": "Chain-agnostic non-custodial recovery-wallet MVP; Ethereum proof complete, multichain offline verification and recovery-mechanism scaffolding in active development.",
@@ -37,7 +37,8 @@
     "test:review-audit": "node --test test/operator-audit-index-api.test.js test/operator-audit-index-http.test.js test/operator-audit-index-ui.test.js test/external-review-index-cli.test.js test/external-review-index.test.js test/publication-head-history-cli.test.js test/publication-head-history.test.js test/publication-head-receipt-cli.test.js test/publication-head-receipt.test.js test/publisher-trust-cli.test.js test/publisher-trust-history.test.js test/review-basis-api.test.js test/review-basis-artifact.test.js test/review-basis-http.test.js test/review-basis.test.js test/review-receipt-cli.test.js test/review-receipt-policy-anchor-cli.test.js test/review-receipt.test.js test/reviewer-trust-history-cli.test.js test/reviewer-trust-history.test.js test/reviewer-trust-policy-anchor-cli.test.js test/reviewer-trust-policy-anchor-history-cli.test.js test/reviewer-trust-policy-anchor-history.test.js test/reviewer-trust-policy-anchor.test.js",
     "test:stellar-recovery": "node --test test/stellar-native-recovery.test.js test/stellar-execution-evidence.test.js",
     "test:bitcoin-recovery": "node --test test/bitcoin-descriptor-psbt-v2.test.js test/bitcoin-recovery-policy.test.js test/bitcoin-finalizer-source.test.js test/bitcoin-execution-evidence.test.js",
-    "test:maturity-reconciliation": "node --test test/capability-catalog.test.js test/capability-contract.test.js test/evidence-provenance.test.js test/evidence-diagnostics.test.js"
+    "test:maturity-reconciliation": "node --test test/capability-catalog.test.js test/capability-contract.test.js test/evidence-provenance.test.js test/evidence-diagnostics.test.js",
+    "test:cardano-toolchain": "npm run check:cardano"
   },
   "engines": {
     "node": ">=22.12"
