@@ -1,5 +1,6 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { dirname, resolve, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { normalizeCardanoProtocolParameterSnapshot } from '../src/chains/cardano/protocol-parameters.js';
 import { buildCardanoOgmiosEvaluationFixture } from '../src/chains/cardano/witness-set.js';
 import { createCardanoPreprodEvidenceCapturePlan } from '../src/chains/cardano/preprod-evidence-harness.js';
@@ -10,8 +11,16 @@ function arg(name, fallback = null) {
   return index >= 0 ? process.argv[index + 1] : fallback;
 }
 
-const root = resolve(new URL('../', import.meta.url).pathname);
-const output = resolve(arg('--output', 'cardano-preprod-session'));
+const root = resolve(fileURLToPath(new URL('../', import.meta.url)));
+const defaultOutput = resolve(dirname(root), 'omegavault-cardano-preprod-session');
+const output = resolve(arg('--output', defaultOutput));
+try {
+  await access(join(output, 'capture-manifest.json'));
+  throw new Error('A Cardano Preprod capture session already exists at the output path; choose a new directory rather than overwriting its manifest.');
+} catch (error) {
+  if (error?.code !== 'ENOENT' && /already exists/.test(error?.message ?? '')) throw error;
+  if (error?.code && error.code !== 'ENOENT') throw error;
+}
 const action = arg('--action', 'execute');
 if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('--action must be initialize, heartbeat, approve, or execute.');
 
