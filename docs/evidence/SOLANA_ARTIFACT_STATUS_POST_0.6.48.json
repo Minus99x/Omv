@@ -6,7 +6,7 @@
   "status": "stale-untrusted",
   "historicalClaimedSha256": "e140b5235505df36f727051adf880f78b8ff7168b4e0269fc2071d4d7f24804e",
   "observedRepositorySha256": "99ec272746b35162efc8ba28ab8acd1fad7edf8d65edfdf7825a8c6ae559c405",
-  "observedBytes": 92120,
+  "observedBytes": 90059,
   "sourceEvidenceStillRequired": true,
   "artifactTrusted": false,
   "sbfExecutionEvidenceCurrent": false,
@@ -23,5 +23,5 @@
     "walletAuthority": false,
     "liveProof": false
   },
-  "note": "The repository artifact bytes do not match the historical build-evidence digest. The mismatch is recorded instead of relabeling the current binary as verified."
+  "note": "The repository artifact bytes and byte length do not match the historical build-evidence artifact. The mismatch is recorded instead of relabeling the current binary as verified."
 }
