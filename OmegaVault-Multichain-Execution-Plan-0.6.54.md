@@ -1,8 +1,8 @@
 # OmegaVault Multichain Execution Plan 0.6.54
 
-## Objective block
+## Completed checkpoint work
 
-- [x] Pin the laptop capture session to the exact sealed 0.6.53 checkpoint identity.
+- [x] Pin the capture session to the exact sealed 0.6.53 evidence-harness checkpoint identity.
 - [x] Generate a deterministic Cardano Preprod capture manifest.
 - [x] Generate the exact Ogmios evaluateTransaction request offline.
 - [x] Generate capture templates and required file paths.
@@ -10,16 +10,16 @@
 - [x] Require two-source independently confirmed current protocol parameters.
 - [x] Feed complete captures into the synchronized evidence harness.
 - [x] Keep signing, submission and live-value authority false.
-- [x] Add CLI and manifest tamper tests.
+- [x] Add CLI, manifest-tamper and checkpoint-drift tests.
 - [x] Pass focused session/manifest verification and inherited CI.
-- [ ] Build deterministic archive, checkpoint manifest and external review index.
-- [ ] Pin 0.6.54 as the workstation-ready Cardano capture-session checkpoint.
+- [x] Pass full 447-test regression, offline resume and global checks.
+- [x] Build deterministic archive, checkpoint manifest and external review index.
+- [x] Verify checkpoint/review bindings.
 
-## Laptop sequence after seal
+## Next cloud-side objective
 
-1. Resume the exact checkpoint checkout.
-2. Run workstation preflight.
-3. Run `npm run cardano:preprod:prepare`.
-4. Capture the five required same-tip JSON records.
-5. Run `npm run cardano:preprod:verify`.
-6. Stop after synchronized evaluation evidence; signing/submission remains a separate gate.
+Build a workstation launch gate that checks the exact sealed tooling checkpoint plus pinned dependency state before it creates the Cardano Preprod capture session.
+
+## Authority boundary
+
+No work in this checkpoint authorizes wallet signing, transaction submission, production deployment, live-value movement or connector promotion.
