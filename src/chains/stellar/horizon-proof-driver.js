@@ -1,4 +1,5 @@
 import { StrKey } from '@stellar/stellar-sdk';
+import { createStellarTestnetHorizonHttpTransport } from './horizon-http-transport.js';
 
 const TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
 const DECIMAL_7 = /^(0|[1-9]\d*)\.(\d{7})$/;
@@ -267,5 +268,22 @@ export function createInjectedStellarTestnetHorizonDriver({
       productionNetworkAllowed: false,
       transportInjected: true
     })
+  });
+}
+
+export function createStellarTestnetHorizonProofDriver({
+  fetchImpl = globalThis.fetch,
+  sleep,
+  pollIntervalMs,
+  maxEligibilityAttempts,
+  clock = () => new Date().toISOString()
+} = {}) {
+  const transportOptions = { fetchImpl };
+  if (sleep !== undefined) transportOptions.sleep = sleep;
+  if (pollIntervalMs !== undefined) transportOptions.pollIntervalMs = pollIntervalMs;
+  if (maxEligibilityAttempts !== undefined) transportOptions.maxEligibilityAttempts = maxEligibilityAttempts;
+  return createInjectedStellarTestnetHorizonDriver({
+    transport: createStellarTestnetHorizonHttpTransport(transportOptions),
+    clock
   });
 }
