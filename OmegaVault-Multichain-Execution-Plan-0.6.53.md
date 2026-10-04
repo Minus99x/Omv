@@ -10,8 +10,9 @@
 - [x] Bind all captured components into deterministic tamper-detectable evidence.
 - [x] Keep wallet signing, submission, finality and promotion authority false.
 - [x] Add focused adversarial/offline harness tests.
-- [ ] Pass focused Cardano Preprod evidence gate plus inherited verification stack.
-- [ ] Seal 0.6.53 as the laptop-ready Preprod evidence-harness checkpoint.
+- [x] Pass focused Cardano Preprod evidence gate plus inherited verification stack.
+- [ ] Build deterministic archive, checkpoint manifest and external review index.
+- [ ] Pin 0.6.53 as the laptop-ready Preprod evidence-harness checkpoint.
 
 ## Later laptop/network window
 

@@ -18,3 +18,10 @@ A later authorized laptop/network window should need only the actual synchronize
 ## Boundary
 
 No live Preprod request is made by 0.6.53 source work. No wallet signing or transaction submission path exists in this harness.
+
+## Verified working-head baseline
+
+- Cardano Preprod evidence harness: **6/6 passed**.
+- Full suite: **443/443 passed**.
+- Offline resume: **ok: true**.
+- Global checks: **passed**.

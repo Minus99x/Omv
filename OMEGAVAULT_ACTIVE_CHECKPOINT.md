@@ -1,22 +1,21 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.52-dev**
+Current sealed development checkpoint: **0.6.52-dev**
 
-Archive filename: `omegavault-mvp-0.6.52-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.52-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.52-dev.review-index.json`
+Active checkpoint candidate: **0.6.53-dev**
 
-## 0.6.52 delta
+Candidate branch: `dev/0.6.53-checkpoint-candidate`
 
-- Registered the sealed 0.6.51 Cardano toolchain/evidence proof by exact archive SHA-256.
-- Removed the obsolete Cardano/Aiken toolchain-restoration blocker.
-- Kept Cardano at `offline-verified`.
-- Added offline address-validation evidence from the sealed applied Preprod fixture.
-- Preserved earlier 0.6.25/0.6.31 Cardano evidence references alongside the new 0.6.51 proof.
-- Reframed the remaining Cardano blockers around synchronized Preprod Ogmios evaluation + independent phase-1 validation at one acquired tip, then submission/finality, wallet signing and public-network recovery evidence.
-- Added a focused Cardano maturity/provenance reconciliation lane.
+## 0.6.53 candidate delta
 
-## Verification
+- Adds a deterministic Cardano Preprod evidence-capture plan around the existing zero-budget Ogmios evaluation candidate.
+- Freezes action, transaction CBOR/body hash, JSON-RPC request id and expected redeemer pointers before live node interaction.
+- Requires one acquired Preprod tip across UTxO state, protocol parameters, Ogmios evaluation and independent phase-1 validation.
+- Normalizes node-returned execution units under current protocol limits and existing safety-margin rules.
+- Produces deterministic, tamper-detectable synchronized-evaluation evidence.
+- Keeps wallet signing, submission, live-value movement, inclusion/finality claims and connector promotion explicitly unauthorized.
+
+## Candidate verification baseline
 
 - Review/audit: **84/84 passed**.
 - Stellar recovery: **20/20 passed**.
@@ -24,22 +23,14 @@ External review index filename: `omegavault-mvp-0.6.52-dev.review-index.json`
 - Maturity/provenance: **21/21 passed**.
 - Cardano toolchain/evidence: **passed**.
 - Cardano reconciliation: **12/12 passed**.
-- Full suite: **437/437 passed**.
-- Offline-resume: **ok: true** with **16/16** Stellar and **11/11** Bitcoin checks.
+- Cardano Preprod evidence harness: **6/6 passed**.
+- Full suite: **443/443 passed**.
+- Offline-resume: **16/16 + 11/11 passed; ok: true**.
 - Global checks: **passed**.
-- Deterministic source archive generation: **passed**.
-- Checkpoint manifest generation: **passed**.
-- External review index generation/verification: **passed**.
 
 ## Promotion boundary
 
-No connector is newly promoted by 0.6.52.
-
-Cardano is offline-verified, not Preprod-public-network verified. Wallet signing, synchronized node evaluation, submission and finality remain gated.
-
-## Next safe gate
-
-Begin post-0.6.52 Cardano Preprod execution-evidence preparation so a later authorized laptop/network window can capture synchronized Ogmios/ledger evidence without inventing live proof in advance.
+0.6.53 prepares synchronized Preprod evidence capture only. No live Preprod request, wallet signature, transaction submission or public-network recovery proof is claimed.
 
 ## Safety boundary
 
