@@ -34,6 +34,9 @@ jobs:
       - name: Focused review audit suite
         run: npm run test:review-audit
 
+      - name: Focused Stellar recovery suite
+        run: npm run test:stellar-recovery
+
       - name: Full test suite
         run: npm test
 
