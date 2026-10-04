@@ -1,21 +1,27 @@
 # OmegaVault 0.6.51 Progress
 
-## Objective
+## Completed toolchain proof
 
-Prove the existing pinned Cardano/Aiken toolchain and deterministic evidence lane in the clean dependency-backed CI environment before changing the Cardano maturity blocker.
+- Added a focused Cardano toolchain/evidence CI gate using the existing pinned `check:cardano` lane.
+- Proved Aiken **1.1.24+bacbeb3** formatting, tests/checks and validator build in clean GitHub Actions.
+- Proved CSL **17.0.0** fixture handling.
+- Verified CIP-57 blueprint/source evidence.
+- Verified applied policy/address plus initialize, heartbeat, approval and execute transaction-body fixtures.
+- Verified signed-size, fee, minimum-ADA and collateral evidence.
+- Verified zero-budget Ogmios evaluation requests.
+- Preserved the fail-closed live-construction boundary.
 
-## Gate under test
+## Verification
 
-`npm run check:cardano` executes:
+- Review/audit: **84/84 passed**.
+- Stellar recovery: **20/20 passed**.
+- Bitcoin recovery: **22/22 passed**.
+- Maturity/provenance: **21/21 passed**.
+- Cardano toolchain/evidence gate: **passed**.
+- Full suite: **433/433 passed**.
+- Offline resume: **ok: true**.
+- Global checks: **passed**.
 
-- JavaScript syntax checks for Cardano recovery validator, transaction body, protocol parameters, witness set, Ogmios evaluation and evidence binding.
-- Aiken 1.1.24 formatter verification.
-- Aiken on-chain test/check execution.
-- Aiken validator build.
-- CIP-57 blueprint verification.
-- Cardano applied-fixture verification.
-- Cardano witness-evidence verification.
+## Next task
 
-## Boundary
-
-Passing this gate may remove the stale "toolchain restoration" blocker only. It does not create Preprod node evaluation, transaction submission, wallet signing, public-network evidence or connector promotion.
+Seal 0.6.51 as the Cardano toolchain-proof checkpoint. In the following reconciliation checkpoint, remove only the stale toolchain-restoration blocker and retain the real Preprod evaluation/submission blockers.
