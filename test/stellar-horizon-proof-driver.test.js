@@ -109,7 +109,7 @@ test('Horizon success normalization binds hash, ledger and txSUCCESS', () => {
   });
   assert.deepEqual(result, {
     transactionHashHex:hash,
-    observedAt:'2026-10-03T00:04:00Z',
+    observedAt:'2026-10-03T00:04:00.000Z',
     includedInLedger:true,
     successful:true,
     resultCode:'txSUCCESS',
@@ -150,7 +150,7 @@ test('Horizon finality binds successful transaction to an independently fetched 
     transactionHashHex:hash,
     ledger:'501',
     ledgerHash,
-    observedAt:'2026-10-03T00:05:00Z'
+    observedAt:'2026-10-03T00:05:00.000Z'
   });
 
   assert.throws(() => normalizeHorizonFinality({
@@ -159,6 +159,29 @@ test('Horizon finality binds successful transaction to an independently fetched 
     expectedTransactionHashHex:hash,
     expectedLedger:'501'
   }), /ledger response does not match/);
+});
+
+test('Horizon proof normalization rejects malformed hashes, timestamps, ledgers and ambiguous balances', () => {
+  const hash='aa'.repeat(32);
+  assert.throws(() => normalizeHorizonSubmissionSuccess({
+    response:{ hash:'not-a-hash', successful:true, created_at:'2026-10-03T00:04:00Z', ledger:501 },
+    expectedTransactionHashHex:hash
+  }), /32-byte hexadecimal hash/);
+  assert.throws(() => normalizeHorizonSubmissionSuccess({
+    response:{ hash, successful:true, created_at:'not-a-time', ledger:501 },
+    expectedTransactionHashHex:hash
+  }), /ISO-compatible timestamp/);
+  assert.throws(() => normalizeHorizonAccountSnapshot({
+    accountResponse:accountResponse({ last_modified_ledger:Number.MAX_SAFE_INTEGER + 1 }),
+    expectedAccount:G(1)
+  }), /positive safe integer/);
+  const duplicateNative=accountResponse();
+  duplicateNative.balances.push({ ...duplicateNative.balances[0] });
+  assert.throws(() => extractHorizonBalanceUnits({
+    accountResponse:duplicateNative,
+    expectedAccount:G(1),
+    asset:{ type:'native' }
+  }), /duplicate balance entries/);
 });
 
 test('injected Horizon proof driver is testnet-only and performs no signing', async () => {

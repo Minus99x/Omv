@@ -1,3 +1,5 @@
+import { StrKey } from '@stellar/stellar-sdk';
+
 const TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
 const DECIMAL_7 = /^(0|[1-9]\d*)\.(\d{7})$/;
 
@@ -5,6 +7,26 @@ function requiredText(value, label) {
   const text = typeof value === 'string' ? value.trim() : '';
   if (!text) throw new TypeError(`${label} is required.`);
   return text;
+}
+
+function hashHex(value, label) {
+  const text = requiredText(value, label).toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(text)) throw new TypeError(`${label} must be a 32-byte hexadecimal hash.`);
+  return text;
+}
+
+function isoTime(value, label) {
+  const text = requiredText(value, label);
+  const time = Date.parse(text);
+  if (!Number.isFinite(time)) throw new TypeError(`${label} must be an ISO-compatible timestamp.`);
+  return new Date(time).toISOString();
+}
+
+function optionalLedger(value, label) {
+  if (value == null) return null;
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number < 1) throw new TypeError(`${label} must be a positive safe integer.`);
+  return number;
 }
 
 function integerString(value, label, { positive = false } = {}) {
@@ -32,6 +54,17 @@ function signerType(type) {
   return null;
 }
 
+function validateSignerKey(type, key) {
+  try {
+    if (type === 'ed25519PublicKey' && !StrKey.isValidEd25519PublicKey(key)) throw new Error('invalid G-address');
+    if (type === 'preAuthTx' && StrKey.encodePreAuthTx(StrKey.decodePreAuthTx(key)) !== key) throw new Error('non-canonical T-address');
+    if (type === 'sha256Hash' && StrKey.encodeSha256Hash(StrKey.decodeSha256Hash(key)) !== key) throw new Error('non-canonical X-address');
+  } catch {
+    const label = type === 'ed25519PublicKey' ? 'G' : (type === 'preAuthTx' ? 'T' : 'X');
+    throw new TypeError(`Horizon ${type} signer key must be a canonical ${label}-address.`);
+  }
+}
+
 export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccount }) {
   if (!accountResponse || typeof accountResponse !== 'object') throw new TypeError('Horizon account response is required.');
   const account = requiredText(accountResponse.account_id, 'accountResponse.account_id');
@@ -49,6 +82,7 @@ export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccou
     const weight = threshold(signer.weight, 'signer.weight');
     const type = signerType(signer.type);
     if (!type) throw new TypeError(`Unsupported Horizon signer type: ${signer.type}`);
+    validateSignerKey(type, key);
     if (type === 'ed25519PublicKey' && key === account) {
       if (masterWeight != null) throw new Error('Horizon account response contains duplicate master-key signer entries.');
       masterWeight = weight;
@@ -63,10 +97,10 @@ export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccou
   return Object.freeze({
     account,
     sequence,
-    sequenceLedger: accountResponse.sequence_ledger == null ? null : Number(accountResponse.sequence_ledger),
+    sequenceLedger: optionalLedger(accountResponse.sequence_ledger, 'accountResponse.sequence_ledger'),
     sequenceTime: accountResponse.sequence_time == null ? null : String(accountResponse.sequence_time),
-    lastModifiedLedger: Number(accountResponse.last_modified_ledger),
-    lastModifiedTime: accountResponse.last_modified_time == null ? null : String(accountResponse.last_modified_time),
+    lastModifiedLedger: optionalLedger(accountResponse.last_modified_ledger, 'accountResponse.last_modified_ledger'),
+    lastModifiedTime: accountResponse.last_modified_time == null ? null : isoTime(accountResponse.last_modified_time, 'accountResponse.last_modified_time'),
     masterWeight,
     thresholds: Object.freeze({
       low: threshold(thresholds.low_threshold, 'thresholds.low_threshold'),
@@ -80,14 +114,18 @@ export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccou
 
 function matchingBalanceLine(accountResponse, asset) {
   if (!Array.isArray(accountResponse?.balances)) throw new TypeError('Horizon account balances are required.');
+  let matches;
   if (asset?.type === 'native') {
-    return accountResponse.balances.find(line => line?.asset_type === 'native') ?? null;
+    matches = accountResponse.balances.filter(line => line?.asset_type === 'native');
+  } else {
+    matches = accountResponse.balances.filter(line =>
+      (line?.asset_type === 'credit_alphanum4' || line?.asset_type === 'credit_alphanum12') &&
+      line?.asset_code === asset?.code &&
+      line?.asset_issuer === asset?.issuer
+    );
   }
-  return accountResponse.balances.find(line =>
-    (line?.asset_type === 'credit_alphanum4' || line?.asset_type === 'credit_alphanum12') &&
-    line?.asset_code === asset?.code &&
-    line?.asset_issuer === asset?.issuer
-  ) ?? null;
+  if (matches.length > 1) throw new Error('Horizon account response contains duplicate balance entries for the requested asset.');
+  return matches[0] ?? null;
 }
 
 export function extractHorizonBalanceUnits({ accountResponse, expectedAccount, asset }) {
@@ -100,14 +138,14 @@ export function extractHorizonBalanceUnits({ accountResponse, expectedAccount, a
 
 export function normalizeHorizonSubmissionSuccess({ response, expectedTransactionHashHex }) {
   if (!response || typeof response !== 'object') throw new TypeError('Horizon submission response is required.');
-  const hash = requiredText(response.hash, 'submission.hash').toLowerCase();
-  if (expectedTransactionHashHex != null && hash !== String(expectedTransactionHashHex).toLowerCase()) {
+  const hash = hashHex(response.hash, 'submission.hash');
+  if (expectedTransactionHashHex != null && hash !== hashHex(expectedTransactionHashHex, 'expectedTransactionHashHex')) {
     throw new Error('Horizon submission response hash does not match the submitted envelope.');
   }
   if (response.successful !== true) throw new Error('Horizon submission response does not report a successful transaction.');
   return Object.freeze({
     transactionHashHex: hash,
-    observedAt: requiredText(response.created_at, 'submission.created_at'),
+    observedAt: isoTime(response.created_at, 'submission.created_at'),
     includedInLedger: true,
     successful: true,
     resultCode: 'txSUCCESS',
@@ -129,8 +167,8 @@ export function normalizeHorizonSubmissionError({ error, expectedTransactionHash
     throw new Error(`Horizon rejected the transaction with unsupported proof result code: ${resultCode ?? 'unknown'}`);
   }
   return Object.freeze({
-    transactionHashHex: requiredText(expectedTransactionHashHex, 'expectedTransactionHashHex').toLowerCase(),
-    observedAt: requiredText(observedAt, 'observedAt'),
+    transactionHashHex: hashHex(expectedTransactionHashHex, 'expectedTransactionHashHex'),
+    observedAt: isoTime(observedAt, 'observedAt'),
     includedInLedger: false,
     successful: false,
     resultCode: 'txTOO_EARLY'
@@ -145,23 +183,25 @@ export function normalizeHorizonFinality({
 }) {
   if (!transactionResponse || typeof transactionResponse !== 'object') throw new TypeError('Horizon transaction response is required.');
   if (!ledgerResponse || typeof ledgerResponse !== 'object') throw new TypeError('Horizon ledger response is required.');
-  const hash = requiredText(transactionResponse.hash, 'transaction.hash').toLowerCase();
-  if (hash !== String(expectedTransactionHashHex).toLowerCase()) throw new Error('Horizon finality response is for a different transaction.');
+  const hash = hashHex(transactionResponse.hash, 'transaction.hash');
+  if (hash !== hashHex(expectedTransactionHashHex, 'expectedTransactionHashHex')) throw new Error('Horizon finality response is for a different transaction.');
   const ledger = integerString(transactionResponse.ledger, 'transaction.ledger', { positive: true });
   if (ledger !== String(expectedLedger)) throw new Error('Horizon finality response ledger does not match the inclusion ledger.');
   if (transactionResponse.successful !== true) throw new Error('Horizon finality response is not successful.');
 
   const ledgerSequence = integerString(ledgerResponse.sequence, 'ledger.sequence', { positive: true });
   if (ledgerSequence !== ledger) throw new Error('Horizon ledger response does not match the transaction ledger.');
-  const ledgerHash = requiredText(ledgerResponse.hash, 'ledger.hash').toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(ledgerHash)) throw new TypeError('Horizon ledger hash must be a 32-byte hexadecimal digest.');
+  const ledgerHash = hashHex(ledgerResponse.hash, 'ledger.hash');
+  const transactionTime = isoTime(transactionResponse.created_at, 'transaction.created_at');
+  const ledgerClosedAt = isoTime(ledgerResponse.closed_at, 'ledger.closed_at');
+  if (Date.parse(transactionTime) > Date.parse(ledgerClosedAt)) throw new Error('Horizon transaction timestamp cannot follow its inclusion ledger close time.');
 
   return Object.freeze({
     status: 'finalized',
     transactionHashHex: hash,
     ledger,
     ledgerHash,
-    observedAt: requiredText(ledgerResponse.closed_at, 'ledger.closed_at')
+    observedAt: ledgerClosedAt
   });
 }
 
