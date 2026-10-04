@@ -39,16 +39,16 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   }),
   stellar: Object.freeze({
     stage: 'offline-verified',
-    blockers: ref('A complete Stellar Testnet execution proof is still required: too-early rejection, heartbeat reset, eligible N-of-N execution, fee-bump submission, rescue-balance verification, failed-operation handling and digest-bound evidence export.'),
+    blockers: ref('Actual Stellar Testnet execution evidence is still required. The offline pipeline now covers initial/post-heartbeat txTOO_EARLY, owner heartbeat, eligible N-of-N fee-bump recovery, finality/rescue-balance binding, failed-applied preAuthTx consumption, Horizon normalization/transport and digest-bound evidence, but fixture/injected-driver evidence is not public-network proof.'),
     notes: ref(
       'Pinned @stellar/stellar-sdk 17.1.0 is restored and verified in clean CI and on Windows.',
-      'Exact XDR construction/round-trip, preAuthTx binding, account-policy preflight and external contact-signature verification are covered offline.',
+      'Success and failed-applied recovery evidence paths are fail-closed and separately digest-bound.',
       'Offline verification does not satisfy public-testnet gates or promote the connector.'
     )
   }),
   bitcoin: Object.freeze({
     stage: 'reduced-semantics',
-    blockers: ref('Pinned Noble dependencies, Bitcoin Core extraction cross-check and Signet recovery evidence remain required.'),
+    blockers: ref('Actual Signet recovery observation, raw-finalizer/Bitcoin-Core extraction cross-check, and the immutable-rescue semantic limitation remain unresolved. Pinned Noble dependencies and the offline descriptor/PSBT/finalizer-evidence path are now available.'),
     gateEvidence: Object.freeze({
       'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.23:BITCOIN_FINALIZER_SOURCE') }),
       'transaction-preflight': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.23:BITCOIN_FINALIZER_SOURCE') }),
