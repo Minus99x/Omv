@@ -54,10 +54,14 @@ test('network metadata cannot be cross-wired to the wrong adapter', () => {
     networks: [network('bitcoin', 'bitcoin:signet')]
   }), /does not belong/);
 });
-test('Stellar remains explicitly active but dependency-blocked rather than silently omitted', () => {
+test('Stellar remains explicitly active with offline evidence while public-testnet promotion stays blocked', () => {
   const stellar = contract('stellar');
   assert.equal(stellar.chainId, 'stellar');
-  assert.equal(stellar.stage, 'scaffold');
-  assert.ok(stellar.blockers.some(value => /stellar-sdk/.test(value)));
-  assert.ok(stellar.notes.some(value => /remains active/.test(value)));
+  assert.equal(stellar.stage, 'offline-verified');
+  assert.equal(stellar.gateEvidence['address-validation'].evidenceSufficient, true);
+  assert.equal(stellar.gateEvidence['transaction-preflight'].evidenceSufficient, true);
+  assert.equal(stellar.gateEvidence['evidence-export'].evidenceSufficient, true);
+  assert.equal(stellar.blockers.some(value => /stellar-sdk/.test(value)), false);
+  assert.ok(stellar.blockers.some(value => /Public Stellar Testnet/.test(value)));
+  assert.equal(stellar.promotion.eligible, false);
 });
