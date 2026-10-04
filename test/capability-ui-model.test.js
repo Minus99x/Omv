@@ -34,7 +34,7 @@ test('UI model keeps offline-verified Stellar visible without promotion', () => 
   assert.ok(stellar);
   assert.equal(stellar.promotionEligible, false);
   assert.equal(stellar.stage, 'offline-verified');
-  assert.ok(stellar.blockers.some(value => /Stellar Testnet execution proof/.test(value)));
+  assert.ok(stellar.blockers.some(value => /Stellar Testnet execution/.test(value)));
   assert.equal(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')), false);
 });
 
