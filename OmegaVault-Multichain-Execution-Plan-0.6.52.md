@@ -8,9 +8,10 @@
 - [x] Preserve synchronized Preprod Ogmios/phase-1 as an unresolved gate.
 - [x] Preserve submission/finality, wallet-signing and public-network recovery as unresolved gates.
 - [x] Add focused Cardano reconciliation tests and CI lane.
-- [ ] Pass focused review, Stellar, Bitcoin, maturity, Cardano toolchain and Cardano reconciliation gates.
-- [ ] Pass the full suite, offline-resume verification and global checks.
-- [ ] Seal 0.6.52 as the Cardano reconciliation checkpoint.
+- [x] Pass focused review, Stellar, Bitcoin, maturity, Cardano toolchain and Cardano reconciliation gates.
+- [x] Pass the full suite, offline-resume verification and global checks.
+- [ ] Build deterministic archive, checkpoint manifest and external review index.
+- [ ] Pin 0.6.52 as the Cardano reconciliation checkpoint.
 
 ## Next safe work
 

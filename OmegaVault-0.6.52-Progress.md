@@ -10,6 +10,18 @@
 - Replaced the stale blocker with the real remaining work: synchronized Preprod Ogmios evaluation + independent phase-1 validation at one acquired tip, then submission/finality, wallet signing and public-network recovery evidence.
 - Added a focused Cardano maturity/provenance regression lane.
 
+## Verified working-head baseline
+
+- Review/audit: **84/84 passed**.
+- Stellar recovery: **20/20 passed**.
+- Bitcoin recovery: **22/22 passed**.
+- Maturity/provenance: **21/21 passed**.
+- Cardano toolchain/evidence: **passed**.
+- Cardano reconciliation: **12/12 passed**.
+- Full suite: **437/437 passed**.
+- Offline resume: **ok: true**.
+- Global checks: **passed**.
+
 ## Promotion boundary
 
 0.6.52 is evidence reconciliation only. It does not authorize wallet signing, Preprod submission, live-value movement, deployment or connector promotion.
