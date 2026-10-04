@@ -57,7 +57,7 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   }),
   solana: Object.freeze({
     stage: 'parked',
-    blockers: ref('Rust/Agave toolchain is required to rebuild and re-run the current 0.6.21 Solana program source.'),
+    blockers: ref('The checked-in Solana SBF artifact does not match its historical build-evidence digest and is explicitly stale/untrusted. A pinned Rust/Agave/cargo-build-sbf toolchain must rebuild the current source, rerun SBF program-test, regenerate artifact evidence, and then capture Devnet execution evidence.'),
     gateEvidence: Object.freeze({
       'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.21:SOLANA_TOKEN_SWEEP_SOURCE') }),
       'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.21:SOLANA_TOKEN_SWEEP_SOURCE') })
