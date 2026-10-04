@@ -19,19 +19,41 @@ export async function runEvmNativeRecoveryProof({ driver, config }) {
   if (!config?.contractAddress || !config?.owner || !Array.isArray(config?.contacts) || !config.contacts.length || !config?.rescueDestination) {
     throw new TypeError('Native recovery proof requires contract, owner, contacts and rescue destination.');
   }
+  if (new Set(config.contacts).size !== config.contacts.length) throw new TypeError('Native recovery proof contacts must be unique.');
+  if (!Number.isInteger(config.threshold) || config.threshold < 1 || config.threshold > config.contacts.length) throw new TypeError('Native recovery proof threshold must be reachable.');
+  if (!/^\d+$/.test(String(config.nativeAmount ?? '')) || BigInt(config.nativeAmount) <= 0n) throw new TypeError('Native recovery proof amount must be a positive integer.');
   const actions = [];
   const before = await action(actions, 'state.before', () => driver.readState(config.contractAddress));
+  const rescueBefore = typeof driver.readNativeBalance === 'function'
+    ? await action(actions, 'rescue.balance.before', () => driver.readNativeBalance(config.rescueDestination))
+    : null;
   await action(actions, 'deposit.native', () => driver.depositNative({ contractAddress: config.contractAddress, actor: config.owner, amount: config.nativeAmount }));
   for (const contact of config.contacts.slice(0, config.threshold)) {
     await action(actions, 'recovery.approve', () => driver.approveRecovery({ contractAddress: config.contractAddress, actor: contact }));
   }
   await action(actions, 'recovery.execute', () => driver.executeRecovery({ contractAddress: config.contractAddress, actor: config.executor ?? config.owner }));
   const after = await action(actions, 'state.after', () => driver.readState(config.contractAddress));
-  const rescueBalance = typeof driver.readNativeBalance === 'function'
-    ? await action(actions, 'rescue.balance', () => driver.readNativeBalance(config.rescueDestination))
+  const rescueAfter = typeof driver.readNativeBalance === 'function'
+    ? await action(actions, 'rescue.balance.after', () => driver.readNativeBalance(config.rescueDestination))
     : null;
-  const success = after?.recovered === true && BigInt(after?.balance ?? 0) === 0n;
-  return Object.freeze({ kind: 'evm-native-recovery-proof', success, before: structuredClone(before), after: structuredClone(after), rescueBalance: structuredClone(rescueBalance), actions: Object.freeze(actions) });
+  const expectedAmount = BigInt(config.nativeAmount);
+  const rescueDeltaMatches = rescueBefore == null || rescueAfter == null
+    ? null
+    : BigInt(rescueAfter) - BigInt(rescueBefore) === expectedAmount;
+  const success = after?.recovered === true
+    && BigInt(after?.balance ?? 0) === 0n
+    && rescueDeltaMatches !== false;
+  return Object.freeze({
+    kind: 'evm-native-recovery-proof',
+    success,
+    before: structuredClone(before),
+    after: structuredClone(after),
+    rescueBefore: structuredClone(rescueBefore),
+    rescueAfter: structuredClone(rescueAfter),
+    rescueBalance: structuredClone(rescueAfter),
+    rescueDeltaMatches,
+    actions: Object.freeze(actions)
+  });
 }
 
 export async function runEvmErc20RecoveryProof({ driver, config }) {
