@@ -5,7 +5,7 @@ import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { createBitcoinRecoveryDescriptor, descriptorChecksum } from '../src/chains/bitcoin/descriptor.js';
 import {
   createBitcoinWitnessV0Sighash, decodePsbtV2, encodePsbtV2,
-  verifyPsbtV2RecoverySignature, verifyPsbtV2RecoveryThreshold
+  verifyPsbtV2RecoverySignature, verifyPsbtV2RecoveryThreshold, finalizePsbtV2RecoveryTransaction
 } from '../src/chains/bitcoin/psbt-v2.js';
 
 const privateKey = value => Buffer.from(value.toString(16).padStart(64, '0'), 'hex');
@@ -100,4 +100,65 @@ test('Bitcoin PSBTv2 rejects mutable outputs and mismatched P2WSH scripts', () =
   assert.throws(() => encodePsbtV2({
     ...unsignedIntent(), inputs: [{ ...unsignedIntent().inputs[0], witnessScript: '51' }]
   }), /does not match/);
+});
+
+
+test('Bitcoin recovery finalizer builds a deterministic witness transaction bound to the rescue output', () => {
+  const unsigned = encodePsbtV2(unsignedIntent());
+  const { digest } = createBitcoinWitnessV0Sighash({ psbt: unsigned, inputIndex: 0 });
+  const signatureA = secp256k1.sign(digest, contactPrivateKeyA, { prehash: false, lowS: true, format: 'der' });
+  const signatureB = secp256k1.sign(digest, contactPrivateKeyB, { prehash: false, lowS: true, format: 'der' });
+  const signed = encodePsbtV2({
+    ...unsignedIntent(),
+    inputs: [{
+      ...unsignedIntent().inputs[0],
+      partialSignatures: [
+        { publicKey: contactKeyB, signature: `${Buffer.from(signatureB).toString('hex')}01` },
+        { publicKey: contactKeyA, signature: `${Buffer.from(signatureA).toString('hex')}01` }
+      ]
+    }]
+  });
+  const final = finalizePsbtV2RecoveryTransaction({
+    psbt: signed,
+    descriptor,
+    rescueScriptPubKey: `0014${'11'.repeat(20)}`,
+    expectedFeeSats: '1000'
+  });
+  assert.equal(final.feeSats, '1000');
+  assert.equal(final.inputs[0].selectedSigners.join(','), descriptor.contactKeys.join(','));
+  assert.equal(final.inputs[0].witnessItems[0], '');
+  assert.equal(final.inputs[0].witnessItems.at(-2), '');
+  assert.equal(final.inputs[0].witnessItems.at(-1), descriptor.witnessScriptHex);
+  assert.equal(final.semantics.omegaVaultOutputBound, true);
+  assert.equal(final.semantics.immutableRescueOnChain, false);
+  assert.match(final.txid, /^[0-9a-f]{64}$/);
+  assert.match(final.wtxid, /^[0-9a-f]{64}$/);
+  assert.notEqual(final.txid, final.wtxid);
+  assert.equal(final.rawTransactionHex.slice(8, 12), '0001');
+  assert.ok(final.vsize > 0);
+});
+
+test('Bitcoin recovery finalizer fails closed on wrong rescue, fee, sequence, signer, and threshold', () => {
+  const unsigned = encodePsbtV2(unsignedIntent());
+  const { digest } = createBitcoinWitnessV0Sighash({ psbt: unsigned, inputIndex: 0 });
+  const signatureA = secp256k1.sign(digest, contactPrivateKeyA, { prehash: false, lowS: true, format: 'der' });
+  const oneSignature = encodePsbtV2({
+    ...unsignedIntent(),
+    inputs: [{ ...unsignedIntent().inputs[0], partialSignatures: [{ publicKey: contactKeyA, signature: `${Buffer.from(signatureA).toString('hex')}01` }] }]
+  });
+  assert.throws(() => finalizePsbtV2RecoveryTransaction({ psbt: oneSignature, descriptor, rescueScriptPubKey: `0014${'11'.repeat(20)}`, expectedFeeSats: '1000' }), /threshold/);
+  assert.throws(() => finalizePsbtV2RecoveryTransaction({ psbt: oneSignature, descriptor, rescueScriptPubKey: `0014${'22'.repeat(20)}`, expectedFeeSats: '1000' }), /rescue output/);
+  assert.throws(() => finalizePsbtV2RecoveryTransaction({ psbt: oneSignature, descriptor, rescueScriptPubKey: `0014${'11'.repeat(20)}`, expectedFeeSats: '999' }), /fee mismatch/);
+
+  const shortSequence = encodePsbtV2({ ...unsignedIntent(), inputs: [{ ...unsignedIntent().inputs[0], sequence: 143 }] });
+  assert.throws(() => finalizePsbtV2RecoveryTransaction({ psbt: shortSequence, descriptor, rescueScriptPubKey: `0014${'11'.repeat(20)}`, expectedFeeSats: '1000' }), /CSV delay/);
+
+  const outsiderPrivateKey = privateKey(4);
+  const outsiderKey = publicKey(outsiderPrivateKey);
+  const outsiderSig = secp256k1.sign(digest, outsiderPrivateKey, { prehash: false, lowS: true, format: 'der' });
+  const outsider = encodePsbtV2({
+    ...unsignedIntent(),
+    inputs: [{ ...unsignedIntent().inputs[0], partialSignatures: [{ publicKey: outsiderKey, signature: `${Buffer.from(outsiderSig).toString('hex')}01` }] }]
+  });
+  assert.throws(() => finalizePsbtV2RecoveryTransaction({ psbt: outsider, descriptor, rescueScriptPubKey: `0014${'11'.repeat(20)}`, expectedFeeSats: '1000' }), /unauthorized partial signer/);
 });

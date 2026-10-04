@@ -334,3 +334,152 @@ export function verifyPsbtV2RecoveryThreshold({ psbt, inputIndex, requiredPublic
     validSigners: Object.freeze(validSigners), signatures: Object.freeze(signatures), canonicalMaps: decoded.canonicalMaps
   });
 }
+
+function serializeTransactionInput(input) {
+  return Buffer.concat([
+    Buffer.from(input.txid, 'hex').reverse(),
+    u32le(input.vout),
+    Buffer.from([0x00]),
+    u32le(input.sequence)
+  ]);
+}
+
+function serializeWitnessStack(items) {
+  return Buffer.concat([
+    encodeCompactSize(items.length),
+    ...items.flatMap(item => {
+      const bytes = Buffer.from(item);
+      return [encodeCompactSize(bytes.length), bytes];
+    })
+  ]);
+}
+
+function displayHash(bytes) {
+  return Buffer.from(hash256(bytes)).reverse().toString('hex');
+}
+
+function validateRecoverySequence({ txVersion, sequence, csvBlocks, inputIndex }) {
+  if (txVersion < 2) throw new Error(`Bitcoin recovery input ${inputIndex} requires transaction version >= 2.`);
+  if ((sequence & 0x80000000) !== 0) throw new Error(`Bitcoin recovery input ${inputIndex} disables relative locktime.`);
+  if ((sequence & 0x00400000) !== 0) throw new Error(`Bitcoin recovery input ${inputIndex} uses time-based sequence; OmegaVault requires block-based CSV.`);
+  const relativeValue = sequence & 0x0000ffff;
+  if (relativeValue < csvBlocks) throw new Error(`Bitcoin recovery input ${inputIndex} has not encoded the required CSV delay.`);
+  return relativeValue;
+}
+
+/**
+ * Finalize a reduced-semantics OmegaVault Bitcoin recovery transaction.
+ *
+ * This is intentionally stricter than generic PSBT finalization:
+ * - every input must spend the exact expected P2WSH recovery descriptor;
+ * - only configured recovery-contact partial signatures may be present;
+ * - the configured CSV delay must be encoded on every input;
+ * - inputs/outputs must already be frozen;
+ * - exactly one output is allowed and it must be the caller-confirmed rescue output;
+ * - the exact fee must match the caller-confirmed fee.
+ *
+ * These checks protect OmegaVault's signing/finalization workflow. They do not
+ * turn ordinary Bitcoin Script into a covenant: threshold key holders can still
+ * construct a different valid spend outside OmegaVault after the CSV delay.
+ */
+export function finalizePsbtV2RecoveryTransaction({ psbt, descriptor, rescueScriptPubKey, expectedFeeSats }) {
+  const decoded = typeof psbt?.psbtVersion === 'number' ? psbt : decodePsbtV2(psbt);
+  if (!descriptor || typeof descriptor !== 'object') throw new TypeError('Bitcoin recovery descriptor is required.');
+  if (!Array.isArray(descriptor.contactKeys) || !descriptor.contactKeys.length) throw new TypeError('Descriptor contactKeys are required.');
+  if (!Number.isInteger(descriptor.threshold) || descriptor.threshold < 1 || descriptor.threshold > descriptor.contactKeys.length) throw new TypeError('Descriptor threshold is invalid.');
+  if (!Number.isInteger(descriptor.csvBlocks) || descriptor.csvBlocks < 1 || descriptor.csvBlocks > 0xffff) throw new TypeError('Descriptor csvBlocks are invalid.');
+  const expectedWitnessScript = assertHex(descriptor.witnessScriptHex, 'descriptor.witnessScriptHex');
+  const expectedScriptPubKey = assertHex(descriptor.scriptPubKeyHex, 'descriptor.scriptPubKeyHex');
+  const rescueScript = assertHex(rescueScriptPubKey, 'rescueScriptPubKey');
+  const expectedFee = assertMoney(expectedFeeSats, 'expectedFeeSats');
+  const contacts = descriptor.contactKeys.map((key, index) => {
+    const normalized = assertHex(key, `descriptor.contactKeys[${index}]`);
+    if (!COMPRESSED_KEY.test(normalized)) throw new TypeError(`descriptor.contactKeys[${index}] must be compressed secp256k1.`);
+    return normalized;
+  });
+  if (new Set(contacts).size !== contacts.length) throw new TypeError('Descriptor contactKeys must be unique.');
+  if (!decoded.canonicalMaps) throw new Error('OmegaVault finalization requires canonically ordered PSBT maps.');
+  if (decoded.txModifiable !== 0) throw new Error('OmegaVault finalization requires frozen PSBTv2 inputs and outputs.');
+  if (decoded.outputs.length !== 1 || decoded.outputs[0].scriptPubKey !== rescueScript) throw new Error('OmegaVault recovery finalization requires exactly one caller-confirmed rescue output.');
+
+  const inputTotal = decoded.inputs.reduce((sum, input) => sum + BigInt(input.amountSats), 0n);
+  const outputTotal = decoded.outputs.reduce((sum, output) => sum + BigInt(output.amountSats), 0n);
+  const feeSats = inputTotal - outputTotal;
+  if (feeSats < 0n) throw new Error('Bitcoin recovery outputs exceed inputs.');
+  if (feeSats !== expectedFee) throw new Error(`Bitcoin recovery fee mismatch: expected ${expectedFee} sats, got ${feeSats} sats.`);
+
+  const allowed = new Set(contacts);
+  const finalizedInputs = decoded.inputs.map((input, inputIndex) => {
+    if (input.witnessScript !== expectedWitnessScript) throw new Error(`Bitcoin recovery input ${inputIndex} witness script does not match the configured descriptor.`);
+    if (input.scriptPubKey !== expectedScriptPubKey) throw new Error(`Bitcoin recovery input ${inputIndex} scriptPubKey does not match the configured descriptor.`);
+    const relativeValue = validateRecoverySequence({ txVersion: decoded.txVersion, sequence: input.sequence, csvBlocks: descriptor.csvBlocks, inputIndex });
+    for (const partial of input.partialSignatures) {
+      if (!allowed.has(partial.publicKey)) throw new Error(`Bitcoin recovery input ${inputIndex} contains an unauthorized partial signer.`);
+    }
+    const threshold = verifyPsbtV2RecoveryThreshold({ psbt: decoded, inputIndex, requiredPublicKeys: contacts, threshold: descriptor.threshold });
+    if (!threshold.thresholdReached) throw new Error(`Bitcoin recovery input ${inputIndex} does not meet the configured signature threshold.`);
+    const validSet = new Set(threshold.validSigners);
+    const selectedSigners = contacts.filter(key => validSet.has(key)).slice(0, descriptor.threshold);
+    const partialByKey = new Map(input.partialSignatures.map(partial => [partial.publicKey, partial]));
+    const selectedSignatures = selectedSigners.map(key => Buffer.from(partialByKey.get(key).signature, 'hex'));
+    const witnessItems = [
+      Buffer.alloc(0),
+      ...selectedSignatures,
+      Buffer.alloc(0),
+      Buffer.from(expectedWitnessScript, 'hex')
+    ];
+    return Object.freeze({
+      inputIndex,
+      relativeValue,
+      selectedSigners: Object.freeze(selectedSigners),
+      witnessItems: Object.freeze(witnessItems.map(item => item.toString('hex'))),
+      serializedWitness: serializeWitnessStack(witnessItems)
+    });
+  });
+
+  const inputBytes = Buffer.concat(decoded.inputs.map(serializeTransactionInput));
+  const outputBytes = Buffer.concat(decoded.outputs.map(serializeOutput));
+  const version = i32le(decoded.txVersion);
+  const locktime = u32le(decoded.fallbackLocktime);
+  const stripped = Buffer.concat([
+    version,
+    encodeCompactSize(decoded.inputs.length), inputBytes,
+    encodeCompactSize(decoded.outputs.length), outputBytes,
+    locktime
+  ]);
+  const witness = Buffer.concat(finalizedInputs.map(input => input.serializedWitness));
+  const raw = Buffer.concat([
+    version, Buffer.from([0x00, 0x01]),
+    encodeCompactSize(decoded.inputs.length), inputBytes,
+    encodeCompactSize(decoded.outputs.length), outputBytes,
+    witness, locktime
+  ]);
+  const strippedSize = stripped.length;
+  const totalSize = raw.length;
+  const weight = strippedSize * 4 + (totalSize - strippedSize);
+  const vsize = Math.ceil(weight / 4);
+  return Object.freeze({
+    rawTransactionHex: raw.toString('hex'),
+    txid: displayHash(stripped),
+    wtxid: displayHash(raw),
+    strippedSize,
+    totalSize,
+    weight,
+    vsize,
+    feeSats: feeSats.toString(),
+    feeRateSatVb: Number(feeSats) / vsize,
+    rescueScriptPubKey: rescueScript,
+    inputs: Object.freeze(finalizedInputs.map(input => Object.freeze({
+      inputIndex: input.inputIndex,
+      relativeValue: input.relativeValue,
+      selectedSigners: input.selectedSigners,
+      witnessItems: input.witnessItems,
+      finalScriptWitnessHex: input.serializedWitness.toString('hex')
+    }))),
+    semantics: Object.freeze({
+      omegaVaultOutputBound: true,
+      immutableRescueOnChain: false,
+      note: 'This finalizer binds the transaction OmegaVault produces to the confirmed rescue output, but the underlying threshold script does not prevent signers from constructing another valid spend outside OmegaVault.'
+    })
+  });
+}
