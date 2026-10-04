@@ -274,10 +274,11 @@ export function createStellarFailedAppliedRecoveryEvidenceBundle(input) {
   const recoverySequence = integerString(input.recoverySequence, 'recoverySequence', { positive: true });
 
   exactKeys(input.submission, [
-    'transactionHashHex','observedAt','includedInLedger','successful','resultCode','ledger'
+    'innerTransactionHashHex','outerTransactionHashHex','observedAt','includedInLedger','successful','resultCode','ledger'
   ], 'submission');
-  const transactionHashHex = hashHex(input.submission.transactionHashHex, 'submission.transactionHashHex');
-  if (transactionHashHex !== recoveryTransactionHashHex) throw new Error('Failed-applied submission is bound to another recovery transaction.');
+  const innerTransactionHashHex = hashHex(input.submission.innerTransactionHashHex, 'submission.innerTransactionHashHex');
+  const outerTransactionHashHex = hashHex(input.submission.outerTransactionHashHex, 'submission.outerTransactionHashHex');
+  if (innerTransactionHashHex !== recoveryTransactionHashHex) throw new Error('Failed-applied submission is bound to another inner recovery transaction.');
   if (input.submission.includedInLedger !== true || input.submission.successful !== false) {
     throw new Error('Failed-applied evidence requires an included but unsuccessful recovery transaction.');
   }
@@ -286,7 +287,8 @@ export function createStellarFailedAppliedRecoveryEvidenceBundle(input) {
     throw new Error('Failed-applied evidence requires an applied failure result code.');
   }
   const submission = Object.freeze({
-    transactionHashHex,
+    innerTransactionHashHex,
+    outerTransactionHashHex,
     observedAt: isoTime(input.submission.observedAt, 'submission.observedAt').text,
     includedInLedger: true,
     successful: false,
