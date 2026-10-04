@@ -10,8 +10,9 @@
 - [x] Refuse silent overwrite of an existing capture-session manifest.
 - [x] Prepare the Cardano session only after all workstation gates pass.
 - [x] Keep all network/signing/submission authority false.
-- [ ] Pass focused workstation-launch tests and inherited verification stack.
-- [ ] Seal 0.6.55 as the one-command laptop launch checkpoint.
+- [x] Pass focused workstation-launch tests and inherited verification stack.
+- [ ] Build deterministic archive, checkpoint manifest and external review index.
+- [ ] Pin 0.6.55 as the one-command laptop launch checkpoint.
 
 ## Laptop sequence after seal
 

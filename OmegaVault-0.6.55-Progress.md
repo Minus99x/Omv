@@ -22,3 +22,10 @@ This is the first laptop command after extracting the sealed checkpoint source/b
 ## Boundary
 
 The launch gate does not contact Cardano, does not sign, does not submit and cannot move value.
+
+## Verified working-head baseline
+
+- Cardano workstation launch gate: **4/4 passed**.
+- Full suite: **451/451 passed**.
+- Offline resume: **16/16 + 11/11 passed; ok: true**.
+- Global checks: **passed**.

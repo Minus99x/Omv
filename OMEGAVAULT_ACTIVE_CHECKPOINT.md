@@ -1,21 +1,22 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.54-dev**
+Current sealed development checkpoint: **0.6.54-dev**
 
-Archive filename: `omegavault-mvp-0.6.54-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.54-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.54-dev.review-index.json`
+Active checkpoint candidate: **0.6.55-dev**
 
-## 0.6.54 delta
+Candidate branch: `dev/0.6.55-checkpoint-candidate`
 
-- Added a Cardano Preprod capture-session manifest bound to the sealed 0.6.53 evidence-harness checkpoint.
-- Added offline `npm run cardano:preprod:prepare` command to generate the capture manifest, exact Ogmios request, session directories and JSON templates.
-- Added `npm run cardano:preprod:verify` command to report missing capture files or deterministically bind a complete synchronized session.
-- Requires at least two independently confirmed current Preprod protocol-parameter sources before accepting a complete session.
-- Manifest validation fails closed on checkpoint drift, digest tampering or authority escalation.
-- Performs no network requests itself and exposes no signing or transaction-submission path.
+## 0.6.55 candidate delta
 
-## Verification
+- Adds a strict workstation launch gate for the Cardano Preprod capture workflow.
+- Verifies the sealed checkpoint sidecar against the exact source archive, extracted source tree and package/package-lock binding.
+- Verifies the external review index before preparing a session.
+- Requires installed pinned dependencies to match before proceeding.
+- Keeps capture-session output outside the sealed source tree by default.
+- Refuses silent overwrite of an existing capture-session manifest.
+- Prepares the session only after all local gates pass and performs no network request.
+
+## Candidate verification baseline
 
 - Review/audit: **84/84 passed**.
 - Stellar recovery: **20/20 passed**.
@@ -25,19 +26,15 @@ External review index filename: `omegavault-mvp-0.6.54-dev.review-index.json`
 - Cardano reconciliation: **12/12 passed**.
 - Cardano Preprod evidence harness: **6/6 passed**.
 - Cardano Preprod capture-session/manifest: **4/4 passed**.
-- Full suite: **447/447 passed**.
-- Offline-resume: **ok: true** with **16/16** Stellar and **11/11** Bitcoin checks.
+- Cardano workstation launch gate: **4/4 passed**.
+- Full suite: **451/451 passed**.
+- Offline-resume: **16/16 + 11/11 passed; ok: true**.
 - Global checks: **passed**.
-- Deterministic source archive generation: **passed**.
-- Checkpoint manifest generation: **passed**.
-- External review index generation/verification: **passed**.
 
 ## Laptop-ready boundary
 
-Laptop mode now starts from a generated session manifest rather than manual evidence-file assembly.
+After this checkpoint is sealed, the laptop sequence begins with one gate command against the extracted sealed bundle. Only after that returns `ok: true` should synchronized Preprod capture begin.
 
-No Cardano signing, transaction submission, inclusion, finality or public-network recovery proof is claimed by this checkpoint.
+## Promotion boundary
 
-## Next safe gate
-
-Add a workstation launch gate that verifies the sealed tooling checkout/dependencies before preparing the Preprod capture session, so the later laptop run can begin with one command.
+No Cardano network request, wallet signature, transaction submission, inclusion/finality proof or public-network recovery proof is claimed by 0.6.55.
