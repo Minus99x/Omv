@@ -4,8 +4,9 @@ import { readFile } from 'node:fs/promises';
 import { buildSolanaInitializeInstruction } from '../src/chains/solana/program-codec.js';
 
 const root = new URL('../', import.meta.url);
-const [evidence, rustSource, cargoToml, cargoLock, clientSource, programTest, sbfArtifact] = await Promise.all([
+const [evidence, artifactStatus, rustSource, cargoToml, cargoLock, clientSource, programTest, sbfArtifact] = await Promise.all([
   readFile(new URL('docs/evidence/SOLANA_PROGRAM_BUILD_0.6.17.json', root), 'utf8').then(JSON.parse),
+  readFile(new URL('docs/evidence/SOLANA_ARTIFACT_STATUS_POST_0.6.48.json', root), 'utf8').then(JSON.parse),
   readFile(new URL('validators/solana/src/lib.rs', root)),
   readFile(new URL('validators/solana/Cargo.toml', root)),
   readFile(new URL('validators/solana/Cargo.lock', root)),
@@ -25,8 +26,30 @@ assert.deepEqual({
   clientCodecSha256: sha256(clientSource),
   programTestSha256: sha256(programTest)
 }, evidence.sources);
-assert.equal(sha256(sbfArtifact), evidence.artifact.sha256);
+const observedArtifactSha256 = sha256(sbfArtifact);
 assert.equal(sbfArtifact.length, evidence.artifact.bytes);
+if (observedArtifactSha256 === evidence.artifact.sha256) {
+  assert.equal(artifactStatus.status, 'verified');
+  assert.equal(artifactStatus.artifactTrusted, true);
+  assert.equal(artifactStatus.observedRepositorySha256, observedArtifactSha256);
+} else {
+  assert.equal(artifactStatus.schema, 'omegavault.solana.artifact-status.v1');
+  assert.equal(artifactStatus.networkRef, 'solana:devnet');
+  assert.equal(artifactStatus.status, 'stale-untrusted');
+  assert.equal(artifactStatus.historicalClaimedSha256, evidence.artifact.sha256);
+  assert.equal(artifactStatus.observedRepositorySha256, observedArtifactSha256);
+  assert.equal(artifactStatus.observedBytes, sbfArtifact.length);
+  assert.equal(artifactStatus.artifactTrusted, false);
+  assert.equal(artifactStatus.sbfExecutionEvidenceCurrent, false);
+  assert.equal(artifactStatus.liveSubmissionReady, false);
+  assert.deepEqual(artifactStatus.authority, {
+    chainPromotion: false,
+    deploymentAuthority: false,
+    walletAuthority: false,
+    liveProof: false
+  });
+  assert.ok(Array.isArray(artifactStatus.requiredRemediation) && artifactStatus.requiredRemediation.length >= 4);
+}
 assert.match(cargoToml.toString(), /solana-program = "=5\.1\.0"/);
 assert.match(cargoToml.toString(), /solana-system-interface = \{ version = "=3\.3\.0", features = \["bincode"\] \}/);
 assert.match(cargoToml.toString(), /solana-program-test = \{ version = "=4\.3\.0", features = \["agave-unstable-api"\] \}/);
@@ -56,4 +79,16 @@ for (const required of [
   'pda.lamports() < required_lamports', 'allocate(pda.key', 'assign(pda.key'
 ]) assert.ok(rust.includes(required), `missing Rust gate: ${required}`);
 
-console.log(`Solana SBF build/source/codec evidence verified: ${evidence.artifact.sha256}`);
+if (observedArtifactSha256 === evidence.artifact.sha256) {
+  console.log(`Solana SBF build/source/codec evidence verified: ${evidence.artifact.sha256}`);
+} else {
+  console.log(JSON.stringify({
+    ok: true,
+    sourceEvidenceVerified: true,
+    artifactStatus: artifactStatus.status,
+    artifactTrusted: false,
+    historicalClaimedSha256: evidence.artifact.sha256,
+    observedRepositorySha256: observedArtifactSha256,
+    liveSubmissionReady: false
+  }));
+}
