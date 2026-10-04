@@ -28,7 +28,10 @@ test('EVM native and ERC20 proof runners can execute against a custody-free driv
   };
   const native = await runEvmNativeRecoveryProof({ driver, config: { contractAddress: 'vault', owner: 'owner', contacts: ['a','b'], threshold: 2, rescueDestination: 'rescue', nativeAmount: '1000' } });
   assert.equal(native.success, true);
+  assert.equal(native.rescueBefore, '0');
+  assert.equal(native.rescueAfter, '1000');
   assert.equal(native.rescueBalance, '1000');
+  assert.equal(native.rescueDeltaMatches, true);
   const token = await runEvmErc20RecoveryProof({ driver, config: { contractAddress: 'vault', tokenAddress: 'token', rescueDestination: 'rescue', executor: 'owner' } });
   assert.equal(token.success, true);
   assert.equal(token.rescueAfter, '105');
@@ -41,4 +44,54 @@ test('compatibility report stays blocked until every network-specific proof exis
   const report = createEvmCompatibilityReport({ networkId: 'base:sepolia', observations: { chainIdHex: network.chainIdHex, rpcRead: true, walletNetworkSwitch: true }, deploymentVerification: deployment, nativeProof: { success: true }, erc20Proof: { success: false }, finality: createFinalityObservation({ policy: DEFAULT_FINALITY_POLICIES.baseSepolia, transactionRef: '0x1', observedAt: '2026-09-28T00:00:00Z', status: 'finalized', evidence: {} }) });
   assert.equal(report.readyForLiveProofPromotion, false);
   assert.deepEqual(report.missing, ['erc20-recovery']);
+});
+
+
+test('EVM native proof runner rejects unreachable or duplicate approval policy before driver use', async () => {
+  const calls = [];
+  const driver = {
+    async readState() { calls.push('readState'); return { balance:'0', recovered:false }; },
+    async depositNative() { calls.push('depositNative'); },
+    async approveRecovery() { calls.push('approveRecovery'); },
+    async executeRecovery() { calls.push('executeRecovery'); }
+  };
+  await assert.rejects(
+    () => runEvmNativeRecoveryProof({
+      driver,
+      config:{ contractAddress:'vault', owner:'owner', contacts:['a'], threshold:2, rescueDestination:'rescue', nativeAmount:'1' }
+    }),
+    /threshold must be reachable/i
+  );
+  await assert.rejects(
+    () => runEvmNativeRecoveryProof({
+      driver,
+      config:{ contractAddress:'vault', owner:'owner', contacts:['a','a'], threshold:1, rescueDestination:'rescue', nativeAmount:'1' }
+    }),
+    /contacts must be unique/i
+  );
+  assert.equal(calls.length, 0);
+});
+
+test('EVM native proof runner fails success when rescue delta does not match deposited value', async () => {
+  let stateRead = 0;
+  let rescueRead = 0;
+  const driver = {
+    async readState() {
+      stateRead += 1;
+      return stateRead === 1 ? { balance:'0', recovered:false } : { balance:'0', recovered:true };
+    },
+    async depositNative() { return { txHash:'0xdeposit' }; },
+    async approveRecovery() { return { txHash:'0xapprove' }; },
+    async executeRecovery() { return { txHash:'0xexecute' }; },
+    async readNativeBalance() {
+      rescueRead += 1;
+      return rescueRead === 1 ? '5' : '104';
+    }
+  };
+  const result = await runEvmNativeRecoveryProof({
+    driver,
+    config:{ contractAddress:'vault', owner:'owner', contacts:['a'], threshold:1, rescueDestination:'rescue', nativeAmount:'100' }
+  });
+  assert.equal(result.rescueDeltaMatches, false);
+  assert.equal(result.success, false);
 });
