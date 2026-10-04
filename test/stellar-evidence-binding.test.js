@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import {
+  createStellarFailedAppliedRecoveryEvidenceBundle,
   createStellarTestnetRecoveryEvidenceBundle,
+  verifyStellarFailedAppliedRecoveryEvidenceBundle,
   verifyStellarTestnetRecoveryEvidenceBundle
 } from '../src/chains/stellar/evidence-binding.js';
 
@@ -156,4 +158,84 @@ test('Stellar Testnet evidence requires exact too-early and success result codes
   const wrongSuccess = fixture();
   wrongSuccess.eligibleSubmission = { ...wrongSuccess.eligibleSubmission, resultCode:'txFAILED' };
   assert.throws(() => createStellarTestnetRecoveryEvidenceBundle(wrongSuccess), /txSUCCESS/);
+});
+
+
+test('Stellar failed-applied evidence proves one-time preAuth signer consumption and forbids replay', () => {
+  const recoveryTransactionHashHex = H('a');
+  const bundle = createStellarFailedAppliedRecoveryEvidenceBundle({
+    networkRef:'stellar:testnet',
+    recoveryTransactionHashHex,
+    preAuthTxSigner:StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => 0xaa)),
+    recoverySequence:'1000',
+    submission:{
+      transactionHashHex:recoveryTransactionHashHex,
+      observedAt:'2026-10-03T00:04:00Z',
+      includedInLedger:true,
+      successful:false,
+      resultCode:'txFAILED',
+      ledger:'501'
+    },
+    accountState:{
+      before:{ sequence:'102', preAuthTxSignerPresent:true },
+      after:{ sequence:'1000', preAuthTxSignerPresent:false }
+    }
+  });
+  assert.equal(bundle.preAuthSignerConsumed, true);
+  assert.equal(bundle.retrySameEnvelope, false);
+  assert.match(bundle.requiredAction, /rebuild/i);
+  assert.match(bundle.sha256, /^[a-f0-9]{64}$/);
+  assert.deepEqual(verifyStellarFailedAppliedRecoveryEvidenceBundle(bundle), { ok:true, errors:[] });
+});
+
+test('Stellar failed-applied evidence rejects non-applied failures and signer-survival drift', () => {
+  const recoveryTransactionHashHex = H('a');
+  const base = {
+    networkRef:'stellar:testnet',
+    recoveryTransactionHashHex,
+    preAuthTxSigner:StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => 0xaa)),
+    recoverySequence:'1000',
+    submission:{
+      transactionHashHex:recoveryTransactionHashHex,
+      observedAt:'2026-10-03T00:04:00Z',
+      includedInLedger:true,
+      successful:false,
+      resultCode:'txFAILED',
+      ledger:'501'
+    },
+    accountState:{
+      before:{ sequence:'102', preAuthTxSignerPresent:true },
+      after:{ sequence:'1000', preAuthTxSignerPresent:false }
+    }
+  };
+  assert.throws(() => createStellarFailedAppliedRecoveryEvidenceBundle({
+    ...base, submission:{ ...base.submission, includedInLedger:false }
+  }), /included but unsuccessful/i);
+  assert.throws(() => createStellarFailedAppliedRecoveryEvidenceBundle({
+    ...base, accountState:{ ...base.accountState, after:{ ...base.accountState.after, preAuthTxSignerPresent:true } }
+  }), /consumed after application/i);
+});
+
+test('tampered Stellar failed-applied evidence fails closed', () => {
+  const recoveryTransactionHashHex = H('a');
+  const bundle = structuredClone(createStellarFailedAppliedRecoveryEvidenceBundle({
+    networkRef:'stellar:testnet',
+    recoveryTransactionHashHex,
+    preAuthTxSigner:StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => 0xaa)),
+    recoverySequence:'1000',
+    submission:{
+      transactionHashHex:recoveryTransactionHashHex,
+      observedAt:'2026-10-03T00:04:00Z',
+      includedInLedger:true,
+      successful:false,
+      resultCode:'txFAILED',
+      ledger:'501'
+    },
+    accountState:{
+      before:{ sequence:'102', preAuthTxSignerPresent:true },
+      after:{ sequence:'1000', preAuthTxSignerPresent:false }
+    }
+  }));
+  bundle.submission.resultCode = 'txBAD_AUTH';
+  assert.equal(verifyStellarFailedAppliedRecoveryEvidenceBundle(bundle).ok, false);
 });
