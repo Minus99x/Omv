@@ -80,3 +80,8 @@ A catalog-level promotion-boundary test now asserts that no connector becomes pr
 - XRPL: exact OmegaVault inactivity + immutable-rescue semantics remain protocol-limited under the current native mechanism.
 
 No listed blocker may be cleared merely by documentation or offline fixtures.
+
+
+### Solana SBF integrity
+
+The new multichain re-audit exposed a historical SBF artifact/evidence digest mismatch. A dedicated status artifact now records the checked-in binary as `stale-untrusted` rather than blessing the observed hash. The Solana verifier now validates that fail-closed status and requires rebuild + SBF program-test + regenerated evidence before the connector can move beyond `parked`.
