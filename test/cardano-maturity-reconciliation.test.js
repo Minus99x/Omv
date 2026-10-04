@@ -28,9 +28,9 @@ test('Cardano offline evidence is sufficient where proven but live promotion rem
   assert.equal(cardano.gateEvidence['adversarial-tests'].evidenceSufficient, true);
   assert.equal(cardano.gateEvidence['evidence-export'].evidenceSufficient, true);
   assert.equal(cardano.promotion.eligible, false);
-  assert.ok(cardano.promotion.missingGates.includes('public-testnet-execution'));
+  assert.ok(cardano.promotion.missingGates.includes('mechanism-create'));
   assert.ok(cardano.promotion.missingGates.includes('wallet-signing'));
-  assert.ok(cardano.promotion.missingGates.includes('finality-proof'));
+  assert.ok(cardano.promotion.missingGates.includes('fee-finality-model'));
 });
 
 test('Cardano 0.6.51 provenance is healthy and chain-scoped', () => {
