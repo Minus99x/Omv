@@ -1,47 +1,47 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.48-dev**
+Current sealed development checkpoint: **0.6.48-dev**
 
 Archive filename: `omegavault-mvp-0.6.48-dev.zip`
 Checkpoint sidecar filename: `omegavault-mvp-0.6.48-dev.checkpoint-manifest.json`
 External review index filename: `omegavault-mvp-0.6.48-dev.review-index.json`
 
-## 0.6.48 delta
+## 0.6.48 sealed scope
 
-- Added separately configured publisher-key trust history with enroll, rotate and revoke events.
-- Kept cryptographic publisher authentication separate from publisher identity approval/trust.
-- A valid signature from an old, rotated, revoked or identity-mismatched key remains cryptographically authenticated but is not trusted.
-- Added publisher-trust snapshots, rollback/tamper detection, canonical-field enforcement and strict authority boundaries.
-- Added `--require-trusted-publisher` fail-closed verification.
-- Hardened reviewer-trust, reviewer trust-policy anchor-history, publication-history and publisher-trust append CLIs so output destinations are preflighted before writes; invalid or colliding destinations cannot leave partial history files.
-- Restored and regression-tested the operator-audit API contract, HTTP endpoint and UI path.
-- Added `npm run test:review-audit` and a GitHub Actions development verification workflow using pinned dependencies.
+- Publisher-key trust history remains separate from detached signature authentication.
+- Reviewer, publisher, anchoring-authority and publication-lineage trust remain explicit and independent.
+- Audit append tooling preflights output destinations.
+- Operator-audit API/HTTP/UI consistency is restored.
+- Dependency-backed GitHub Actions verification is operational.
 
-## Verification
+## Post-seal verified continuation
 
-Clean dependency-backed GitHub Actions verification completed on the development branch:
+The current development branches contain verified work **after** the sealed 0.6.48 archive:
 
-- Pinned dependency install with `npm ci`: **passed**.
-- Focused review/audit security suite: **84/84 passed**.
-- Full test suite: **415/415 passed**.
-- Offline-resume verification: **ok: true**.
-- Global `npm run check`: **passed**.
+- Stellar native-recovery signed-envelope and execution-evidence binding.
+- Recovery of the preserved 0.6.23 Bitcoin PSBTv2 finalizer from its checksum-verified archive.
+- Runtime cryptographic proof of that finalizer with restored pinned dependencies.
+- Deterministic, tamper-detectable Bitcoin finalizer execution evidence.
+- Focused Stellar and Bitcoin GitHub Actions gates.
 
-The previously known operator-audit mismatches are no longer carried as exceptions.
+Current verification:
+
+- Review/audit: **84/84**.
+- Stellar recovery: **20/20**.
+- Bitcoin recovery: **22/22**.
+- Full suite: **432/432**.
+- Offline resume: **ok: true**.
+- Global checks: **passed**.
 
 ## Promotion boundary
 
-No chain is newly promoted by this checkpoint.
+No chain is newly promoted by this work.
 
-Publisher trust is explicit policy metadata only. It grants no reviewer trust, anchoring-authority trust, chain maturity, chain promotion, evidence promotion, deployment authority, wallet authority or live proof. Publication-current lineage remains an independent requirement.
+Bitcoin remains reduced-semantics and has no Signet broadcast/public-network proof in this continuation. Stellar execution evidence does not grant signing, transaction submission, deployment, wallet authority or connector promotion.
 
 ## Next safe gate
 
-Use the now-available dependency-backed remote verification lane to continue native execution evidence work. Start with Stellar native-recovery execution evidence, then continue Bitcoin finalizer execution evidence, preserving all existing maturity and live-value boundaries.
-
-## Workstation status
-
-A local workstation is no longer required merely to restore dependencies and execute the pinned offline verification suite; clean dependency-backed verification is now demonstrated in GitHub Actions. A workstation/user remains necessary only for genuinely local, interactive, wallet-controlled or user-authorized steps.
+Create a **0.6.49-dev checkpoint candidate** from the verified continuation head. Fresh checkpoint/source-tree/provenance bindings must be generated for 0.6.49; the sealed 0.6.48 archive and hashes must remain immutable.
 
 ## Safety boundary
 

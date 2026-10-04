@@ -1,40 +1,55 @@
 # OmegaVault 0.6.48 Progress
 
-## Completed
+## Sealed 0.6.48 baseline
 
-- Added explicit publisher-key trust configuration separate from detached signature authentication.
-- Added digest-linked publisher trust history with enrollment, key rotation, revocation and current-head snapshots.
-- Preserved an explicit authenticated-but-untrusted state for stale, rotated, revoked or identity-mismatched publisher keys.
-- Enforced strict canonical schemas and no-authority boundaries on publisher trust events and snapshots.
-- Added fail-closed `--require-trusted-publisher` behavior while retaining backward-compatible authenticated-only verification.
-- Proved that publisher trust cannot override stale publication lineage.
-- Hardened append-only reviewer trust, trust-policy anchor, publication and publisher-trust tooling against partial writes by preflighting all output destinations.
-- Restored operator-audit API validation, HTTP routing and UI-backed response coverage.
-- Added the reusable `test:review-audit` security suite.
-- Added development-branch GitHub Actions verification with pinned Node/npm dependencies.
+The sealed 0.6.48-dev archive/checkpoint remains the publisher-trust and auditability checkpoint. Its original verification baseline was:
 
-## Verification
-
-- `npm ci`: passed.
 - Focused review/audit suite: **84/84 passed**.
 - Full dependency-backed suite: **415/415 passed**.
-- `npm run verify:offline-resume`: **ok: true**.
-- `npm run check`: passed.
+- Offline-resume verification: **ok: true**.
+- Global checks: **passed**.
 
-## Security boundary
+The sealed archive is not retroactively rewritten by the continuation work below.
 
-A valid publisher signature establishes cryptographic authentication only. Publisher trust requires separate current policy history. Neither publisher authentication nor publisher trust changes reviewer trust, anchoring-authority trust, chain maturity, evidence promotion, deployment authority, wallet authority or live-proof status.
+## Post-0.6.48 verified continuation
 
-## Process improvement
+### Stellar native-recovery execution evidence
 
-Dependency-backed clean-room verification is now available through GitHub Actions. This removes the old requirement to wait for a local workstation merely to run the pinned offline suite and makes future development checkpoints easier to verify continuously.
+- Added exact signed-envelope verification for the configured recovery-contact signature set.
+- Added deterministic Stellar recovery execution evidence binding the pre-authorized transaction hash, exact signed XDR, pre-submission account snapshot, submission outcome and supplied Stellar finality observation.
+- Added fail-closed coverage for missing/extra signatures, substituted transactions, account-policy drift, finality-hash substitution and applied transaction failure.
+- Added a focused `test:stellar-recovery` verification lane.
+- Preserved the authority boundary: evidence creation does not authorize signing, submission, deployment, wallet authority or connector promotion.
 
-## Next priority
+### Bitcoin finalizer execution evidence
 
-Continue the highest-value dependency-backed native execution evidence work:
+- Recovered the strict 0.6.23 PSBTv2 finalizer from the preserved Library archive `omegavault-mvp-0.6.23-dev.zip`.
+- Verified the preserved archive SHA-256 exactly: `e2a96a522d3f921194f144b4b87276b540bf72bfb2da6bb2a48f6da3ff0f3e88`.
+- Restored descriptor/P2WSH binding, block-based CSV enforcement, configured threshold/signers, caller-confirmed rescue output, exact fee, delayed recovery witness construction and raw SegWit extraction with txid/wtxid/weight/vsize.
+- The previously blocked Noble-backed cryptographic finalizer now executes successfully in the pinned dependency lane.
+- Added deterministic Bitcoin finalizer execution evidence binding the signed PSBT, descriptor policy, exact extracted transaction, fee, rescue output, CSV delay and selected contact signers.
+- Evidence verification reproduces finalization and rejects tampering.
+- Added a focused `test:bitcoin-recovery` lane.
+- Preserved reduced semantics: OmegaVault binds the transaction it finalizes to the caller-confirmed rescue output, but ordinary Bitcoin Script does **not** create an immutable rescue covenant.
 
-1. Stellar native-recovery execution evidence.
-2. Bitcoin finalizer execution evidence.
-3. Re-run focused, full, offline-resume and global checks after each coherent gate.
+## Current verification
 
-No connector promotion is authorized by this checkpoint.
+Clean GitHub Actions verification on the post-0.6.48 working head:
+
+- `npm ci`: **passed**.
+- Focused review/audit suite: **84/84 passed**.
+- Focused Stellar recovery suite: **20/20 passed**.
+- Focused Bitcoin recovery suite: **22/22 passed**.
+- Full dependency-backed suite: **432/432 passed**.
+- Offline-resume verification: **ok: true**, including **16/16** Stellar/offline checks and **11/11** Bitcoin recovery checks.
+- Global `npm run check`: **passed**.
+
+## Security and promotion boundary
+
+No connector is newly promoted by this continuation.
+
+Stellar evidence does not itself prove that a public-network submission occurred unless separately supplied and independently validated. Bitcoin finalizer evidence is explicitly offline and records `publicNetworkProof: false` and `broadcastObserved: false`. Bitcoin remains reduced-semantics because its delayed threshold script is not a covenant.
+
+## Next checkpoint task
+
+Promote this verified working head into a new **0.6.49-dev checkpoint candidate**. Generate fresh source-tree/checkpoint/provenance bindings for that candidate rather than modifying the already-sealed 0.6.48 archive.
