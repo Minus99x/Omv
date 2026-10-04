@@ -1,27 +1,38 @@
 # OmegaVault Multichain Execution Plan 0.6.50
 
-## Completed
+## Completed checkpoint work
 
 - [x] Reconcile 0.6.49 execution evidence into maturity/provenance records.
 - [x] Remove resolved dependency blockers without promoting live status.
 - [x] Preserve Stellar public-Testnet blockers.
 - [x] Preserve Bitcoin reduced-semantics/no-covenant blockers.
 - [x] Preserve historical review-basis artifacts as immutable snapshots.
-- [x] Update capability API/UI expectations to the current evidence-backed state.
+- [x] Update capability API/UI expectations to current evidence.
 - [x] Pass focused review, Stellar, Bitcoin and maturity/provenance suites.
-- [x] Pass the complete 433-test regression suite.
+- [x] Pass full 433-test regression suite.
 - [x] Pass offline-resume and global checks.
+- [x] Build deterministic `omegavault-mvp-0.6.50-dev.zip`.
+- [x] Generate fresh checkpoint manifest/source-tree binding.
+- [x] Generate and verify fresh external review index.
 
-## Checkpoint candidate
+## Verified baseline
 
-- [ ] Build deterministic `omegavault-mvp-0.6.50-dev.zip`.
-- [ ] Generate fresh checkpoint manifest/source-tree binding.
-- [ ] Generate and verify fresh external review index.
-- [ ] Persist and pin the sealed source checkpoint.
+- Review/audit: **84/84 passed**.
+- Stellar recovery: **20/20 passed**.
+- Bitcoin recovery: **22/22 passed**.
+- Maturity/provenance: **21/21 passed**.
+- Full suite: **433/433 passed**.
+- Offline resume: **ok: true**.
+- Global checks: **passed**.
+- Checkpoint/review bindings: **passed**.
 
 ## After seal
 
-Select the next chain-specific gap from the corrected maturity catalog. Live-public-network and wallet-controlled steps remain explicitly gated.
+1. Branch from 0.6.50.
+2. Select the highest-value unresolved chain-specific gap from current maturity evidence.
+3. Keep public-network, wallet-controlled and secret-bearing steps explicitly gated.
+4. Maintain focused/full/offline/global verification after each coherent gate.
+5. Never treat audit metadata or offline evidence as connector promotion.
 
 ## Authority boundary
 

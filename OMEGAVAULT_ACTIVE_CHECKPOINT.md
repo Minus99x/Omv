@@ -1,33 +1,46 @@
 # OmegaVault Active Checkpoint
 
-Current sealed development checkpoint: **0.6.49-dev**
+Current development checkpoint: **0.6.50-dev**
 
-Active checkpoint candidate: **0.6.50-dev**
+Archive filename: `omegavault-mvp-0.6.50-dev.zip`
+Checkpoint sidecar filename: `omegavault-mvp-0.6.50-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.50-dev.review-index.json`
 
-Candidate branch: `dev/0.6.50-checkpoint-candidate`
+## 0.6.50 delta
 
-## 0.6.50 candidate delta
+- Registered the sealed 0.6.49 Stellar and Bitcoin execution evidence in the provenance catalog.
+- Removed the resolved Stellar SDK and Bitcoin Noble dependency blockers.
+- Raised Stellar to `offline-verified` while preserving public-Testnet/live gates.
+- Kept Bitcoin `reduced-semantics` and retained the explicit immutable-rescue covenant limitation.
+- Added offline Bitcoin address-validation/evidence-export bindings from 0.6.49 evidence.
+- Preserved Bitcoin Core extraction cross-check and Signet execution as unresolved.
+- Updated historical review-basis tests so old artifacts remain immutable snapshots instead of being rewritten to current state.
+- Updated capability API/UI tests to match current evidence without deriving promotion.
+- Added a focused maturity/provenance verification lane.
 
-- Registers the sealed 0.6.49 archive as explicit Stellar and Bitcoin execution-evidence provenance.
-- Removes resolved dependency blockers for Stellar SDK and Bitcoin Noble execution.
-- Raises Stellar to `offline-verified` while preserving all missing public-testnet/live gates.
-- Keeps Bitcoin `reduced-semantics` and preserves the explicit no-covenant limitation.
-- Adds a focused maturity/provenance verification lane.
-- Corrects audit/API/UI tests so historical artifacts stay immutable while current state can legitimately advance.
+## Verification
 
-## Candidate verification baseline
-
-- Review/audit: **84/84 passed**.
-- Stellar recovery: **20/20 passed**.
-- Bitcoin recovery: **22/22 passed**.
-- Maturity/provenance: **21/21 passed**.
+- Pinned dependency install with `npm ci`: **passed**.
+- Focused review/audit suite: **84/84 passed**.
+- Focused Stellar recovery suite: **20/20 passed**.
+- Focused Bitcoin recovery suite: **22/22 passed**.
+- Focused maturity/provenance suite: **21/21 passed**.
 - Full suite: **433/433 passed**.
-- Offline-resume: **16/16 + 11/11 passed; ok: true**.
-- Global checks: **passed**.
+- Offline-resume verification: **ok: true** with **16/16** Stellar and **11/11** Bitcoin checks.
+- Global `npm run check`: **passed**.
+- Deterministic source archive generation: **passed**.
+- Checkpoint manifest generation: **passed**.
+- External review index generation/verification: **passed**.
 
 ## Promotion boundary
 
-No connector is promoted by 0.6.50. This candidate only reconciles maturity/provenance metadata with evidence already sealed in 0.6.49.
+No connector is newly promoted by 0.6.50.
+
+Stellar is offline-verified, not public-testnet verified. Bitcoin remains reduced-semantics and has no covenant enforcement or Signet recovery proof.
+
+## Next safe gate
+
+Branch from the sealed 0.6.50 source checkpoint and select the next unresolved chain-specific execution gap from the corrected maturity catalog.
 
 ## Safety boundary
 
