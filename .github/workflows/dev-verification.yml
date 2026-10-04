@@ -37,6 +37,9 @@ jobs:
       - name: Focused Stellar native suite
         run: npm run test:stellar-native
 
+      - name: Focused Bitcoin native suite
+        run: npm run test:bitcoin-native
+
       - name: Full test suite
         run: npm test
 
