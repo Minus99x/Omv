@@ -92,6 +92,32 @@ export const EVIDENCE_PROVENANCE_RECORDS = Object.freeze([
     summary: 'XDC Apothem finalized-head policy and chain-specific finality enforcement.'
   }),
   record({
+    ref: '0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION',
+    archiveSha256: '6b6253e5851f34727715fb691b87fa37156552372a38b25112a5c2ba9b99038b',
+    chainIds: ['stellar'],
+    scope: 'offline-native-recovery-execution-evidence',
+    artifactPaths: [
+      'OmegaVault-0.6.49-Progress.md',
+      'src/chains/stellar/native-recovery.js',
+      'src/chains/stellar/execution-evidence.js',
+      'test/stellar-execution-evidence.test.js'
+    ],
+    summary: 'Pinned-SDK Stellar native recovery envelope, preflight, submission-result and deterministic execution-evidence verification.'
+  }),
+  record({
+    ref: '0.6.49:BITCOIN_FINALIZER_EXECUTION',
+    archiveSha256: '6b6253e5851f34727715fb691b87fa37156552372a38b25112a5c2ba9b99038b',
+    chainIds: ['bitcoin'],
+    scope: 'offline-finalizer-execution-evidence',
+    artifactPaths: [
+      'OmegaVault-0.6.49-Progress.md',
+      'src/chains/bitcoin/psbt-v2.js',
+      'src/chains/bitcoin/execution-evidence.js',
+      'test/bitcoin-execution-evidence.test.js'
+    ],
+    summary: 'Noble-backed Bitcoin PSBTv2 recovery finalizer execution plus deterministic tamper-detectable offline evidence.'
+  }),
+  record({
     ref: '0.6.30:PROOF_PROVENANCE_RESUME',
     archiveSha256: '96ca6578305dd44e11faff156bf692ebf775202a352b4e2f5d5f9a2e8267b032',
     chainIds: ['xdc', 'tron', 'cardano'],

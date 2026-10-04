@@ -38,18 +38,31 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
     })
   }),
   stellar: Object.freeze({
-    stage: 'scaffold',
-    blockers: ref('Pinned @stellar/stellar-sdk 17.1.0 is absent in the stripped workspace; run npm ci on a workstation, then verify the native-recovery suite.'),
-    notes: ref('XLM/Stellar remains active; the blocker is workspace dependency availability, not protocol abandonment.')
+    stage: 'offline-verified',
+    blockers: ref('Public Stellar Testnet account-setup, submitted recovery transaction and independently captured finalized-ledger evidence are still required before public-testnet promotion.'),
+    gateEvidence: Object.freeze({
+      'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION') }),
+      'address-validation': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION') }),
+      'transaction-preflight': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION') }),
+      'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION') }),
+      'evidence-export': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION') })
+    }),
+    notes: ref('Pinned Stellar SDK execution is now verified offline. This does not claim wallet signing, public-testnet submission, finalized public-network recovery or connector promotion.')
   }),
   bitcoin: Object.freeze({
     stage: 'reduced-semantics',
-    blockers: ref('Pinned Noble dependencies, Bitcoin Core extraction cross-check and Signet recovery evidence remain required.'),
+    blockers: ref(
+      'Bitcoin Core extraction cross-check and Signet broadcast/recovery evidence remain required.',
+      'The current delayed threshold Script policy cannot enforce an immutable rescue destination outside OmegaVault finalization.'
+    ),
     gateEvidence: Object.freeze({
       'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.23:BITCOIN_FINALIZER_SOURCE') }),
-      'transaction-preflight': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.23:BITCOIN_FINALIZER_SOURCE') }),
-      'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.23:BITCOIN_FINALIZER_SOURCE') })
-    })
+      'address-validation': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:BITCOIN_FINALIZER_EXECUTION') }),
+      'transaction-preflight': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:BITCOIN_FINALIZER_EXECUTION') }),
+      'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:BITCOIN_FINALIZER_EXECUTION') }),
+      'evidence-export': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:BITCOIN_FINALIZER_EXECUTION') })
+    }),
+    notes: ref('Pinned Noble cryptographic execution is now verified. The connector remains reduced-semantics and has no Signet public-network proof.')
   }),
   solana: Object.freeze({
     stage: 'parked',

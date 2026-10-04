@@ -40,6 +40,9 @@ jobs:
       - name: Focused Bitcoin recovery suite
         run: npm run test:bitcoin-recovery
 
+      - name: Focused maturity/provenance suite
+        run: npm run test:maturity-reconciliation
+
       - name: Full test suite
         run: npm test
 
