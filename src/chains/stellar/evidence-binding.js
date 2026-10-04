@@ -259,3 +259,110 @@ export function verifyStellarTestnetRecoveryEvidenceBundle(bundle) {
   if (authorityBoundary !== expected.authorityBoundary) errors.push('Stellar evidence authority boundary mismatch.');
   return Object.freeze({ ok: errors.length === 0, errors: Object.freeze(errors) });
 }
+
+
+export function createStellarFailedAppliedRecoveryEvidenceBundle(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Stellar failed-applied recovery evidence input is required.');
+  const expected = [
+    'networkRef','recoveryTransactionHashHex','preAuthTxSigner','recoverySequence',
+    'submission','accountState'
+  ];
+  exactKeys(input, expected, 'Stellar failed-applied recovery evidence input');
+  if (input.networkRef !== 'stellar:testnet') throw new TypeError('Failed-applied Stellar evidence must target stellar:testnet.');
+  const recoveryTransactionHashHex = hashHex(input.recoveryTransactionHashHex, 'recoveryTransactionHashHex');
+  const preAuthTxSigner = preAuthSigner(input.preAuthTxSigner, 'preAuthTxSigner');
+  const recoverySequence = integerString(input.recoverySequence, 'recoverySequence', { positive: true });
+
+  exactKeys(input.submission, [
+    'transactionHashHex','observedAt','includedInLedger','successful','resultCode','ledger'
+  ], 'submission');
+  const transactionHashHex = hashHex(input.submission.transactionHashHex, 'submission.transactionHashHex');
+  if (transactionHashHex !== recoveryTransactionHashHex) throw new Error('Failed-applied submission is bound to another recovery transaction.');
+  if (input.submission.includedInLedger !== true || input.submission.successful !== false) {
+    throw new Error('Failed-applied evidence requires an included but unsuccessful recovery transaction.');
+  }
+  const resultCode = requiredText(input.submission.resultCode, 'submission.resultCode');
+  if (resultCode === 'txSUCCESS' || resultCode === 'txTOO_EARLY') {
+    throw new Error('Failed-applied evidence requires an applied failure result code.');
+  }
+  const submission = Object.freeze({
+    transactionHashHex,
+    observedAt: isoTime(input.submission.observedAt, 'submission.observedAt').text,
+    includedInLedger: true,
+    successful: false,
+    resultCode,
+    ledger: integerString(input.submission.ledger, 'submission.ledger', { positive: true })
+  });
+
+  exactKeys(input.accountState, ['before','after'], 'accountState');
+  for (const [name, snapshot] of Object.entries(input.accountState)) {
+    exactKeys(snapshot, ['sequence','preAuthTxSignerPresent'], `accountState.${name}`);
+    if (typeof snapshot.preAuthTxSignerPresent !== 'boolean') {
+      throw new TypeError(`accountState.${name}.preAuthTxSignerPresent must be boolean.`);
+    }
+  }
+  const beforeSequence = integerString(input.accountState.before.sequence, 'accountState.before.sequence');
+  const afterSequence = integerString(input.accountState.after.sequence, 'accountState.after.sequence');
+  if (input.accountState.before.preAuthTxSignerPresent !== true) {
+    throw new Error('Failed-applied proof requires the matching preAuthTx signer before submission.');
+  }
+  if (input.accountState.after.preAuthTxSignerPresent !== false) {
+    throw new Error('Failed-applied proof requires the matching preAuthTx signer to be consumed after application.');
+  }
+  if (BigInt(afterSequence) !== BigInt(recoverySequence)) {
+    throw new Error('Failed-applied post-submission sequence must equal the fixed recovery transaction sequence.');
+  }
+  if (BigInt(beforeSequence) >= BigInt(recoverySequence)) {
+    throw new Error('Failed-applied pre-submission sequence must remain below the fixed recovery sequence.');
+  }
+
+  const core = Object.freeze({
+    schema: 'omegavault.stellar.failed-applied-recovery-evidence.v1',
+    chainId: 'stellar',
+    networkRef: 'stellar:testnet',
+    recoveryTransactionHashHex,
+    preAuthTxSigner,
+    recoverySequence,
+    submission,
+    accountState: Object.freeze({
+      before: Object.freeze({ sequence: beforeSequence, preAuthTxSignerPresent: true }),
+      after: Object.freeze({ sequence: afterSequence, preAuthTxSignerPresent: false })
+    }),
+    preAuthSignerConsumed: true,
+    retrySameEnvelope: false,
+    requiredAction: 'Diagnose the failed operation, rebuild the immutable recovery envelope, and explicitly re-authorize a new preAuthTx signer before retrying.',
+    promotionAuthority: false,
+    authorityBoundary: 'This evidence records one failed applied Stellar Testnet recovery and one-time signer consumption only. It grants no chain promotion, deployment authority, wallet authority, or mainnet authority.'
+  });
+  return Object.freeze({ ...core, sha256: evidenceDigest(core) });
+}
+
+export function verifyStellarFailedAppliedRecoveryEvidenceBundle(bundle) {
+  const errors = [];
+  if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) {
+    return Object.freeze({ ok:false, errors:Object.freeze(['Stellar failed-applied evidence bundle is required.']) });
+  }
+  const {
+    sha256, schema, chainId, preAuthSignerConsumed, retrySameEnvelope,
+    requiredAction, promotionAuthority, authorityBoundary, ...input
+  } = bundle;
+  if (schema !== 'omegavault.stellar.failed-applied-recovery-evidence.v1') errors.push('Unexpected failed-applied Stellar evidence schema.');
+  if (chainId !== 'stellar') errors.push('Unexpected failed-applied Stellar evidence chain.');
+  if (preAuthSignerConsumed !== true) errors.push('Failed-applied evidence must record preAuth signer consumption.');
+  if (retrySameEnvelope !== false) errors.push('Failed-applied evidence must forbid retry of the same envelope.');
+  if (typeof requiredAction !== 'string' || !/rebuild/i.test(requiredAction)) errors.push('Failed-applied evidence must require rebuilding the recovery envelope.');
+  if (promotionAuthority !== false) errors.push('Failed-applied evidence must not grant promotion authority.');
+  if (typeof authorityBoundary !== 'string' || !authorityBoundary) errors.push('Failed-applied evidence authority boundary is missing.');
+
+  let expected;
+  try {
+    expected = createStellarFailedAppliedRecoveryEvidenceBundle(input);
+  } catch (error) {
+    errors.push(String(error?.message || error));
+    return Object.freeze({ ok:false, errors:Object.freeze(errors) });
+  }
+  if (sha256 !== expected.sha256) errors.push('Failed-applied Stellar evidence digest mismatch.');
+  if (requiredAction !== expected.requiredAction) errors.push('Failed-applied required action mismatch.');
+  if (authorityBoundary !== expected.authorityBoundary) errors.push('Failed-applied authority boundary mismatch.');
+  return Object.freeze({ ok:errors.length === 0, errors:Object.freeze(errors) });
+}
