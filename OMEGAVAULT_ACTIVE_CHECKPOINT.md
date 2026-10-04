@@ -39,9 +39,13 @@ No chain is newly promoted by this work.
 
 Bitcoin remains reduced-semantics and has no Signet broadcast/public-network proof in this continuation. Stellar execution evidence does not grant signing, transaction submission, deployment, wallet authority or connector promotion.
 
-## Next safe gate
+## Current candidate
 
-Create a **0.6.49-dev checkpoint candidate** from the verified continuation head. Fresh checkpoint/source-tree/provenance bindings must be generated for 0.6.49; the sealed 0.6.48 archive and hashes must remain immutable.
+Candidate branch: **dev/0.6.49-checkpoint-candidate**
+
+Candidate version: **0.6.49-dev**
+
+The sealed 0.6.48 archive remains authoritative until the 0.6.49 candidate completes verification and produces fresh archive, checkpoint-manifest and review-index bindings.
 
 ## Safety boundary
 
