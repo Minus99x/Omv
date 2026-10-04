@@ -63,3 +63,15 @@ test('Stellar remains explicitly active and offline-verified while public-testne
   assert.equal(stellar.blockers.some(value => /stellar-sdk/.test(value)), false);
   assert.ok(stellar.notes.some(value => /verified in clean CI and on Windows/.test(value)));
 });
+
+
+test('Bitcoin remains reduced-semantics despite new offline finalizer evidence', () => {
+  const bitcoin = contract('bitcoin');
+  assert.equal(bitcoin.chainId, 'bitcoin');
+  assert.equal(bitcoin.stage, 'reduced-semantics');
+  assert.equal(bitcoin.promotion.eligible, false);
+  assert.ok(bitcoin.blockers.some(value => /Signet recovery observation|immutable-rescue/i.test(value)));
+  assert.equal(bitcoin.blockers.some(value => /Pinned Noble dependencies/i.test(value)), false);
+  assert.equal(bitcoin.gateEvidence['native-asset-recovery'].evidenceSufficient, false);
+  assert.equal(bitcoin.gateEvidence['immutable-rescue-semantics'].evidenceSufficient, false);
+});
