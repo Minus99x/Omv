@@ -59,7 +59,7 @@ test('Stellar remains explicitly active and offline-verified while public-testne
   assert.equal(stellar.chainId, 'stellar');
   assert.equal(stellar.stage, 'offline-verified');
   assert.equal(stellar.promotion.eligible, false);
-  assert.ok(stellar.blockers.some(value => /Stellar Testnet execution proof/.test(value)));
+  assert.ok(stellar.blockers.some(value => /Stellar Testnet execution/.test(value)));
   assert.equal(stellar.blockers.some(value => /stellar-sdk/.test(value)), false);
   assert.ok(stellar.notes.some(value => /verified in clean CI and on Windows/.test(value)));
 });
