@@ -27,8 +27,7 @@ assert.deepEqual({
   programTestSha256: sha256(programTest)
 }, evidence.sources);
 const observedArtifactSha256 = sha256(sbfArtifact);
-assert.equal(sbfArtifact.length, evidence.artifact.bytes);
-if (observedArtifactSha256 === evidence.artifact.sha256) {
+if (observedArtifactSha256 === evidence.artifact.sha256 && sbfArtifact.length === evidence.artifact.bytes) {
   assert.equal(artifactStatus.status, 'verified');
   assert.equal(artifactStatus.artifactTrusted, true);
   assert.equal(artifactStatus.observedRepositorySha256, observedArtifactSha256);
@@ -39,6 +38,10 @@ if (observedArtifactSha256 === evidence.artifact.sha256) {
   assert.equal(artifactStatus.historicalClaimedSha256, evidence.artifact.sha256);
   assert.equal(artifactStatus.observedRepositorySha256, observedArtifactSha256);
   assert.equal(artifactStatus.observedBytes, sbfArtifact.length);
+  assert.ok(
+    observedArtifactSha256 !== evidence.artifact.sha256 || sbfArtifact.length !== evidence.artifact.bytes,
+    'stale-untrusted status requires an actual artifact identity mismatch'
+  );
   assert.equal(artifactStatus.artifactTrusted, false);
   assert.equal(artifactStatus.sbfExecutionEvidenceCurrent, false);
   assert.equal(artifactStatus.liveSubmissionReady, false);
@@ -79,7 +82,7 @@ for (const required of [
   'pda.lamports() < required_lamports', 'allocate(pda.key', 'assign(pda.key'
 ]) assert.ok(rust.includes(required), `missing Rust gate: ${required}`);
 
-if (observedArtifactSha256 === evidence.artifact.sha256) {
+if (observedArtifactSha256 === evidence.artifact.sha256 && sbfArtifact.length === evidence.artifact.bytes) {
   console.log(`Solana SBF build/source/codec evidence verified: ${evidence.artifact.sha256}`);
 } else {
   console.log(JSON.stringify({
