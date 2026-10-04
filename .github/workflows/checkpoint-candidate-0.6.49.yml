@@ -16,6 +16,8 @@ jobs:
   build-candidate:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      CHECKPOINT_DIR: ${{ runner.temp }}/omegavault-0.6.49
 
     steps:
       - name: Checkout
@@ -59,8 +61,11 @@ jobs:
           import fnmatch
           import zipfile
 
+          import os
           root = Path('.').resolve()
-          archive = root / 'omegavault-mvp-0.6.49-dev.zip'
+          output = Path(os.environ['CHECKPOINT_DIR']).resolve()
+          output.mkdir(parents=True, exist_ok=True)
+          archive = output / 'omegavault-mvp-0.6.49-dev.zip'
 
           def excluded(rel):
               text = rel.as_posix()
@@ -110,7 +115,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
-            omegavault-mvp-0.6.49-dev.zip
-            omegavault-mvp-0.6.49-dev.checkpoint-manifest.json
-            omegavault-mvp-0.6.49-dev.review-index.json
-            omegavault-mvp-0.6.49-dev.SHA256SUMS
+            ${{ env.CHECKPOINT_DIR }}/omegavault-mvp-0.6.49-dev.zip
+            ${{ env.CHECKPOINT_DIR }}/omegavault-mvp-0.6.49-dev.checkpoint-manifest.json
+            ${{ env.CHECKPOINT_DIR }}/omegavault-mvp-0.6.49-dev.review-index.json
+            ${{ env.CHECKPOINT_DIR }}/omegavault-mvp-0.6.49-dev.SHA256SUMS
