@@ -1,15 +1,15 @@
 # OmegaVault 0.6.51 Progress
 
-## Completed toolchain proof
+## Completed
 
 - Added a focused Cardano toolchain/evidence CI gate using the existing pinned `check:cardano` lane.
-- Proved Aiken **1.1.24+bacbeb3** formatting, tests/checks and validator build in clean GitHub Actions.
-- Proved CSL **17.0.0** fixture handling.
+- Proved Aiken **1.1.24+bacbeb3** formatter/check/tests/build in clean GitHub Actions.
+- Proved CSL **17.0.0** applied transaction-fixture handling.
 - Verified CIP-57 blueprint/source evidence.
 - Verified applied policy/address plus initialize, heartbeat, approval and execute transaction-body fixtures.
 - Verified signed-size, fee, minimum-ADA and collateral evidence.
 - Verified zero-budget Ogmios evaluation requests.
-- Preserved the fail-closed live-construction boundary.
+- Preserved the live-construction block.
 
 ## Verification
 
@@ -21,7 +21,8 @@
 - Full suite: **433/433 passed**.
 - Offline resume: **ok: true**.
 - Global checks: **passed**.
+- Checkpoint/review binding generation and verification: **passed**.
 
-## Next task
+## Promotion boundary
 
-Seal 0.6.51 as the Cardano toolchain-proof checkpoint. In the following reconciliation checkpoint, remove only the stale toolchain-restoration blocker and retain the real Preprod evaluation/submission blockers.
+No Cardano live/public-testnet proof is claimed. The toolchain restoration blocker is proven obsolete, but the maturity record should be updated only in the next checkpoint after this 0.6.51 archive is sealed and can be referenced by exact provenance.
