@@ -1,48 +1,74 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.48-dev**
+Sealed distributable checkpoint: **0.6.48-dev**
 
-Archive filename: `omegavault-mvp-0.6.48-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.48-dev.checkpoint-manifest.json`
+Sealed checkpoint commit: `eae5ea2cdff33c4b86978fa34f7349504bc1ff49`
+
+Archive filename: `omegavault-mvp-0.6.48-dev.zip`  
+Checkpoint sidecar filename: `omegavault-mvp-0.6.48-dev.checkpoint-manifest.json`  
 External review index filename: `omegavault-mvp-0.6.48-dev.review-index.json`
 
-## 0.6.48 delta
+## Development continuation
 
-- Added separately configured publisher-key trust history with enroll, rotate and revoke events.
-- Kept cryptographic publisher authentication separate from publisher identity approval/trust.
-- A valid signature from an old, rotated, revoked or identity-mismatched key remains cryptographically authenticated but is not trusted.
-- Added publisher-trust snapshots, rollback/tamper detection, canonical-field enforcement and strict authority boundaries.
-- Added `--require-trusted-publisher` fail-closed verification.
-- Hardened reviewer-trust, reviewer trust-policy anchor-history, publication-history and publisher-trust append CLIs so output destinations are preflighted before writes; invalid or colliding destinations cannot leave partial history files.
-- Restored and regression-tested the operator-audit API contract, HTTP endpoint and UI path.
-- Added `npm run test:review-audit` and a GitHub Actions development verification workflow using pinned dependencies.
+The active development branch `dev/0.6.41-review-receipts` now contains post-seal multichain execution-evidence work. This continuation does **not** replace the sealed 0.6.48 archive identity until package/lock/checkpoint artifacts are regenerated coherently and an exact-head clean verification passes.
 
-## Verification
+The connector write guard prevented an atomic `package-lock.json` version bump during an attempted next-version checkpoint. The premature package-version bump was reverted instead of weakening dependency-lock verification. The current package and lock therefore remain coherently labeled `0.6.48-dev` while the post-seal development work is verified.
 
-Clean dependency-backed GitHub Actions verification completed on the development branch:
+## Post-seal completed implementation
 
-- Pinned dependency install with `npm ci`: **passed**.
-- Focused review/audit security suite: **84/84 passed**.
-- Full test suite: **415/415 passed**.
-- Offline-resume verification: **ok: true**.
-- Global `npm run check`: **passed**.
+### Stellar
 
-The previously known operator-audit mismatches are no longer carried as exceptions.
+- Pinned Stellar SDK dependency restored and verified.
+- Native recovery XDR round-trip and exact contact-signature verification.
+- Owner heartbeat XDR/signature verification.
+- Fee-bump inner/outer transaction binding.
+- Strict Testnet identity and exact result-code checks.
+- Digest-bound successful Testnet-recovery evidence contract.
+- Digest-bound failed-applied recovery evidence proving one-time `preAuthTx` signer consumption and forbidding same-envelope retry.
+- Execution-input manifest, recovery runner, Horizon proof driver, fail-closed Horizon HTTP transport and end-to-end injected-driver integration.
 
-## Promotion boundary
+Stellar remains `offline-verified`. Real public Testnet execution evidence is still required.
 
-No chain is newly promoted by this checkpoint.
+### Bitcoin
 
-Publisher trust is explicit policy metadata only. It grants no reviewer trust, anchoring-authority trust, chain maturity, chain promotion, evidence promotion, deployment authority, wallet authority or live proof. Publication-current lineage remains an independent requirement.
+- Signet-only offline PSBTv2 finalizer-evidence gate for canonical/frozen maps, CSV, descriptor binding, contact threshold, rescue output and fee accounting.
+- Read-only Signet observation evidence for confirmation depth and exact rescue UTXO.
+- Explicit preservation of `immutableRescueOnChain: false`, `broadcastAuthorized: false` and no chain-promotion authority.
 
-## Next safe gate
+Bitcoin remains `reduced-semantics`. Real Signet observation, final signed-transaction/Bitcoin Core cross-check and the immutable-rescue semantic limitation remain.
 
-Use the now-available dependency-backed remote verification lane to continue native execution evidence work. Start with Stellar native-recovery execution evidence, then continue Bitcoin finalizer execution evidence, preserving all existing maturity and live-value boundaries.
+### TRON / EVM / cross-chain
 
-## Workstation status
+- Dedicated TRON TRX/TRC-20 recovery-runner regression coverage.
+- Generic EVM native runner now rejects duplicate/unreachable approval policy and checks exact rescue-balance movement.
+- Focused XRPL, Solana, TRON, Cardano and EVM suites are included in the multichain offline verification matrix.
+- Catalog-wide promotion-boundary tests reject accidental promotion and prevent offline evidence from satisfying public-testnet-required gates.
+- Obsolete Stellar/Bitcoin dependency blockers were removed without changing promotion status.
 
-A local workstation is no longer required merely to restore dependencies and execute the pinned offline verification suite; clean dependency-backed verification is now demonstrated in GitHub Actions. A workstation/user remains necessary only for genuinely local, interactive, wallet-controlled or user-authorized steps.
+## Verification boundary
 
-## Safety boundary
+A previously clean intermediate post-seal head proved:
 
-Never modify `main` directly or perform production deployments, live-value transactions, wallet signatures, secret handling or irreversible external actions from this development queue.
+- review/audit: **84/84**
+- Stellar-focused: **96/96**
+- Bitcoin-focused: **19/19**
+- full suite: **481/481**
+- offline-resume: **26/26**
+- global checks: **5/5**
+- overall offline-resume status: **ok: true**
+
+The current accumulated head adds further Signet observation, TRON/EVM hardening, multichain verification and documentation. It must complete its own clean exact-head run before being called a verified development checkpoint.
+
+## Genuine remaining gates
+
+- Stellar: actual public Testnet execution.
+- Bitcoin: actual Signet execution/observation, final signed-transaction/Bitcoin Core cross-check, immutable-rescue semantics.
+- TRON: fresh Shasta deployment/recovery evidence.
+- Cardano: Preprod execution evidence; the clean multichain matrix determines whether the old local Aiken-toolchain portion of the blocker is still real.
+- Solana: Rust/Agave rebuild and Devnet execution evidence.
+- XDC and EVM compatibility chains: fresh network-specific public-testnet recovery/finality evidence.
+- XRPL: exact inactivity + immutable-rescue semantics remain protocol-limited under the current native approach.
+
+## Safety and authority boundary
+
+No post-seal work authorizes production deployment, mainnet/live-value transactions, wallet signatures, secret handling, chain promotion, deployment authority or wallet authority. No connector is promoted by audit metadata or offline fixture evidence.
