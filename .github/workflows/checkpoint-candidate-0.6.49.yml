@@ -3,7 +3,7 @@ name: OmegaVault 0.6.49 Checkpoint Candidate
 on:
   push:
     branches:
-      - 'dev/0.6.49-checkpoint-candidate'
+      - dev/0.6.49-checkpoint-candidate
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      CHECKPOINT_DIR: ${{ runner.temp }}/omegavault-0.6.49
+      CHECKPOINT_DIR: /tmp/omegavault-0.6.49
 
     steps:
       - name: Checkout
@@ -59,9 +59,9 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import fnmatch
+          import os
           import zipfile
 
-          import os
           root = Path('.').resolve()
           output = Path(os.environ['CHECKPOINT_DIR']).resolve()
           output.mkdir(parents=True, exist_ok=True)
@@ -99,14 +99,17 @@ jobs:
       - name: Generate checkpoint and review bindings
         shell: bash
         run: |
-          ARCHIVE="omegavault-mvp-0.6.49-dev.zip"
-          MANIFEST="omegavault-mvp-0.6.49-dev.checkpoint-manifest.json"
-          INDEX="omegavault-mvp-0.6.49-dev.review-index.json"
+          ARCHIVE_NAME="omegavault-mvp-0.6.49-dev.zip"
+          ARCHIVE="$CHECKPOINT_DIR/$ARCHIVE_NAME"
+          MANIFEST="$CHECKPOINT_DIR/omegavault-mvp-0.6.49-dev.checkpoint-manifest.json"
+          INDEX="$CHECKPOINT_DIR/omegavault-mvp-0.6.49-dev.review-index.json"
+          SUMS="$CHECKPOINT_DIR/omegavault-mvp-0.6.49-dev.SHA256SUMS"
           ARCHIVE_SHA="$(sha256sum "$ARCHIVE" | awk '{print $1}')"
-          node scripts/generate-checkpoint-manifest.js             --ref 0.6.49-dev             --archive "$ARCHIVE"             --archive-sha256 "$ARCHIVE_SHA"             --output "$MANIFEST"
-          node scripts/generate-external-review-index.js             --archive "$ARCHIVE"             --checkpoint-manifest "$MANIFEST"             --output "$INDEX"
-          node scripts/verify-external-review-index.js             --index "$INDEX"             --archive "$ARCHIVE"             --checkpoint-manifest "$MANIFEST"
-          sha256sum "$ARCHIVE" "$MANIFEST" "$INDEX" > omegavault-mvp-0.6.49-dev.SHA256SUMS
+
+          node scripts/generate-checkpoint-manifest.js --ref 0.6.49-dev --archive "$ARCHIVE_NAME" --archive-sha256 "$ARCHIVE_SHA" --output "$MANIFEST"
+          node scripts/generate-external-review-index.js --archive "$ARCHIVE" --checkpoint-manifest "$MANIFEST" --output "$INDEX"
+          node scripts/verify-external-review-index.js --index "$INDEX" --archive "$ARCHIVE" --checkpoint-manifest "$MANIFEST"
+          sha256sum "$ARCHIVE" "$MANIFEST" "$INDEX" > "$SUMS"
 
       - name: Upload checkpoint candidate
         uses: actions/upload-artifact@v4
@@ -115,7 +118,7 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           path: |
-            ${{ env.CHECKPOINT_DIR }}/omegavault-mvp-0.6.49-dev.zip
-            ${{ env.CHECKPOINT_DIR }}/omegavault-mvp-0.6.49-dev.checkpoint-manifest.json
-            ${{ env.CHECKPOINT_DIR }}/omegavault-mvp-0.6.49-dev.review-index.json
-            ${{ env.CHECKPOINT_DIR }}/omegavault-mvp-0.6.49-dev.SHA256SUMS
+            /tmp/omegavault-0.6.49/omegavault-mvp-0.6.49-dev.zip
+            /tmp/omegavault-0.6.49/omegavault-mvp-0.6.49-dev.checkpoint-manifest.json
+            /tmp/omegavault-0.6.49/omegavault-mvp-0.6.49-dev.review-index.json
+            /tmp/omegavault-0.6.49/omegavault-mvp-0.6.49-dev.SHA256SUMS
