@@ -72,3 +72,10 @@ The current accumulated head adds further Signet observation, TRON/EVM hardening
 ## Safety and authority boundary
 
 No post-seal work authorizes production deployment, mainnet/live-value transactions, wallet signatures, secret handling, chain promotion, deployment authority or wallet authority. No connector is promoted by audit metadata or offline fixture evidence.
+
+
+## Solana artifact integrity finding
+
+The cross-chain verification matrix surfaced a pre-existing mismatch between the checked-in Solana SBF binary and its historical 0.6.17 build-evidence digest. The source/Cargo/client/test bindings still match their historical evidence, but the repository binary hashes to `99ec272746b35162efc8ba28ab8acd1fad7edf8d65edfdf7825a8c6ae559c405` while the historical evidence claims `e140b5235505df36f727051adf880f78b8ff7168b4e0269fc2071d4d7f24804e`.
+
+The binary has been marked `stale-untrusted`; its current bytes are **not** relabeled as a verified build. Solana remains parked until a pinned Rust/Agave/cargo-build-sbf toolchain rebuilds the current source, reruns SBF program-test and regenerates exact artifact evidence.
