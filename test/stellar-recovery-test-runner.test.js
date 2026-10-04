@@ -11,7 +11,7 @@ import {
 } from '../src/chains/stellar/native-recovery.js';
 import { verifyStellarTestnetRecoveryEvidenceBundle } from '../src/chains/stellar/evidence-binding.js';
 import { createStellarTestnetExecutionInputManifest } from '../src/chains/stellar/execution-input-manifest.js';
-import { runStellarTestnetRecoveryProof } from '../src/chains/stellar/recovery-test-runner.js';
+import { runStellarFailedAppliedRecoveryProof, runStellarTestnetRecoveryProof } from '../src/chains/stellar/recovery-test-runner.js';
 
 const KP = n => Keypair.fromRawEd25519Seed(new Uint8Array(32).fill(n));
 const G = n => KP(n).publicKey();
@@ -312,5 +312,105 @@ test('Stellar Testnet proof runner fails closed when a required driver capabilit
   await assert.rejects(
     () => runStellarTestnetRecoveryProof({ ...inputs, driver:fake.driver }),
     /requires observeFinality/
+  );
+});
+
+
+test('Stellar failed-applied proof runner records consumed preAuth signer and forbids same-envelope retry', async () => {
+  const inputs = proofInputs();
+  let reads = 0;
+  const calls = [];
+  const driver = {
+    async readAccountSnapshot(account) {
+      calls.push(['readAccountSnapshot', account]);
+      reads += 1;
+      if (reads === 1) return readySnapshot(inputs, '1003');
+      return {
+        sequence:inputs.recoveryPlan.sequence.recoverySequence,
+        masterWeight:1,
+        thresholds:{ low:1, medium:1, high:1 },
+        signers:[]
+      };
+    },
+    async submitEnvelope({ purpose, expectedTransactionHashHex }) {
+      calls.push(['submitEnvelope', purpose, expectedTransactionHashHex]);
+      return {
+        transactionHashHex:inputs.feeBumpArtifact.feeBumpTransactionHashHex,
+        observedAt:'2026-10-03T00:04:00Z',
+        includedInLedger:true,
+        successful:false,
+        resultCode:'txFAILED',
+        ledger:'501'
+      };
+    }
+  };
+  const result = await runStellarFailedAppliedRecoveryProof({ ...inputs, driver });
+  assert.equal(result.success, true);
+  assert.equal(result.kind, 'stellar-testnet-failed-applied-recovery-proof');
+  assert.equal(result.evidenceBundle.preAuthSignerConsumed, true);
+  assert.equal(result.evidenceBundle.retrySameEnvelope, false);
+  assert.equal(result.evidenceBundle.submission.innerTransactionHashHex, inputs.recoveryArtifact.transactionHashHex);
+  assert.equal(result.evidenceBundle.submission.outerTransactionHashHex, inputs.feeBumpArtifact.feeBumpTransactionHashHex);
+  assert.match(result.evidenceBundle.requiredAction, /rebuild/i);
+  assert.equal(calls.filter(call => call[0] === 'submitEnvelope').length, 1);
+});
+
+test('Stellar failed-applied proof runner rejects outer-hash substitution', async () => {
+  const inputs = proofInputs();
+  let reads = 0;
+  const driver = {
+    async readAccountSnapshot() {
+      reads += 1;
+      if (reads === 1) return readySnapshot(inputs, '1003');
+      return {
+        sequence:inputs.recoveryPlan.sequence.recoverySequence,
+        masterWeight:1,
+        thresholds:{ low:1, medium:1, high:1 },
+        signers:[]
+      };
+    },
+    async submitEnvelope() {
+      return {
+        transactionHashHex:'ee'.repeat(32),
+        observedAt:'2026-10-03T00:04:00Z',
+        includedInLedger:true,
+        successful:false,
+        resultCode:'txFAILED',
+        ledger:'501'
+      };
+    }
+  };
+  await assert.rejects(
+    () => runStellarFailedAppliedRecoveryProof({ ...inputs, driver }),
+    /different transaction hash/i
+  );
+});
+
+test('Stellar failed-applied proof runner rejects signer-survival after applied failure', async () => {
+  const inputs = proofInputs();
+  let reads = 0;
+  const driver = {
+    async readAccountSnapshot() {
+      reads += 1;
+      if (reads === 1) return readySnapshot(inputs, '1003');
+      return {
+        ...readySnapshot(inputs, inputs.recoveryPlan.sequence.recoverySequence),
+        sequence:inputs.recoveryPlan.sequence.recoverySequence
+      };
+    },
+    async submitEnvelope() {
+      return {
+        transactionHashHex:inputs.feeBumpArtifact.feeBumpTransactionHashHex,
+        observedAt:'2026-10-03T00:04:00Z',
+        includedInLedger:true,
+        successful:false,
+        resultCode:'txFAILED',
+        ledger:'501'
+      };
+    }
+  };
+  await assert.rejects(
+    () => runStellarFailedAppliedRecoveryProof({ ...inputs, driver }),
+    /did not consume the matching preAuthTx signer/i
   );
 });
