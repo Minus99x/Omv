@@ -5,6 +5,7 @@
   "type": "module",
   "description": "Chain-agnostic non-custodial recovery-wallet MVP; Ethereum proof complete, multichain offline verification and recovery-mechanism scaffolding in active development.",
   "scripts": {
+    "precheck": "node --check src/chains/stellar/horizon-http-transport.js",
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "test": "node --test",
@@ -35,7 +36,7 @@
     "review:publisher:trust:append": "node scripts/append-publisher-trust-event.js",
     "review:publisher:trust:verify": "node scripts/verify-publisher-trust-history.js",
     "test:review-audit": "node --test test/operator-audit-index-api.test.js test/operator-audit-index-http.test.js test/operator-audit-index-ui.test.js test/external-review-index-cli.test.js test/external-review-index.test.js test/publication-head-history-cli.test.js test/publication-head-history.test.js test/publication-head-receipt-cli.test.js test/publication-head-receipt.test.js test/publisher-trust-cli.test.js test/publisher-trust-history.test.js test/review-basis-api.test.js test/review-basis-artifact.test.js test/review-basis-http.test.js test/review-basis.test.js test/review-receipt-cli.test.js test/review-receipt-policy-anchor-cli.test.js test/review-receipt.test.js test/reviewer-trust-history-cli.test.js test/reviewer-trust-history.test.js test/reviewer-trust-policy-anchor-cli.test.js test/reviewer-trust-policy-anchor-history-cli.test.js test/reviewer-trust-policy-anchor-history.test.js test/reviewer-trust-policy-anchor.test.js",
-    "test:stellar-native": "node --test test/stellar-native-recovery.test.js test/stellar-evidence-binding.test.js test/stellar-recovery-test-runner.test.js test/stellar-horizon-proof-driver.test.js test/stellar-strkey.test.js test/capability-api-integration.test.js test/capability-catalog.test.js test/capability-contract.test.js test/capability-ui-model.test.js"
+    "test:stellar-native": "node --test test/stellar-native-recovery.test.js test/stellar-evidence-binding.test.js test/stellar-recovery-test-runner.test.js test/stellar-horizon-proof-driver.test.js test/stellar-horizon-http-transport.test.js test/stellar-strkey.test.js test/capability-api-integration.test.js test/capability-catalog.test.js test/capability-contract.test.js test/capability-ui-model.test.js"
   },
   "engines": {
     "node": ">=22.12"
