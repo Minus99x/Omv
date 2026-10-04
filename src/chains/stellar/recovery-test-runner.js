@@ -5,7 +5,9 @@ import {
   verifySignedRecoveryEnvelopeArtifact
 } from './native-recovery.js';
 import {
+  createStellarFailedAppliedRecoveryEvidenceBundle,
   createStellarTestnetRecoveryEvidenceBundle,
+  verifyStellarFailedAppliedRecoveryEvidenceBundle,
   verifyStellarTestnetRecoveryEvidenceBundle
 } from './evidence-binding.js';
 import { verifyStellarTestnetExecutionInputManifest } from './execution-input-manifest.js';
@@ -386,5 +388,137 @@ export async function runStellarTestnetRecoveryProof(input) {
     evidenceBundle,
     actions: Object.freeze(actions),
     authorityBoundary: 'This runner orchestrates an explicitly supplied Stellar Testnet driver and pre-signed envelopes. It holds no signing keys and grants no mainnet, deployment, wallet or chain-promotion authority.'
+  });
+}
+
+
+function requireAppliedFailure(result, expectedHash, label) {
+  if (!result || typeof result !== 'object') throw new Error(`${label} did not return a submission result.`);
+  if (result.transactionHashHex !== expectedHash) throw new Error(`${label} returned a different transaction hash.`);
+  if (result.includedInLedger !== true || result.successful !== false) {
+    throw new Error(`${label} must prove an included but unsuccessful transaction.`);
+  }
+  const resultCode = requiredText(result.resultCode, `${label}.resultCode`);
+  if (resultCode === 'txSUCCESS' || resultCode === 'txTOO_EARLY') {
+    throw new Error(`${label} must return an applied failure result code.`);
+  }
+  return Object.freeze({
+    transactionHashHex:expectedHash,
+    observedAt:requiredText(result.observedAt, `${label}.observedAt`),
+    includedInLedger:true,
+    successful:false,
+    resultCode,
+    ledger:integerString(result.ledger, `${label}.ledger`, { positive:true })
+  });
+}
+
+export async function runStellarFailedAppliedRecoveryProof(input) {
+  const {
+    driver,
+    recoveryPlan,
+    recoveryArtifact,
+    signedRecoveryTransactionXdr,
+    heartbeatPlan,
+    heartbeatArtifact,
+    signedHeartbeatTransactionXdr,
+    feeBumpPlan,
+    feeBumpArtifact,
+    signedFeeBumpTransactionXdr,
+    executionManifest
+  } = input ?? {};
+
+  for (const method of ['readAccountSnapshot','submitEnvelope']) requireMethod(driver, method);
+  const manifestVerification = verifyStellarTestnetExecutionInputManifest({
+    manifest:executionManifest,
+    inputs:{
+      recoveryPlan,
+      recoveryArtifact,
+      signedRecoveryTransactionXdr,
+      heartbeatPlan,
+      heartbeatArtifact,
+      signedHeartbeatTransactionXdr,
+      feeBumpPlan,
+      feeBumpArtifact,
+      signedFeeBumpTransactionXdr
+    }
+  });
+  if (!manifestVerification.ok) {
+    throw new Error(`Stellar Testnet execution manifest failed preflight: ${manifestVerification.errors.join('; ')}`);
+  }
+  requireOfflineArtifacts({
+    recoveryPlan,
+    recoveryArtifact,
+    signedRecoveryTransactionXdr,
+    heartbeatPlan,
+    heartbeatArtifact,
+    signedHeartbeatTransactionXdr,
+    feeBumpPlan,
+    feeBumpArtifact,
+    signedFeeBumpTransactionXdr
+  });
+
+  const actions = [];
+  const before = normalizeAccountSnapshot(
+    await action(actions, 'account.before-failed-recovery', () => driver.readAccountSnapshot(recoveryPlan.sourceAccount)),
+    'beforeFailedRecovery'
+  );
+  assertReadyAccount({ recoveryPlan, recoveryArtifact, snapshot:before, label:'Pre-failed-recovery account snapshot' });
+
+  const submission = requireAppliedFailure(
+    await action(actions, 'recovery.submit-expected-applied-failure', () => driver.submitEnvelope({
+      purpose:'eligible-recovery-expected-applied-failure',
+      transactionXdr:signedFeeBumpTransactionXdr,
+      expectedTransactionHashHex:feeBumpArtifact.feeBumpTransactionHashHex
+    })),
+    feeBumpArtifact.feeBumpTransactionHashHex,
+    'Expected failed-applied recovery submission'
+  );
+
+  const after = normalizeAccountSnapshot(
+    await action(actions, 'account.after-failed-recovery', () => driver.readAccountSnapshot(recoveryPlan.sourceAccount)),
+    'afterFailedRecovery'
+  );
+  if (after.sequence !== recoveryPlan.sequence.recoverySequence) {
+    throw new Error('Failed-applied recovery did not consume the fixed recovery transaction sequence.');
+  }
+  if (hasPreAuthSigner(after, recoveryArtifact.preAuthTxSigner)) {
+    throw new Error('Failed-applied recovery did not consume the matching preAuthTx signer.');
+  }
+
+  const evidenceBundle = createStellarFailedAppliedRecoveryEvidenceBundle({
+    networkRef:'stellar:testnet',
+    recoveryTransactionHashHex:recoveryArtifact.transactionHashHex,
+    preAuthTxSigner:recoveryArtifact.preAuthTxSigner,
+    recoverySequence:recoveryPlan.sequence.recoverySequence,
+    submission:{
+      transactionHashHex:recoveryArtifact.transactionHashHex,
+      observedAt:submission.observedAt,
+      includedInLedger:true,
+      successful:false,
+      resultCode:submission.resultCode,
+      ledger:submission.ledger
+    },
+    accountState:{
+      before:{
+        sequence:before.sequence,
+        preAuthTxSignerPresent:hasPreAuthSigner(before, recoveryArtifact.preAuthTxSigner)
+      },
+      after:{
+        sequence:after.sequence,
+        preAuthTxSignerPresent:hasPreAuthSigner(after, recoveryArtifact.preAuthTxSigner)
+      }
+    }
+  });
+  const verification = verifyStellarFailedAppliedRecoveryEvidenceBundle(evidenceBundle);
+  if (!verification.ok) {
+    throw new Error(`Constructed failed-applied Stellar evidence failed self-verification: ${verification.errors.join('; ')}`);
+  }
+  return Object.freeze({
+    kind:'stellar-testnet-failed-applied-recovery-proof',
+    success:true,
+    networkRef:'stellar:testnet',
+    evidenceBundle,
+    actions:Object.freeze(actions),
+    authorityBoundary:'This runner records an intentionally failing applied Stellar Testnet recovery fixture supplied by an injected driver. It holds no signing keys and grants no chain-promotion, deployment, wallet, mainnet, or retry authority.'
   });
 }
