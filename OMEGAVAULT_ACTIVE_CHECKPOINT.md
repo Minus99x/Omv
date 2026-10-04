@@ -1,51 +1,47 @@
 # OmegaVault Active Checkpoint
 
-Current sealed development checkpoint: **0.6.48-dev**
+Current development checkpoint: **0.6.49-dev**
 
-Archive filename: `omegavault-mvp-0.6.48-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.48-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.48-dev.review-index.json`
+Archive filename: `omegavault-mvp-0.6.49-dev.zip`
+Checkpoint sidecar filename: `omegavault-mvp-0.6.49-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.49-dev.review-index.json`
 
-## 0.6.48 sealed scope
+## 0.6.49 delta
 
-- Publisher-key trust history remains separate from detached signature authentication.
-- Reviewer, publisher, anchoring-authority and publication-lineage trust remain explicit and independent.
-- Audit append tooling preflights output destinations.
-- Operator-audit API/HTTP/UI consistency is restored.
-- Dependency-backed GitHub Actions verification is operational.
+- Carried forward the sealed 0.6.48 publisher-trust, review/audit and operator-audit hardening.
+- Added exact Stellar signed-recovery-envelope verification.
+- Added deterministic Stellar recovery execution evidence with account preflight, submission-result and finality binding.
+- Recovered the strict Bitcoin PSBTv2 recovery finalizer from the checksum-verified 0.6.23 archive.
+- Executed the previously dependency-blocked Bitcoin cryptographic finalizer tests under the pinned Noble toolchain.
+- Added deterministic, tamper-detectable Bitcoin finalizer execution evidence.
+- Added focused Stellar and Bitcoin recovery verification lanes.
+- Added a deterministic checkpoint-candidate workflow that generates the source ZIP outside the hashed tree, then generates and verifies the checkpoint manifest and external review index.
 
-## Post-seal verified continuation
+## Verification
 
-The current development branches contain verified work **after** the sealed 0.6.48 archive:
+Clean dependency-backed verification for the 0.6.49 source checkpoint:
 
-- Stellar native-recovery signed-envelope and execution-evidence binding.
-- Recovery of the preserved 0.6.23 Bitcoin PSBTv2 finalizer from its checksum-verified archive.
-- Runtime cryptographic proof of that finalizer with restored pinned dependencies.
-- Deterministic, tamper-detectable Bitcoin finalizer execution evidence.
-- Focused Stellar and Bitcoin GitHub Actions gates.
-
-Current verification:
-
-- Review/audit: **84/84**.
-- Stellar recovery: **20/20**.
-- Bitcoin recovery: **22/22**.
-- Full suite: **432/432**.
-- Offline resume: **ok: true**.
-- Global checks: **passed**.
+- Pinned dependency install with `npm ci`: **passed**.
+- Focused review/audit suite: **84/84 passed**.
+- Focused Stellar recovery suite: **20/20 passed**.
+- Focused Bitcoin recovery suite: **22/22 passed**.
+- Full test suite: **432/432 passed**.
+- Offline-resume verification: **ok: true**.
+- Global `npm run check`: **passed**.
+- Deterministic source archive generation: **passed**.
+- Checkpoint manifest generation: **passed**.
+- External review index generation and verification: **passed**.
+- Independent extracted-source verification reproduced the source-tree inventory and review-index result.
 
 ## Promotion boundary
 
-No chain is newly promoted by this work.
+No connector is newly promoted by this checkpoint.
 
-Bitcoin remains reduced-semantics and has no Signet broadcast/public-network proof in this continuation. Stellar execution evidence does not grant signing, transaction submission, deployment, wallet authority or connector promotion.
+Stellar execution evidence does not authorize signing, submission, deployment, wallet authority or connector promotion. Bitcoin remains reduced-semantics: OmegaVault can bind the recovery transaction it finalizes to the caller-confirmed rescue output, but ordinary Bitcoin Script does not provide an immutable-rescue covenant. No Bitcoin Signet broadcast or live-value recovery proof is claimed.
 
-## Current candidate
+## Next safe gate
 
-Candidate branch: **dev/0.6.49-checkpoint-candidate**
-
-Candidate version: **0.6.49-dev**
-
-The sealed 0.6.48 archive remains authoritative until the 0.6.49 candidate completes verification and produces fresh archive, checkpoint-manifest and review-index bindings.
+Continue from a new post-0.6.49 development branch. Select the next chain-specific execution gap from the existing maturity/capability evidence rather than changing the sealed 0.6.49 source checkpoint.
 
 ## Safety boundary
 

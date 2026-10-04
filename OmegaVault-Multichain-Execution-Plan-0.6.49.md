@@ -1,22 +1,35 @@
 # OmegaVault Multichain Execution Plan 0.6.49
 
-## Immediate checkpoint work
+## Completed checkpoint work
 
-1. Validate the complete 0.6.49 candidate with pinned dependencies.
-2. Generate a deterministic source archive only after the verification gates pass.
-3. Bind the archive to a fresh dependency lock and source-tree inventory.
-4. Generate and verify a fresh external-review index.
-5. Preserve the sealed 0.6.48 archive unchanged.
+- [x] Validate the complete 0.6.49 source checkpoint with pinned dependencies.
+- [x] Preserve the sealed 0.6.48 archive unchanged.
+- [x] Carry forward verified Stellar signed-envelope and execution-evidence work.
+- [x] Restore and runtime-verify the checksum-backed Bitcoin PSBTv2 finalizer.
+- [x] Add deterministic Bitcoin finalizer execution evidence.
+- [x] Add focused Stellar and Bitcoin CI lanes.
+- [x] Build a deterministic 0.6.49 source archive.
+- [x] Generate a fresh dependency/source-tree checkpoint manifest.
+- [x] Generate and verify a fresh external-review index.
+- [x] Re-extract the archive and independently reproduce source-tree and review-index verification.
 
-## Carried verified execution evidence
+## Verified baseline
 
-- Stellar signed recovery envelope and deterministic execution-evidence gate.
-- Bitcoin strict PSBTv2 finalizer recovered from checksum-verified 0.6.23 source.
-- Bitcoin deterministic finalizer execution evidence with explicit reduced-semantics boundary.
+- Focused review/audit: **84/84 passed**.
+- Focused Stellar recovery: **20/20 passed**.
+- Focused Bitcoin recovery: **22/22 passed**.
+- Full suite: **432/432 passed**.
+- Offline resume: **ok: true**.
+- Global checks: **passed**.
+- Checkpoint/review binding verification: **passed**.
 
-## After checkpoint seal
+## Next safe work
 
-Choose the next chain-specific execution gap from the existing capability/maturity evidence. Do not promote a connector merely because offline execution evidence exists.
+1. Branch from the sealed 0.6.49 source checkpoint.
+2. Read the current capability/maturity evidence and select the next chain-specific execution gap with the highest offline value.
+3. Keep live-public-network, wallet-controlled and secret-bearing steps explicitly gated.
+4. After each coherent gate, run focused, full, offline-resume and global verification.
+5. Do not treat audit metadata, offline evidence or checkpoint sealing as connector promotion.
 
 ## Authority boundary
 
