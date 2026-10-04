@@ -3,7 +3,7 @@ name: OmegaVault Dev Verification
 on:
   push:
     branches:
-      - 'dev/0.6.41-review-receipts'
+      - 'dev/**'
   workflow_dispatch:
 
 permissions:
