@@ -52,6 +52,9 @@ jobs:
       - name: Focused Cardano Preprod evidence harness
         run: npm run test:cardano-preprod-evidence
 
+      - name: Focused Cardano Preprod capture session/manifest
+        run: npm run test:cardano-preprod-session
+
       - name: Full test suite
         run: npm test
 
