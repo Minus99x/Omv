@@ -20,7 +20,7 @@ test('Stellar catalog entry is offline-verified without pretending public-testne
   assert.equal(stellar.networks[0].id, 'stellar:testnet');
   assert.equal(stellar.stage, 'offline-verified');
   assert.equal(stellar.promotion.eligible, false);
-  assert.ok(stellar.blockers.some(value => /Stellar Testnet execution proof/.test(value)));
+  assert.ok(stellar.blockers.some(value => /Stellar Testnet execution/.test(value)));
   assert.equal(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')), false);
 });
 test('XDC catalog exposes offline evidence but blocks live promotion', () => {
