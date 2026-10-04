@@ -8,6 +8,7 @@ import {
 } from './protocol-parameters.js';
 
 const SHA256 = /^[0-9a-f]{64}$/i;
+const GIT_SHA = /^[0-9a-f]{40}$/i;
 
 export const CARDANO_PREPROD_CAPTURE_BASELINE = Object.freeze({
   checkpointRef: '0.6.53-dev',
@@ -21,8 +22,13 @@ function text(value, label) {
   return value.trim();
 }
 
-function exactSha(value, label) {
+function exactSha256(value, label) {
   if (typeof value !== 'string' || !SHA256.test(value)) throw new TypeError(`${label} must be SHA-256 hex.`);
+  return value.toLowerCase();
+}
+
+function exactGitSha(value, label) {
+  if (typeof value !== 'string' || !GIT_SHA.test(value)) throw new TypeError(`${label} must be a 40-character Git commit SHA.`);
   return value.toLowerCase();
 }
 
@@ -67,9 +73,9 @@ export function createCardanoPreprodCaptureSessionManifest({
   const id = text(sessionId, 'sessionId');
   const checkpoint = plainObject(baseline, 'baseline');
   if (checkpoint.checkpointRef !== CARDANO_PREPROD_CAPTURE_BASELINE.checkpointRef) throw new Error('Capture session must be based on the sealed 0.6.53 checkpoint.');
-  exactSha(checkpoint.sourceCommitSha, 'baseline.sourceCommitSha');
-  exactSha(checkpoint.archiveSha256, 'baseline.archiveSha256');
-  exactSha(checkpoint.sourceTreeSha256, 'baseline.sourceTreeSha256');
+  exactGitSha(checkpoint.sourceCommitSha, 'baseline.sourceCommitSha');
+  exactSha256(checkpoint.archiveSha256, 'baseline.archiveSha256');
+  exactSha256(checkpoint.sourceTreeSha256, 'baseline.sourceTreeSha256');
 
   const core = Object.freeze({
     schema: 'omegavault.cardano.preprod-capture-session-manifest.v1',
@@ -123,7 +129,7 @@ export function verifyCardanoPreprodCaptureSessionManifest(manifest) {
     const planCheck = verifyCapturePlan(manifest.capturePlan);
     errors.push(...planCheck.errors);
 
-    const digest = exactSha(manifest.manifestSha256, 'manifest.manifestSha256');
+    const digest = exactSha256(manifest.manifestSha256, 'manifest.manifestSha256');
     const recomputed = hashCardanoEvidence(withoutDigest(manifest, 'manifestSha256'));
     if (digest !== recomputed) errors.push('Capture session manifest self-digest mismatch.');
 
