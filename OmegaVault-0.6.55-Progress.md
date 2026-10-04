@@ -1,31 +1,30 @@
 # OmegaVault 0.6.55 Progress
 
-## Cardano workstation launch gate
+## Completed workstation launch gate
 
-- Added a strict workstation checkpoint-source verifier that compares:
-  - sealed checkpoint sidecar,
-  - exact source archive SHA-256,
-  - extracted source-tree inventory,
-  - package/package-lock dependency binding.
-- The launch CLI also verifies the external review index before any capture session is prepared.
-- Pinned installed dependencies must already match; otherwise the launch fails closed and directs the operator to run `npm ci`.
-- Session preparation now defaults to a sibling directory outside the source tree, preserving the sealed source-tree identity.
-- Existing session manifests are not overwritten silently.
-- After all local gates pass, the launch command prepares the Cardano session without making a network request.
+- Verifies the checkpoint sidecar, exact source archive, extracted source tree and dependency lock as one workstation source gate.
+- Verifies the external review index before session creation.
+- Requires pinned dependencies to be installed at the expected versions.
+- Session preparation defaults outside the source tree to preserve checkpoint identity.
+- Existing capture manifests are never silently overwritten.
+- Launch remains entirely local/offline and creates no signing or submission authority.
 
-## Intended laptop command
-
-`npm run cardano:preprod:launch -- --bundle-dir <extracted-checkpoint-bundle>`
-
-This is the first laptop command after extracting the sealed checkpoint source/bundle.
-
-## Boundary
-
-The launch gate does not contact Cardano, does not sign, does not submit and cannot move value.
-
-## Verified working-head baseline
+## Verification
 
 - Cardano workstation launch gate: **4/4 passed**.
 - Full suite: **451/451 passed**.
 - Offline resume: **16/16 + 11/11 passed; ok: true**.
 - Global checks: **passed**.
+- Checkpoint archive, sidecar and external-review-index generation/verification: **passed**.
+
+## Laptop handoff
+
+The first laptop command is now a strict gate rather than a manual checklist:
+
+`npm run cardano:preprod:launch -- --bundle-dir <outer-bundle-directory>`
+
+A successful result prepares the external Cardano capture session and prints the later verification command.
+
+## Boundary
+
+0.6.55 does not contact Cardano Preprod, sign a transaction, submit a transaction or move value.
