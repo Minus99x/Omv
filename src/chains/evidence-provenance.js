@@ -118,6 +118,21 @@ export const EVIDENCE_PROVENANCE_RECORDS = Object.freeze([
     summary: 'Noble-backed Bitcoin PSBTv2 recovery finalizer execution plus deterministic tamper-detectable offline evidence.'
   }),
   record({
+    ref: '0.6.51:CARDANO_TOOLCHAIN_EXECUTION',
+    archiveSha256: 'a4314cca883ba1caa82cd2c30973baa90d370a13265d1f45299c4253b1c3e501',
+    chainIds: ['cardano'],
+    scope: 'offline-cardano-toolchain-and-evidence-verification',
+    artifactPaths: [
+      'OmegaVault-0.6.51-Progress.md',
+      'validators/cardano/aiken.toml',
+      'validators/cardano/plutus.json',
+      'scripts/verify-cardano-blueprint.js',
+      'scripts/verify-cardano-applied-fixtures.js',
+      'scripts/verify-cardano-witness-evidence.js'
+    ],
+    summary: 'Clean-CI Aiken 1.1.24+bacbeb3 and CSL 17.0.0 execution with blueprint, canonical transaction fixtures, signed-size/fee/minimum-ADA/collateral and zero-budget Ogmios request evidence.'
+  }),
+  record({
     ref: '0.6.30:PROOF_PROVENANCE_RESUME',
     archiveSha256: '96ca6578305dd44e11faff156bf692ebf775202a352b4e2f5d5f9a2e8267b032',
     chainIds: ['xdc', 'tron', 'cardano'],

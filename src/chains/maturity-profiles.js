@@ -29,13 +29,18 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   }),
   cardano: Object.freeze({
     stage: 'offline-verified',
-    blockers: ref('Live Preprod evaluation/submission evidence and restored pinned Cardano/Aiken toolchain remain required.'),
+    blockers: ref(
+      'Synchronized Preprod Ogmios evaluation and independent phase-1 validation at one acquired tip remain required.',
+      'Preprod transaction submission/finality, wallet signing and public-network recovery evidence remain required before promotion.'
+    ),
     gateEvidence: Object.freeze({
-      'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.25:CARDANO_EVIDENCE_BINDING') }),
-      'transaction-preflight': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.25:CARDANO_EVIDENCE_BINDING') }),
-      'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.25:CARDANO_EVIDENCE_BINDING') }),
-      'evidence-export': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.31:REPRODUCIBLE_CHECKPOINT_MANIFEST') })
-    })
+      'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.25:CARDANO_EVIDENCE_BINDING', '0.6.51:CARDANO_TOOLCHAIN_EXECUTION') }),
+      'address-validation': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.51:CARDANO_TOOLCHAIN_EXECUTION') }),
+      'transaction-preflight': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.25:CARDANO_EVIDENCE_BINDING', '0.6.51:CARDANO_TOOLCHAIN_EXECUTION') }),
+      'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.25:CARDANO_EVIDENCE_BINDING', '0.6.51:CARDANO_TOOLCHAIN_EXECUTION') }),
+      'evidence-export': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.31:REPRODUCIBLE_CHECKPOINT_MANIFEST', '0.6.51:CARDANO_TOOLCHAIN_EXECUTION') })
+    }),
+    notes: ref('Pinned Aiken 1.1.24+bacbeb3 and CSL 17.0.0 execution are clean-CI verified. This does not claim Preprod node evaluation, submission, wallet signing, finality or connector promotion.')
   }),
   stellar: Object.freeze({
     stage: 'offline-verified',

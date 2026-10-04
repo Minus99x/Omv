@@ -46,6 +46,9 @@ jobs:
       - name: Focused Cardano toolchain/evidence suite
         run: npm run test:cardano-toolchain
 
+      - name: Focused Cardano maturity/provenance reconciliation
+        run: npm run test:cardano-reconciliation
+
       - name: Full test suite
         run: npm test
 

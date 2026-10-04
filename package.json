@@ -1,6 +1,6 @@
 {
   "name": "omegavault-mvp",
-  "version": "0.6.51-dev",
+  "version": "0.6.52-dev",
   "private": true,
   "type": "module",
   "description": "Chain-agnostic non-custodial recovery-wallet MVP; Ethereum proof complete, multichain offline verification and recovery-mechanism scaffolding in active development.",
@@ -38,7 +38,8 @@
     "test:stellar-recovery": "node --test test/stellar-native-recovery.test.js test/stellar-execution-evidence.test.js",
     "test:bitcoin-recovery": "node --test test/bitcoin-descriptor-psbt-v2.test.js test/bitcoin-recovery-policy.test.js test/bitcoin-finalizer-source.test.js test/bitcoin-execution-evidence.test.js",
     "test:maturity-reconciliation": "node --test test/capability-catalog.test.js test/capability-contract.test.js test/evidence-provenance.test.js test/evidence-diagnostics.test.js",
-    "test:cardano-toolchain": "npm run check:cardano"
+    "test:cardano-toolchain": "npm run check:cardano",
+    "test:cardano-reconciliation": "node --test test/cardano-maturity-reconciliation.test.js test/evidence-provenance.test.js test/evidence-diagnostics.test.js"
   },
   "engines": {
     "node": ">=22.12"
