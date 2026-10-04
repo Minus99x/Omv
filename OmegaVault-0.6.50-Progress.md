@@ -1,17 +1,27 @@
 # OmegaVault 0.6.50 Progress
 
-## Maturity/provenance reconciliation
+## Completed reconciliation
 
-- Registered the sealed 0.6.49 archive as explicit Stellar and Bitcoin execution-evidence provenance.
-- Removed the stale Stellar SDK dependency blocker now that pinned SDK execution is dependency-backed and verified.
-- Raised Stellar from scaffold to offline-verified while keeping all public-testnet/live gates unpassed.
-- Added Stellar offline evidence for network profile, address validation, transaction preflight, adversarial tests and evidence export.
-- Removed the stale Bitcoin Noble dependency blocker now that cryptographic finalizer execution is verified.
-- Added Bitcoin offline address-validation and evidence-export gates backed by the 0.6.49 finalizer evidence.
-- Preserved Bitcoin reduced semantics and the explicit no-covenant blocker.
-- Preserved Bitcoin Core extraction cross-check and Signet broadcast/recovery as unresolved live-evidence work.
-- Added a focused maturity/provenance regression lane.
+- Registered 0.6.49 Stellar and Bitcoin execution evidence in the provenance catalog.
+- Removed stale dependency blockers that were resolved by the 0.6.49 clean dependency-backed execution lane.
+- Raised Stellar from scaffold to offline-verified with source/offline evidence only.
+- Preserved Stellar public-Testnet submission/finality as unresolved promotion work.
+- Preserved Bitcoin reduced semantics and immutable-rescue covenant limitation.
+- Added Bitcoin offline address-validation and evidence-export bindings from 0.6.49.
+- Preserved Bitcoin Core extraction cross-check and Signet execution as unresolved.
+- Updated review-basis historical snapshot tests to preserve historical immutability instead of requiring stale artifacts to equal current backend state.
+- Updated capability API/UI expectations to reflect current evidence without deriving promotion.
 
-## Promotion boundary
+## Verification
 
-No connector is promoted by this reconciliation. Public-testnet gates remain missing where no public-network evidence exists. Updating stale blockers to match verified evidence is bookkeeping, not promotion.
+- Focused review/audit suite: **84/84 passed**.
+- Focused Stellar recovery suite: **20/20 passed**.
+- Focused Bitcoin recovery suite: **22/22 passed**.
+- Focused maturity/provenance suite: **21/21 passed**.
+- Full suite: **433/433 passed**.
+- Offline-resume verification: **ok: true** with **16/16** Stellar and **11/11** Bitcoin checks.
+- Global checks: **passed**.
+
+## Next task
+
+Generate the deterministic 0.6.50 checkpoint archive, checkpoint manifest and review index from this verified source tree. No chain promotion is authorized.
