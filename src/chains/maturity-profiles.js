@@ -48,7 +48,7 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   }),
   bitcoin: Object.freeze({
     stage: 'reduced-semantics',
-    blockers: ref('Actual Signet recovery observation, raw-finalizer/Bitcoin-Core extraction cross-check, and the immutable-rescue semantic limitation remain unresolved. Pinned Noble dependencies and the offline descriptor/PSBT/finalizer-evidence path are now available.'),
+    blockers: ref('Actual Signet recovery observation, raw-finalizer/Bitcoin-Core extraction cross-check, and the immutable-rescue semantic limitation remain unresolved. The pinned cryptographic dependencies and offline descriptor/PSBT/finalizer-evidence path are available.'),
     gateEvidence: Object.freeze({
       'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.23:BITCOIN_FINALIZER_SOURCE') }),
       'transaction-preflight': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.23:BITCOIN_FINALIZER_SOURCE') }),
