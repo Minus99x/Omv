@@ -38,3 +38,45 @@ Continue the highest-value dependency-backed native execution evidence work:
 3. Re-run focused, full, offline-resume and global checks after each coherent gate.
 
 No connector promotion is authorized by this checkpoint.
+
+
+## Post-seal multichain continuation
+
+The development branch now extends the sealed 0.6.48 baseline with a substantial execution-evidence block. These changes are branch work until the exact current head completes the clean verification matrix.
+
+### Stellar
+
+- Completed the offline success-path execution pipeline from signed XDR through Horizon-normalized evidence.
+- Added digest-bound evidence for applied failed recovery and one-time `preAuthTx` signer consumption.
+- Added a failed-applied execution runner that rejects outer-hash substitution and signer-survival drift.
+- Preserved the boundary that fixture/injected-driver evidence is not public Stellar Testnet proof.
+
+### Bitcoin
+
+- Added a Signet-only offline finalizer evidence gate for frozen canonical PSBTv2, CSV policy, contact threshold, descriptor binding, fee accounting and configured rescue output.
+- Added a read-only Signet observation evidence layer for confirmation depth and exact rescue UTXO observation.
+- Preserved `immutableRescueOnChain: false`; the finalizer checks the intended rescue destination but does not create a Bitcoin covenant.
+- No transaction-construction/broadcast authority was added.
+
+### TRON and EVM
+
+- Added dedicated TRON recovery-runner tests for TRX/TRC-20 movement, deployment verification and solidification failure.
+- Hardened the generic EVM native runner with unique-contact/reachable-threshold validation and exact rescue-balance delta checks.
+
+### Cross-chain regression matrix
+
+Added focused offline suites for XRPL, Solana, TRON, Cardano and EVM plus the existing Bitcoin/Stellar suites, and routed multichain evidence verifiers through global checks.
+
+A catalog-level promotion-boundary test now asserts that no connector becomes promotion-eligible accidentally and that public-testnet-required gates cannot be satisfied by offline evidence alone.
+
+### Genuine remaining gates
+
+- Stellar: real public Testnet execution evidence.
+- Bitcoin: real Signet execution/observation, Bitcoin Core final signed-transaction cross-check, and immutable-rescue semantic limitation.
+- TRON: fresh Shasta deployment/recovery evidence.
+- Cardano: actual Preprod evaluation/submission evidence; pinned Aiken verification is being re-exercised in the clean matrix.
+- Solana: Rust/Agave rebuild plus Devnet execution evidence.
+- XDC/Base/Arbitrum/Optimism/Polygon/BSC/Avalanche: their network-specific public-testnet recovery/finality evidence.
+- XRPL: exact OmegaVault inactivity + immutable-rescue semantics remain protocol-limited under the current native mechanism.
+
+No listed blocker may be cleared merely by documentation or offline fixtures.
