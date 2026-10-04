@@ -423,9 +423,9 @@ export function finalizePsbtV2RecoveryTransaction({ psbt, descriptor, rescueScri
     const partialByKey = new Map(input.partialSignatures.map(partial => [partial.publicKey, partial]));
     const selectedSignatures = selectedSigners.map(key => Buffer.from(partialByKey.get(key).signature, 'hex'));
     const witnessItems = [
-      Buffer.alloc(0),
+      Buffer.alloc(0), // CHECKMULTISIG dummy element (BIP147 requires it to be empty)
       ...selectedSignatures,
-      Buffer.alloc(0),
+      Buffer.alloc(0), // empty owner signature selects the delayed recovery branch
       Buffer.from(expectedWitnessScript, 'hex')
     ];
     return Object.freeze({
