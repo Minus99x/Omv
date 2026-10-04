@@ -1,22 +1,21 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.53-dev**
+Current sealed development checkpoint: **0.6.53-dev**
 
-Archive filename: `omegavault-mvp-0.6.53-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.53-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.53-dev.review-index.json`
+Active checkpoint candidate: **0.6.54-dev**
 
-## 0.6.53 delta
+Candidate branch: `dev/0.6.54-checkpoint-candidate`
 
-- Added a deterministic Cardano Preprod evidence-capture plan around the existing zero-budget Ogmios evaluation candidate.
-- Freezes the action, transaction CBOR/body hash, request id and expected redeemer pointers before any live node interaction.
-- Requires the UTxO snapshot, protocol parameters, Ogmios response and independent phase-1 validation to bind to one acquired Preprod tip.
-- Normalizes Ogmios execution units with existing safety-margin and maxTxExUnits checks.
-- Reuses the existing synchronized Cardano evaluation-evidence bundle and adds a top-level reproducibility/tamper digest.
-- Fails closed on cross-tip, cross-transaction and non-independent phase-1 evidence.
-- Explicitly keeps wallet signing, transaction submission, live-value movement, inclusion/finality claims and connector promotion unauthorized.
+## 0.6.54 candidate delta
 
-## Verification
+- Adds a Cardano Preprod capture-session manifest bound to the exact sealed 0.6.53 evidence-harness checkpoint.
+- Adds offline `cardano:preprod:prepare` command to generate the manifest, exact Ogmios request, capture directory and templates.
+- Adds `cardano:preprod:verify` command to report missing capture files or deterministically bind a complete synchronized session.
+- Requires at least two independently confirmed current Preprod protocol-parameter sources before accepting a complete session.
+- Keeps wallet signing, transaction submission and live-value authority false.
+- Performs no network requests itself.
+
+## Candidate verification baseline
 
 - Review/audit: **84/84 passed**.
 - Stellar recovery: **20/20 passed**.
@@ -25,23 +24,15 @@ External review index filename: `omegavault-mvp-0.6.53-dev.review-index.json`
 - Cardano toolchain/evidence: **passed**.
 - Cardano reconciliation: **12/12 passed**.
 - Cardano Preprod evidence harness: **6/6 passed**.
-- Full suite: **443/443 passed**.
-- Offline-resume: **ok: true** with **16/16** Stellar and **11/11** Bitcoin checks.
+- Cardano Preprod capture-session/manifest: **4/4 passed**.
+- Full suite: **447/447 passed**.
+- Offline-resume: **16/16 + 11/11 passed; ok: true**.
 - Global checks: **passed**.
-- Deterministic source archive generation: **passed**.
-- Checkpoint manifest generation: **passed**.
-- External review index generation/verification: **passed**.
 
 ## Laptop-ready boundary
 
-0.6.53 prepares the exact evidence-capture machinery so a later authorized laptop/network session can focus on synchronized Preprod captures rather than code or schema construction.
+The later laptop session no longer needs manual manifest construction. It starts from the prepared commands and five capture files.
 
-No public-network request is claimed by this checkpoint. No wallet signing or transaction submission path exists in the new harness.
+## Promotion boundary
 
-## Next safe gate
-
-During a later authorized laptop/network window, acquire synchronized Cardano Preprod state and evaluation evidence using the prepared capture plan. Do not sign or submit a transaction unless separately and explicitly authorized.
-
-## Safety boundary
-
-Never modify `main` directly or perform production deployments, mainnet/live-value transactions, wallet signatures, secret handling or irreversible external actions from this development queue.
+No Cardano signing, submission, inclusion, finality or public-network recovery proof is claimed by 0.6.54.

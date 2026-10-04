@@ -11,8 +11,9 @@
 - [x] Feed complete captures into the synchronized evidence harness.
 - [x] Keep signing, submission and live-value authority false.
 - [x] Add CLI and manifest tamper tests.
-- [ ] Pass focused session/manifest verification and inherited CI.
-- [ ] Seal 0.6.54 as the workstation-ready Cardano capture-session checkpoint.
+- [x] Pass focused session/manifest verification and inherited CI.
+- [ ] Build deterministic archive, checkpoint manifest and external review index.
+- [ ] Pin 0.6.54 as the workstation-ready Cardano capture-session checkpoint.
 
 ## Laptop sequence after seal
 

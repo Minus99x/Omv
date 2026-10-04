@@ -19,3 +19,10 @@ Laptop mode should now start with `npm run cardano:preprod:prepare`, populate on
 ## Boundary
 
 The session tooling performs no network calls itself and contains no signing or transaction-submission path.
+
+## Verified working-head baseline
+
+- Capture session/manifest: **4/4 passed**.
+- Full suite: **447/447 passed**.
+- Offline resume: **16/16 + 11/11 passed; ok: true**.
+- Global checks: **passed**.
