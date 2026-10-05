@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildCardanoOgmiosEvaluationFixture } from '../src/chains/cardano/witness-set.js';
+import { buildCardanoEvaluationAdditionalUtxoSet } from '../src/chains/cardano/transaction-body.js';
 import { normalizeCardanoProtocolParameterSnapshot } from '../src/chains/cardano/protocol-parameters.js';
 import {
   createCardanoPreprodEvidenceCapturePlan,
@@ -10,6 +11,8 @@ import {
 } from '../src/chains/cardano/preprod-evidence-harness.js';
 
 const protocolSnapshot = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
+protocolSnapshot.source.independentSourceCount = 2;
+protocolSnapshot.promotion.independentlyConfirmed = true;
 const parameters = normalizeCardanoProtocolParameterSnapshot(protocolSnapshot);
 const beacon = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/state-beacon.applied.json', import.meta.url), 'utf8'));
 const vault = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/recovery-vault.applied.json', import.meta.url), 'utf8'));
@@ -26,20 +29,17 @@ function fixture() {
   const plan = createCardanoPreprodEvidenceCapturePlan({
     action: 'execute',
     transactionCborHex: candidate.transactionCborHex,
+    additionalUtxoSet: buildCardanoEvaluationAdditionalUtxoSet('execute'),
     requestId: 'omegavault-preprod-execute-evaluate'
   });
   const tipHash = protocolSnapshot.tip.blockHash;
   const acquiredTip = { hash: tipHash, epoch: protocolSnapshot.tip.epoch, blockHeight: protocolSnapshot.tip.blockHeight, slot: 123456789 };
-  const utxoSnapshot = {
-    tipHash,
-    source: 'test-fixture-node-state',
-    utxos: [
-      { txId: 'cd'.repeat(32), index: 0, lovelace: '10000000' },
-      { txId: 'ef'.repeat(32), index: 1, lovelace: '3000000' }
-    ]
-  };
   const ogmiosEvaluation = {
-    tipHash,
+    tipBeforeHash: tipHash,
+    tipAfterHash: tipHash,
+    syntheticSupplementalUtxoContext: true,
+    walletSigningPerformed: false,
+    transactionSubmissionPerformed: false,
     response: {
       jsonrpc: '2.0',
       method: 'evaluateTransaction',
@@ -50,73 +50,60 @@ function fixture() {
       ]
     }
   };
-  const phaseOneValidation = {
-    tipHash,
-    transactionBodyHash: plan.transactionBodyHash,
-    source: 'independent-cardano-ledger-phase-one-fixture',
-    independentOfOgmiosEvaluation: true,
-    passed: true,
-    balanced: true,
-    minimumAdaSatisfied: true,
-    collateralSatisfied: true,
-    witnessesSatisfied: true
-  };
-  return { plan, acquiredTip, utxoSnapshot, protocolParameterSnapshot: protocolSnapshot, ogmiosEvaluation, phaseOneValidation };
+  return { plan, acquiredTip, protocolParameterSnapshot: protocolSnapshot, ogmiosEvaluation };
 }
 
-test('Cardano Preprod capture plan freezes the exact zero-budget evaluation candidate without authorizing live actions', () => {
+test('Cardano Preprod capture plan freezes an Ogmios-resolvable zero-budget candidate without authorizing live actions', () => {
   const input = fixture();
+  assert.equal(input.plan.schema, 'omegavault.cardano.preprod-evidence-capture-plan.v2');
   assert.equal(input.plan.network, 'preprod');
   assert.equal(input.plan.action, 'execute');
   assert.match(input.plan.transactionBodyHash, /^[0-9a-f]{64}$/);
-  assert.match(input.plan.transactionCborSha256, /^[0-9a-f]{64}$/);
   assert.deepEqual(input.plan.expectedValidators, ['mint:0', 'spend:0']);
   assert.equal(input.plan.evaluationRequest.method, 'evaluateTransaction');
+  assert.equal(input.plan.evaluationRequest.params.additionalUtxoSet.length, 3);
+  assert.equal(input.plan.evaluationContext.syntheticSupplementalUtxoContext, true);
+  assert.equal(input.plan.evaluationContext.fullPhaseOneValidationPerformed, false);
   assert.equal(input.plan.liveActions.walletSigningAuthorized, false);
   assert.equal(input.plan.liveActions.transactionSubmissionAuthorized, false);
   assert.match(input.plan.planSha256, /^[0-9a-f]{64}$/);
 });
 
-test('Cardano synchronized evidence binds one acquired tip, one transaction, Ogmios budgets and independent phase-1 validation', () => {
+test('Cardano synchronized evaluation evidence binds one stable tip, one transaction and Ogmios budgets without claiming full phase-1', () => {
   const input = fixture();
   const result = createCardanoPreprodSynchronizedEvaluationEvidence(input);
-  assert.equal(result.status, 'synchronized-evaluation-evidence-only');
+  assert.equal(result.status, 'synchronized-public-preprod-evaluation-only');
   assert.equal(result.acquiredTip.hash, input.acquiredTip.hash);
   assert.equal(result.transactionBodyHash, input.plan.transactionBodyHash);
   assert.equal(result.evidenceBundle.synchronized, true);
-  assert.equal(result.evidenceBundle.phaseOneValidated, true);
-  assert.equal(result.evaluation.phaseOneValidated, false);
-  assert.equal(result.phaseOneValidation.independentOfOgmiosEvaluation, true);
+  assert.equal(result.evidenceBundle.promotionReadyEvidenceBinding, false);
+  assert.equal(result.validationState.synchronizedPublicPreprodEvaluationComplete, true);
+  assert.equal(result.validationState.fullPhaseOneValidated, false);
   assert.equal(result.liveActions.publicNetworkRecoveryProven, false);
   assert.match(result.evidenceSha256, /^[0-9a-f]{64}$/);
 });
 
-test('Cardano synchronized evidence fails closed on cross-tip or cross-transaction substitution', () => {
+test('Cardano synchronized evaluation fails closed when the before/after tip bracket changes', () => {
   const input = fixture();
   assert.throws(() => createCardanoPreprodSynchronizedEvaluationEvidence({
     ...input,
-    ogmiosEvaluation: { ...input.ogmiosEvaluation, tipHash: '22'.repeat(32) }
-  }), /not bound to the acquired/);
-
-  assert.throws(() => createCardanoPreprodSynchronizedEvaluationEvidence({
-    ...input,
-    phaseOneValidation: { ...input.phaseOneValidation, transactionBodyHash: '33'.repeat(32) }
-  }), /different Cardano transaction body/);
+    ogmiosEvaluation: { ...input.ogmiosEvaluation, tipAfterHash: '22'.repeat(32) }
+  }), /not bound to the acquired|not bracketed/i);
 });
 
-test('Cardano synchronized evidence requires phase-1 validation independent of Ogmios execution-unit evaluation', () => {
+test('Cardano synchronized evaluation refuses signing or submission claims in a capture', () => {
   const input = fixture();
   assert.throws(() => createCardanoPreprodSynchronizedEvaluationEvidence({
     ...input,
-    phaseOneValidation: { ...input.phaseOneValidation, independentOfOgmiosEvaluation: false }
-  }), /must be independent/);
+    ogmiosEvaluation: { ...input.ogmiosEvaluation, walletSigningPerformed: true }
+  }), /no-signing\/no-submission/);
   assert.throws(() => createCardanoPreprodSynchronizedEvaluationEvidence({
     ...input,
-    phaseOneValidation: { ...input.phaseOneValidation, balanced: false }
-  }), /must pass completely/);
+    ogmiosEvaluation: { ...input.ogmiosEvaluation, transactionSubmissionPerformed: true }
+  }), /no-signing\/no-submission/);
 });
 
-test('Cardano synchronized evidence is reproducible and tamper-detectable', () => {
+test('Cardano synchronized evaluation evidence is reproducible and tamper-detectable', () => {
   const input = fixture();
   const evidence = createCardanoPreprodSynchronizedEvaluationEvidence(input);
   const verified = verifyCardanoPreprodSynchronizedEvaluationEvidence({ evidence, ...input });
@@ -129,11 +116,13 @@ test('Cardano synchronized evidence is reproducible and tamper-detectable', () =
   assert.ok(rejected.errors.some(error => /digest mismatch/i.test(error)));
 });
 
-test('Cardano evidence harness never upgrades synchronized evaluation into submission/finality proof', () => {
+test('Cardano evidence harness never upgrades synchronized evaluation into phase-1, submission or finality proof', () => {
   const result = createCardanoPreprodSynchronizedEvaluationEvidence(fixture());
+  assert.equal(result.validationState.fullPhaseOneValidated, false);
+  assert.equal(result.validationState.walletWitnessesValidated, false);
   assert.equal(result.liveActions.walletSigningAuthorized, false);
   assert.equal(result.liveActions.transactionSubmissionAuthorized, false);
   assert.equal(result.liveActions.liveValueMovementAuthorized, false);
   assert.equal(result.liveActions.publicNetworkRecoveryProven, false);
-  assert.match(result.authorityBoundary, /does not authorize or prove wallet signing, submission, inclusion, finality/i);
+  assert.match(result.authorityBoundary, /does not prove full phase-1 validity.*wallet witnesses.*submission.*finality/i);
 });
