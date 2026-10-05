@@ -1,224 +1,241 @@
-# OmegaVault Cardano Preprod First-Time Operator Handoff
+# OmegaVault Cardano Preprod First-Time Operator Handoff — 0.6.60
 
-Status: **operator-preparation only**
+Status: **development handoff until the 0.6.60 checkpoint is sealed**
 
-Sealed source of truth: **0.6.59-dev** at commit `1353fe9fd94fcbdd787fd594c85937e934b60571`.
-
-This runbook is designed to minimize first-time laptop work without weakening OmegaVault's non-custodial architecture or Cardano evidence boundaries.
+This runbook minimizes user-controlled workstation time while preserving every OmegaVault non-custodial and evidence boundary.
 
 ## BLUF
 
-The shortest path does **not** require running a full Cardano node on the laptop.
+For the current Cardano public-Preprod **evaluation-only** gate, the workstation needs:
 
-Preferred path:
+1. Git.
+2. Node.js >= 22.12 and npm.
+3. The sealed OmegaVault checkpoint bundle/source.
+4. Internet access.
+5. One Cardano **Preprod Ogmios** endpoint.
+6. One independent **Blockfrost Preprod** project ID.
 
-1. Keep the sealed 0.6.59 artifact untouched.
-2. Use the existing strict OmegaVault workstation launcher.
-3. Use a managed **Cardano Preprod Ogmios** endpoint for synchronized ledger-state/evaluation capture.
-4. Use **two independent current Preprod sources** for protocol-parameter confirmation; Koios + Blockfrost is the recommended pair.
-5. Capture and verify the four lifecycle sessions: `initialize`, `heartbeat`, `approve`, `execute`.
-6. Each lifecycle session now needs only **three external capture files**; the supplemental fixture UTxO context is generated and cryptographically bound by OmegaVault.
-7. Stop before full phase-1 validation, wallet signing, or transaction submission.
+The current gate does **not** require:
 
-A self-hosted Cardano node + Ogmios remains available as a fallback, but it adds installation, disk use and initial chain synchronization time.
+- a local `cardano-node`;
+- a full Cardano chain sync;
+- Docker;
+- `cardano-cli`;
+- a wallet;
+- faucet test ADA;
+- a wallet signature;
+- transaction submission;
+- real ADA.
 
-## What must already be on the laptop
+The live command obtains current protocol parameters before constructing candidates. It refuses stale static protocol data as a basis for the live campaign.
 
-Required for OmegaVault itself:
+## Network identity
 
-- Git.
-- Node.js meeting the repository engine requirement (Node >=22.12).
-- npm.
-- The sealed 0.6.59 artifact bundle and extracted source.
-- Internet access only for the later external Preprod evidence capture.
+Use **Cardano Preprod** only.
 
-Optional for the fastest managed-infrastructure path:
+- network id: `0`
+- network magic: `1`
+- test address prefix: `addr_test1`
 
-- No Docker requirement.
-- No local cardano-node requirement.
-- No local Ogmios requirement.
-- No `cardano-cli` requirement for the synchronized-evaluation-only gate.
+Do not use Preview or Mainnet for this campaign.
 
-Optional self-hosted fallback:
+## First-time service setup
 
-- Docker Desktop.
-- `cardanosolutions/cardano-node-ogmios:latest-preprod`.
-- Enough disk/RAM for a Preprod node and time for it to synchronize.
+### A. Managed Ogmios — fastest path
 
-## Cardano network identity
+A managed Ogmios endpoint avoids installing and synchronizing a full Cardano node.
 
-Use **Preprod**, not Preview and never Mainnet.
+OmegaVault is provider-neutral. One workable option is Demeter:
 
-- Network: Cardano Preprod
-- network id: 0
-- network magic: 1
-- expected test address prefix: `addr_test1`
+- https://demeter.run/ports/cardano-ogmios-port
 
-## Test wallet and faucet preparation
+Create/select a project, enable an **Ogmios Port on Preprod**, then copy:
 
-Create a **new dedicated Preprod test wallet**. Do not import or reuse a mainnet recovery phrase.
+- the Preprod HTTP endpoint;
+- the API key, unless using an authenticated endpoint with the key embedded in the hostname.
 
-The current synchronized-evaluation campaign does **not** authorize signing or submission, so faucet funds are not consumed by this gate. Preparing a funded test wallet now is still useful because the later, separately-authorized public-network transaction gate will require test ADA.
+For a normal Demeter endpoint, the documented header name is `dmtr-api-key`.
 
-Official faucet:
+PowerShell example:
 
-- https://docs.cardano.org/cardano-testnet/tools/faucet/
+```powershell
+$env:OMEGAVAULT_OGMIOS_URL="https://YOUR-PREPROD-OGMIOS-ENDPOINT"
+$env:OMEGAVAULT_OGMIOS_API_KEY="YOUR-OGMIOS-KEY"
+$env:OMEGAVAULT_OGMIOS_API_KEY_HEADER="dmtr-api-key"
+```
 
-Recommended first-time wallet path:
+If the provider gives an authenticated URL that needs no separate header, set only `OMEGAVAULT_OGMIOS_URL`.
 
-- install a Cardano wallet that supports Preprod;
-- create a fresh test-only wallet;
-- switch explicitly to **Preprod Testnet**;
-- confirm the receive address begins with `addr_test1`;
-- request test ADA from the official faucet;
-- never place real ADA or a mainnet seed in this test wallet.
+**Never commit endpoint credentials or API keys into OmegaVault.**
 
-Do not sign an OmegaVault Cardano campaign transaction during the current gate.
+### B. Blockfrost Preprod — independent confirmation
 
-### What the faucet is for
+Create a Blockfrost project specifically for **Cardano Preprod**:
 
-No faucet request is technically required to complete the current evaluation-only campaign because no transaction is submitted. A faucet-funded test wallet is advance preparation for the **later** signed public-network gate.
+- https://blockfrost.io/
 
-When that later gate is opened:
+The Preprod API base used by the tooling is:
 
-- use **test ADA only**;
-- use the official Cardano faucet on **Preprod**;
-- never send real ADA;
-- never import a mainnet seed phrase;
-- keep the test wallet dedicated to OmegaVault validation so its history is easy to audit.
+`https://cardano-preprod.blockfrost.io/api/v0`
 
-## Fastest infrastructure path
+Copy that project's `project_id` and set it only in the workstation environment:
 
-### Ogmios
+```powershell
+$env:BLOCKFROST_PROJECT_ID="YOUR-PREPROD-PROJECT-ID"
+```
 
-Use a managed Ogmios endpoint on **Preprod** so the laptop does not need to synchronize a Cardano node.
+OmegaVault cross-checks Ogmios and Blockfrost for:
 
-One available managed option is Demeter. OmegaVault does not depend on Demeter; it is only an operator convenience. A self-hosted Ogmios endpoint is interchangeable.
+- current epoch;
+- protocol version;
+- fee coefficients;
+- max transaction size;
+- coins per UTxO byte;
+- script execution prices;
+- max transaction execution units;
+- collateral percentage/input limit;
+- the complete 350-entry Plutus V3 cost model.
 
-Do not store provider credentials in the repository. Keep endpoint/API credentials outside the sealed source tree and outside committed files.
+A disagreement fails closed before campaign evidence is accepted.
 
-### Independent protocol-parameter confirmation
+## Workstation sequence
 
-The evidence gate requires at least two independent current Preprod sources.
+Use the extracted **sealed checkpoint source** and its matching sealed bundle.
 
-Recommended pair:
-
-1. Koios Preprod.
-2. Blockfrost Preprod.
-
-Koios public access can be used for basic requests. Blockfrost requires a Preprod project/API key. Treat Blockfrost and any managed-Ogmios key as workstation secrets: use environment variables or the provider's local credential mechanism and never paste them into a tracked OmegaVault file.
-
-The two sources must describe the same current protocol state used for the acquired session tip. A disagreement fails closed.
-
-## Self-hosted fallback
-
-If a managed Ogmios endpoint is unavailable, Docker can run Cardano node + Ogmios together.
-
-Example image:
-
-`cardanosolutions/cardano-node-ogmios:latest-preprod`
-
-Persist the Preprod node database in its own Docker volume. Never reuse a mainnet or preview database volume for Preprod.
-
-This path is intentionally secondary because initial synchronization can dominate the laptop session.
-
-## OmegaVault workstation sequence
-
-From the extracted sealed source:
+### 1. Install pinned project dependencies
 
 ```powershell
 npm ci
 npm run preflight:workstation
 ```
 
-Then use the one-command first-run wrapper against the sealed 0.6.59 bundle:
+### 2. Verify the sealed package — no network capture yet
 
 ```powershell
-npm run cardano:preprod:first-run -- --bundle-dir "<PATH-TO-SEALED-0.6.59-BUNDLE>" --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
+npm run cardano:preprod:first-run -- --bundle-dir "<PATH-TO-SEALED-BUNDLE>" --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
 ```
 
-That wrapper invokes the strict workstation campaign launcher and then immediately emits the operator handoff/status report. It refuses to overwrite an existing campaign.
+This verifies:
 
-The lower-level strict launcher remains available if needed:
+- checkpoint manifest;
+- exact source archive;
+- extracted source tree;
+- dependency lock;
+- external review index;
+- pinned dependency readiness.
+
+It performs no Cardano network request and creates no stale campaign.
+
+### 3. Run the one-command public-Preprod evaluation campaign
+
+After the Ogmios and Blockfrost environment variables are set:
 
 ```powershell
-npm run cardano:preprod:campaign:launch -- --bundle-dir "<PATH-TO-SEALED-0.6.59-BUNDLE>" --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
+npm run cardano:preprod:campaign:capture -- --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
 ```
 
-The launch must report:
+That command:
 
-- exact checkpoint identity;
-- exact source-tree identity;
-- dependency-lock identity;
-- external-review verification;
-- one campaign SHA-256;
-- one invariant-program SHA-256;
-- exactly four actions;
-- wallet signing = false;
-- transaction submission = false;
-- support claim = false.
+1. reads a stable Ogmios Preprod tip;
+2. obtains the current epoch and current protocol parameters;
+3. independently confirms them with Blockfrost Preprod;
+4. fails closed on any parameter/cost-model disagreement;
+5. constructs the four lifecycle evaluation candidates using the **current** Plutus V3 cost model;
+6. binds an explicit synthetic supplemental UTxO context for the deterministic offline fixture references;
+7. for each action — `initialize`, `heartbeat`, `approve`, `execute`:
+   - reads a tip immediately before evaluation;
+   - runs Ogmios `evaluateTransaction`;
+   - reads the tip immediately afterward;
+   - retries if the tip changed;
+   - writes the acquired-tip, protocol-parameter and evaluation evidence;
+   - runs the session verifier;
+8. runs the complete campaign verifier.
 
-Inspect the operator handoff:
+It does **not** request a wallet signature or submit a transaction.
 
-```powershell
-npm run cardano:preprod:operator:handoff -- --bundle-dir "<PATH-TO-SEALED-0.6.59-BUNDLE>" --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
-```
+## What the current campaign proves
 
-## Capture set for each lifecycle action
+A successful campaign can establish:
 
-For each of:
+- public-Preprod execution-unit evaluation of the exact prepared lifecycle candidates;
+- current independently confirmed protocol parameters;
+- stable-tip evaluation binding;
+- exact campaign/invariant/session/candidate identities;
+- fail-closed evidence integrity.
 
-- `initialize`
-- `heartbeat`
-- `approve`
-- `execute`
+It explicitly reports:
 
-the session requires **three externally acquired files**:
+- `fullPhaseOneValidated: false`
+- wallet signing: false
+- transaction submission: false
+- public-network recovery proven: false
+- support claim authorized: false
 
-1. one acquired stable Preprod tip;
-2. current protocol parameters bound to that tip and independently confirmed by at least two sources;
-3. the Ogmios `evaluateTransaction` response bracketed by the same tip hash immediately before and after evaluation.
+Ogmios transaction evaluation is not complete phase-1 ledger validation. The later gate must first apply evaluated execution budgets to a finalized transaction candidate, then independently perform full phase-1 checks.
 
-The prepared request already contains an explicit supplemental UTxO set for the deterministic fixture inputs, and the session manifest binds its SHA-256 identity. This removes the impossible requirement to pretend those fixture references are live on-chain UTxOs.
+## Wallet and faucet — prepare now only if convenient
 
-The evaluation candidate is intentionally unsigned and uses zero execution budgets. Ogmios evaluation establishes script execution-unit evidence, **not full phase-1 validity**. Full phase-1 validation belongs to the later final-transaction gate after evaluated budgets have been applied to the final candidate.
+The current evaluation gate consumes **zero test ADA** and needs no wallet.
 
-All three captures must bind to the same stable tip and exact transaction body required by that session. Do not hand-edit identities to force a match.
+Preparing the wallet now can shorten the later signed-public-network gate.
 
-## Final campaign verification
+Recommended first-time path:
 
-After all four actions have complete capture files:
+1. Install a Cardano wallet that supports Preprod. Cardano's current developer tutorial uses **Yoroi**.
+2. Create a **brand-new test-only wallet**.
+3. Never import a mainnet recovery phrase.
+4. In Yoroi: Settings → Switch Network → **Preprod Testnet**.
+5. Confirm the receive address begins with `addr_test1`.
+6. Use the official Cardano testnet faucet:
+   - https://docs.cardano.org/cardano-testnet/tools/faucet/
+7. Select **Preprod** and request test ADA to that `addr_test1...` address.
 
-```powershell
-npm run cardano:preprod:campaign:verify -- --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
-```
+Test ADA has no real-world value. **Never send real ADA for OmegaVault Preprod testing.**
 
-A successful result may establish only the synchronized public-Preprod **evaluation** campaign state defined by the verifier. It explicitly reports `fullPhaseOneValidated: false`.
+Do not sign an OmegaVault campaign transaction yet even if the test wallet is funded.
 
-It does **not** establish or authorize:
+## Self-hosted fallback — not recommended for the first session
 
-- full phase-1 validity of a finalized transaction;
-- wallet signing;
-- transaction submission;
-- live-value movement;
-- inclusion or finality;
-- public-network recovery;
-- production readiness;
-- connector promotion;
-- an “OmegaVault supported” claim.
+If a managed Ogmios endpoint is unavailable, a local Cardano node + Ogmios can be used.
+
+That adds:
+
+- Docker or native node/Ogmios installation;
+- Preprod database storage;
+- initial chain synchronization;
+- version compatibility management.
+
+For an Ogmios v7-compatible pinned container pair, the documented combined-image tag pattern supports network-specific tags such as:
+
+`cardanosolutions/cardano-node-ogmios:v7.0.0_11.0.1-preprod`
+
+Use this only as a fallback. The managed endpoint is the shortest first-time path.
+
+## Secrets boundary
+
+Never put any of these in a tracked file:
+
+- `OMEGAVAULT_OGMIOS_API_KEY`
+- `BLOCKFROST_PROJECT_ID`
+- wallet recovery phrases
+- wallet signing keys
+
+Environment variables are intentionally read at runtime; the capture report does not print their values.
 
 ## Hard stop
 
-**STOP after campaign verification.**
+After the campaign verifier reports synchronized public-Preprod evaluation success:
 
-A later gate must first apply evaluated execution budgets to a finalized candidate, perform independent full phase-1 checks, and only then—under a separately designed, tested and explicitly authorized gate—allow wallet signing or submission.
+**STOP.**
 
-## If the operator gets stuck
+The next separately designed/tested gate must cover:
 
-Run:
+1. evaluated-budget application to final transaction bodies;
+2. complete phase-1 validation;
+3. wallet witness/signing policy;
+4. submission;
+5. inclusion/finality;
+6. public-network recovery proof;
+7. only then any Cardano support-promotion decision.
 
-```powershell
-npm run cardano:preprod:operator:handoff -- --bundle-dir "<bundle>" --campaign "<campaign>"
-```
-
-and preserve its JSON output. Do not improvise around a failed evidence gate.
+No 0.6.60 evaluation operation authorizes those steps.
