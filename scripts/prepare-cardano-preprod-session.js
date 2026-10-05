@@ -94,6 +94,8 @@ const readme = [
   `Checkpoint: ${manifest.checkpoint.checkpointRef}`,
   `Source commit: ${manifest.checkpoint.sourceCommitSha}`,
   `Manifest SHA-256: ${manifest.manifestSha256}`,
+  `Invariant program SHA-256: ${manifest.invariantProgram.programSha256}`,
+  `Required lifecycle evidence: ${manifest.invariantProgram.requiredLifecycleActions.join(', ')}`,
   `Action: ${plan.action}`,
   `Transaction body hash: ${plan.transactionBodyHash}`,
   '',
@@ -102,6 +104,7 @@ const readme = [
     .filter(([key]) => !['evaluationRequest', 'evidence'].includes(key))
     .map(([, path]) => `- ${path}`),
   '',
+  'This single synchronized-evaluation session is only one part of the invariant evidence program and cannot establish an OmegaVault support claim.',
   'The prepared evaluation transaction is an evidence candidate only. Do not sign or submit it.',
   'Run npm run cardano:preprod:verify -- --session <directory> after capture files are populated.'
 ].join('\n');
@@ -112,6 +115,8 @@ process.stdout.write(`${JSON.stringify({
   ok: true,
   output,
   manifestSha256: manifest.manifestSha256,
+  invariantProgramSha256: manifest.invariantProgram.programSha256,
+  supportClaimAuthorized: false,
   transactionBodyHash: plan.transactionBodyHash,
   requestId: plan.evaluationRequest.id,
   networkRequestsPerformed: false,
