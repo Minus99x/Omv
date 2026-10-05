@@ -37,10 +37,11 @@ test('Cardano campaign CLI prepares all four offline sessions and reports captur
   const verified = run(['scripts/verify-cardano-preprod-campaign.js', '--campaign', dir]);
   assert.equal(verified.status, 2, verified.stderr);
   const status = JSON.parse(verified.stdout);
-  assert.equal(status.state, 'campaign-capture-incomplete');
+  assert.equal(status.state, 'campaign-evaluation-capture-incomplete');
   assert.equal(status.incomplete.length, 4);
-  assert.equal(status.incomplete.reduce((sum, item) => sum + item.missing.length, 0), 20);
+  assert.equal(status.incomplete.reduce((sum, item) => sum + item.missing.length, 0), 12);
   assert.equal(status.synchronizedEvaluationCampaignComplete, false);
+  assert.equal(status.fullPhaseOneValidated, false);
   assert.equal(status.walletSigningAuthorized, false);
   assert.equal(status.transactionSubmissionAuthorized, false);
   assert.equal(status.publicNetworkRecoveryProven, false);
