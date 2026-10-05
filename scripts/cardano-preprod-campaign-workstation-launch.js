@@ -50,7 +50,7 @@ if (!bundleDirArg) {
       throw new Error(`Pinned workstation dependencies are not ready.${repair}`);
     }
 
-    const campaign = resolve(arg('--campaign', join(resolve(projectRoot, '..'), 'omegavault-cardano-preprod-campaign'));
+    const campaign = resolve(arg('--campaign', join(resolve(projectRoot, '..'), 'omegavault-cardano-preprod-campaign')));
     const prepared = run(process.execPath, [
       'scripts/prepare-cardano-preprod-campaign.js',
       '--output', campaign
