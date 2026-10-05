@@ -1,0 +1,61 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  cardanoSameTip,
+  createCardanoOgmiosHttpClient,
+  fetchCardanoBlockfrostPreprodProtocolParameters,
+  parseCardanoOgmiosBlockHeightResponse,
+  parseCardanoOgmiosEpochResponse,
+  parseCardanoOgmiosProtocolParametersResponse,
+  parseCardanoOgmiosTipResponse
+} from '../src/chains/cardano/preprod-live-capture.js';
+
+test('Ogmios response parsers accept current JSON-RPC tip/epoch/height/parameter shapes', () => {
+  const hash = 'ab'.repeat(32);
+  assert.deepEqual(parseCardanoOgmiosTipResponse({ result: { tip: { hash, slot: 123 } } }), { hash, slot: 123 });
+  assert.equal(parseCardanoOgmiosEpochResponse({ result: { epoch: 400 } }), 400);
+  assert.equal(parseCardanoOgmiosBlockHeightResponse({ result: { height: 5000 } }), 5000);
+  assert.deepEqual(parseCardanoOgmiosProtocolParametersResponse({ result: { minFeeCoefficient: 44 } }), { minFeeCoefficient: 44 });
+  assert.equal(cardanoSameTip({ hash, slot: 1 }, { hash, slot: 1 }), true);
+  assert.equal(cardanoSameTip({ hash, slot: 1 }, { hash, slot: 2 }), false);
+});
+
+test('Ogmios HTTP client sends JSON-RPC plus configured authentication without exposing it in output', async () => {
+  const calls = [];
+  const fakeFetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, status: 200, json: async () => ({ jsonrpc: '2.0', id: 'x', result: 400 }) };
+  };
+  const client = createCardanoOgmiosHttpClient({
+    url: 'https://preprod.example.invalid',
+    apiKey: 'secret',
+    apiKeyHeader: 'dmtr-api-key',
+    fetchImpl: fakeFetch
+  });
+  await client.rpc('queryLedgerState/epoch', undefined, 'x');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.headers['dmtr-api-key'], 'secret');
+  const body = JSON.parse(calls[0].options.body);
+  assert.equal(body.method, 'queryLedgerState/epoch');
+  assert.equal(body.id, 'x');
+});
+
+test('Blockfrost Preprod helper uses project_id and latest epoch parameter endpoint', async () => {
+  const calls = [];
+  const fakeFetch = async (url, options) => {
+    calls.push({ url, options });
+    return { ok: true, status: 200, json: async () => ({ epoch: 400 }) };
+  };
+  const result = await fetchCardanoBlockfrostPreprodProtocolParameters({ projectId: 'preprod_key', fetchImpl: fakeFetch });
+  assert.equal(result.epoch, 400);
+  assert.match(calls[0].url, /cardano-preprod\.blockfrost\.io\/api\/v0\/epochs\/latest\/parameters$/);
+  assert.equal(calls[0].options.headers.project_id, 'preprod_key');
+});
+
+test('Ogmios/Blockfrost helpers fail closed on RPC or HTTP errors', async () => {
+  assert.throws(() => parseCardanoOgmiosTipResponse({ error: { message: 'bad tip' } }), /bad tip/);
+  const failFetch = async () => ({ ok: false, status: 403, json: async () => ({}) });
+  const client = createCardanoOgmiosHttpClient({ url: 'https://example.invalid', fetchImpl: failFetch });
+  await assert.rejects(() => client.rpc('queryNetwork/tip'), /HTTP 403/);
+  await assert.rejects(() => fetchCardanoBlockfrostPreprodProtocolParameters({ projectId: 'x', fetchImpl: failFetch }), /HTTP 403/);
+});
