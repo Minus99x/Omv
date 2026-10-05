@@ -3,6 +3,7 @@ import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeCardanoProtocolParameterSnapshot } from '../src/chains/cardano/protocol-parameters.js';
 import { buildCardanoOgmiosEvaluationFixture } from '../src/chains/cardano/witness-set.js';
+import { buildCardanoEvaluationAdditionalUtxoSet } from '../src/chains/cardano/transaction-body.js';
 import { createCardanoPreprodEvidenceCapturePlan } from '../src/chains/cardano/preprod-evidence-harness.js';
 import { createCardanoPreprodCaptureSessionManifest } from '../src/chains/cardano/preprod-capture-session.js';
 
@@ -34,6 +35,7 @@ const candidate = buildCardanoOgmiosEvaluationFixture({ action, parameters, reco
 const plan = createCardanoPreprodEvidenceCapturePlan({
   action,
   transactionCborHex: candidate.transactionCborHex,
+  additionalUtxoSet: buildCardanoEvaluationAdditionalUtxoSet(action),
   requestId: `omegavault-preprod-${action}-evaluate`,
   captureLabel: 'omegavault-cardano-preprod'
 });
