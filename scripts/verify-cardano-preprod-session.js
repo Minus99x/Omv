@@ -27,22 +27,23 @@ if (!await exists(manifestPath)) {
     const manifestCheck = verifyCardanoPreprodCaptureSessionManifest(manifest);
     if (!manifestCheck.valid) throw new Error(manifestCheck.errors.join('; '));
 
-    const required = ['acquiredTip', 'utxoSnapshot', 'protocolParameters', 'ogmiosEvaluation', 'phaseOneValidation'];
+    const required = ['acquiredTip', 'protocolParameters', 'ogmiosEvaluation'];
     const missing = [];
     for (const key of required) {
-      const path = join(session, manifest.files[key]);
-      if (!await exists(path)) missing.push(manifest.files[key]);
+      const filePath = join(session, manifest.files[key]);
+      if (!await exists(filePath)) missing.push(manifest.files[key]);
     }
     if (missing.length > 0) {
       process.stdout.write(`${JSON.stringify({
-        schema: 'omegavault.cardano.preprod-session-status.v1',
+        schema: 'omegavault.cardano.preprod-session-status.v2',
         ok: false,
-        state: 'capture-incomplete',
+        state: 'evaluation-capture-incomplete',
         session,
         checkpointVerified: true,
         manifestSha256: manifest.manifestSha256,
         invariantProgramSha256: manifest.invariantProgram.programSha256,
         supportClaimAuthorized: false,
+        fullPhaseOneValidated: false,
         missing,
         networkRequestsPerformed: false,
         walletSigningAuthorized: false,
@@ -53,17 +54,15 @@ if (!await exists(manifestPath)) {
       const result = evaluateCardanoPreprodCaptureSession({
         manifest,
         acquiredTip: await readJson(join(session, manifest.files.acquiredTip)),
-        utxoSnapshot: await readJson(join(session, manifest.files.utxoSnapshot)),
         protocolParameterSnapshot: await readJson(join(session, manifest.files.protocolParameters)),
-        ogmiosEvaluation: await readJson(join(session, manifest.files.ogmiosEvaluation)),
-        phaseOneValidation: await readJson(join(session, manifest.files.phaseOneValidation))
+        ogmiosEvaluation: await readJson(join(session, manifest.files.ogmiosEvaluation))
       });
       const evidencePath = join(session, manifest.files.evidence);
       await writeFile(evidencePath, `${JSON.stringify(result, null, 2)}\n`);
       process.stdout.write(`${JSON.stringify({
-        schema: 'omegavault.cardano.preprod-session-status.v1',
+        schema: 'omegavault.cardano.preprod-session-status.v2',
         ok: true,
-        state: 'synchronized-evaluation-evidence-ready',
+        state: 'synchronized-public-preprod-evaluation-ready',
         session,
         evidencePath,
         resultSha256: result.resultSha256,
@@ -72,6 +71,8 @@ if (!await exists(manifestPath)) {
         invariantLifecycleProgramComplete: result.invariantEvidenceStatus.lifecycleProgramComplete,
         supportClaimAuthorized: result.invariantEvidenceStatus.supportClaimAuthorized,
         independentProtocolParameterSources: result.protocolParameterGate.independentSourceCount,
+        synchronizedEvaluationComplete: true,
+        fullPhaseOneValidated: false,
         networkRequestsPerformed: false,
         walletSigningAuthorized: false,
         transactionSubmissionAuthorized: false,
