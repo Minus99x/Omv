@@ -47,7 +47,7 @@ if (!await exists(campaignPath)) {
     for (const entry of campaign.sessions) {
       const manifest = sessionManifests[entry.action];
       const missing = [];
-      for (const key of ['acquiredTip', 'utxoSnapshot', 'protocolParameters', 'ogmiosEvaluation', 'phaseOneValidation']) {
+      for (const key of ['acquiredTip', 'protocolParameters', 'ogmiosEvaluation']) {
         if (!await exists(join(sessionDirectories[entry.action], manifest.files[key]))) missing.push(manifest.files[key]);
       }
       if (missing.length) incomplete.push({ action: entry.action, missing });
@@ -57,13 +57,14 @@ if (!await exists(campaignPath)) {
       process.stdout.write(`${JSON.stringify({
         schema: 'omegavault.cardano.preprod-campaign-status.v1',
         ok: false,
-        state: 'campaign-capture-incomplete',
+        state: 'campaign-evaluation-capture-incomplete',
         campaignRoot,
         campaignSha256: campaign.campaignSha256,
         invariantProgramSha256: campaign.invariantProgramSha256,
         incomplete,
         completedActions: campaign.sessions.filter(entry => !incomplete.some(item => item.action === entry.action)).map(entry => entry.action),
         synchronizedEvaluationCampaignComplete: false,
+        fullPhaseOneValidated: false,
         networkRequestsPerformed: false,
         walletSigningAuthorized: false,
         transactionSubmissionAuthorized: false,
@@ -98,19 +99,20 @@ if (!await exists(campaignPath)) {
       process.stdout.write(`${JSON.stringify({
         schema: 'omegavault.cardano.preprod-campaign-status.v1',
         ok: true,
-        state: 'synchronized-evaluation-campaign-ready',
+        state: 'synchronized-public-preprod-evaluation-campaign-ready',
         campaignRoot,
         campaignSha256: campaign.campaignSha256,
         invariantProgramSha256: campaign.invariantProgramSha256,
         results,
         synchronizedEvaluationCampaignComplete: true,
+        fullPhaseOneValidated: false,
         invariantLifecycleProgramComplete: false,
         networkRequestsPerformed: false,
         walletSigningAuthorized: false,
         transactionSubmissionAuthorized: false,
         publicNetworkRecoveryProven: false,
         supportClaimAuthorized: false,
-        nextLiveGate: 'wallet-signing-submission-finality-and-public-network-recovery-remain-separate'
+        nextLiveGate: 'final-transaction-construction-full-phase-one-wallet-signing-submission-finality-and-public-network-recovery-remain-separate'
       }, null, 2)}\n`);
     }
   } catch (error) {
