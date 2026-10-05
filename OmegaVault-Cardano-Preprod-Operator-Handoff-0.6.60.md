@@ -118,7 +118,15 @@ npm ci
 npm run preflight:workstation
 ```
 
-Then run the strict campaign launch against the sealed 0.6.59 bundle:
+Then use the one-command first-run wrapper against the sealed 0.6.59 bundle:
+
+```powershell
+npm run cardano:preprod:first-run -- --bundle-dir "<PATH-TO-SEALED-0.6.59-BUNDLE>" --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
+```
+
+That wrapper invokes the strict workstation campaign launcher and then immediately emits the operator handoff/status report. It refuses to overwrite an existing campaign.
+
+The lower-level strict launcher remains available if needed:
 
 ```powershell
 npm run cardano:preprod:campaign:launch -- --bundle-dir "<PATH-TO-SEALED-0.6.59-BUNDLE>" --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
