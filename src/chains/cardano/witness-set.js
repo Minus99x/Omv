@@ -92,7 +92,11 @@ export function buildCardanoWitnessSetFixture({ action, parameters, recoveryComp
   let iterations = 0;
   for (let iteration = 0; iteration < 10; iteration += 1) {
     iterations = iteration + 1;
-    const bodyFixture = buildCardanoTransactionBodyFixture(action, { feeLovelace: fee, scriptDataHashHex: scriptDataHash });
+    const bodyFixture = buildCardanoTransactionBodyFixture(action, {
+      feeLovelace: fee,
+      scriptDataHashHex: scriptDataHash,
+      evaluationContext: evaluationMode
+    });
     const body = Cardano.TransactionBody.from_hex(bodyFixture.cborHex);
     keyWitnessCount = evaluationMode ? 0 : attachKeyWitnesses(witnessSet, body, action);
     transaction = Cardano.Transaction.new(body, witnessSet);
