@@ -21,6 +21,7 @@ async function exists(path) {
 const projectRoot = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const defaultOutput = resolve(dirname(projectRoot), 'omegavault-cardano-preprod-campaign');
 const output = resolve(arg('--output', defaultOutput));
+const protocolParametersArg = arg('--protocol-parameters');
 const campaignPath = join(output, 'campaign-manifest.json');
 
 if (await exists(campaignPath)) {
@@ -33,11 +34,13 @@ const sessions = [];
 for (const action of CARDANO_PREPROD_REQUIRED_LIFECYCLE_ACTIONS) {
   const relativeDirectory = join('sessions', action);
   const sessionDirectory = join(output, relativeDirectory);
-  const prepared = run(process.execPath, [
+  const sessionArgs = [
     'scripts/prepare-cardano-preprod-session.js',
     '--output', sessionDirectory,
     '--action', action
-  ], projectRoot);
+  ];
+  if (protocolParametersArg) sessionArgs.push('--protocol-parameters', resolve(protocolParametersArg));
+  const prepared = run(process.execPath, sessionArgs, projectRoot);
   if (prepared.status !== 0) {
     throw new Error(`Failed to prepare Cardano Preprod ${action} session: ${prepared.stderr || prepared.stdout}`);
   }
