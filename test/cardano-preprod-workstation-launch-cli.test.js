@@ -45,10 +45,15 @@ test('Cardano workstation launch gate verifies sealed bundle/source/dependencies
   assert.equal(result.ok, true);
   assert.equal(result.externalReviewVerified, true);
   assert.equal(result.pinnedDependenciesReady, true);
+  assert.match(result.invariantProgramSha256, /^[0-9a-f]{64}$/);
+  assert.equal(result.supportClaimAuthorized, false);
   assert.equal(result.networkRequestsPerformed, false);
   assert.equal(result.walletSigningAuthorized, false);
   assert.equal(result.transactionSubmissionAuthorized, false);
   assert.equal(fs.existsSync(path.join(session, 'capture-manifest.json')), true);
+  const manifest = JSON.parse(fs.readFileSync(path.join(session, 'capture-manifest.json'), 'utf8'));
+  assert.equal(manifest.invariantProgram.programSha256, result.invariantProgramSha256);
+  assert.equal(manifest.invariantProgram.supportClaimAuthorized, false);
   assert.equal(path.resolve(session).startsWith(path.resolve(process.cwd()) + path.sep), false);
 });
 
