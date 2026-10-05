@@ -11,17 +11,33 @@ const actions = ['initialize', 'heartbeat', 'approve', 'execute'];
 
 function plan(action, index) {
   const hex = (index + 1).toString(16).padStart(2, '0');
+  const transactionCborHex = '84'.repeat(8);
+  const additionalUtxoSet = [[
+    { transaction: { id: hex.repeat(32) }, output: { index: 0 } },
+    { address: 'addr_test1vptest', value: { lovelace: 10000000 } }
+  ]];
   const core = {
-    schema: 'omegavault.cardano.preprod-evidence-capture-plan.v1',
+    schema: 'omegavault.cardano.preprod-evidence-capture-plan.v2',
     network: 'preprod',
     action,
     captureLabel: 'campaign-test',
     transactionBodyHash: hex.repeat(32),
-    transactionCborHex: '84'.repeat(8),
+    transactionCborHex,
     transactionCborSha256: (index + 11).toString(16).padStart(2, '0').repeat(32),
-    evaluationRequest: { jsonrpc: '2.0', method: 'evaluateTransaction', id: `test-${action}`, params: {} },
+    evaluationRequest: {
+      jsonrpc: '2.0',
+      method: 'evaluateTransaction',
+      id: `test-${action}`,
+      params: { transaction: { cbor: transactionCborHex }, additionalUtxoSet }
+    },
+    evaluationContext: {
+      supplementalUtxoSha256: hashCardanoEvidence(additionalUtxoSet),
+      syntheticSupplementalUtxoContext: true,
+      keyWitnessesRequiredForEvaluation: false,
+      fullPhaseOneValidationPerformed: false
+    },
     expectedValidators: ['spend:0'],
-    requiredCaptures: ['acquired-tip'],
+    requiredCaptures: ['acquired-stable-tip', 'same-tip-current-protocol-parameters-with-independent-confirmation', 'tip-bracketed-ogmios-evaluation-response'],
     liveActions: {
       walletSigningAuthorized: false,
       transactionSubmissionAuthorized: false,
@@ -42,7 +58,7 @@ function sessions() {
   }));
 }
 
-test('Cardano Preprod campaign binds exactly one session for every required lifecycle action', () => {
+test('Cardano Preprod campaign binds exactly one evaluation-only session for every required lifecycle action', () => {
   const campaign = createCardanoPreprodCampaignManifest({ sessions: sessions() });
   assert.deepEqual(campaign.requiredLifecycleActions, actions);
   assert.deepEqual(campaign.sessions.map(item => item.action), actions);
