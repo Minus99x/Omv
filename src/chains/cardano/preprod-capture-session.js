@@ -15,10 +15,10 @@ const SHA256 = /^[0-9a-f]{64}$/i;
 const GIT_SHA = /^[0-9a-f]{40}$/i;
 
 export const CARDANO_PREPROD_CAPTURE_BASELINE = Object.freeze({
-  checkpointRef: '0.6.56-dev',
-  sourceCommitSha: 'a14e7e4061dbe0b32399b8188d98d9851321ee14',
-  archiveSha256: '6c2ba7e857be0cbe2f5a2dd40c23c11fe432351ca3dbacbdc7107ff86715cb87',
-  sourceTreeSha256: '8081a98574e11e98a65d84bc87f636aec60d16960fbc35aab7e791abb13c082a'
+  checkpointRef: '0.6.57-dev',
+  sourceCommitSha: '85ec91ac28b327f21799c2a63a272dafd3778aa9',
+  archiveSha256: '309d607e9c7256d6ba464755e40142f0047f6b30c62187e630c6102c286ac7f3',
+  sourceTreeSha256: '2b0c41d13c6c15aa941916d5e739fe8d5d9d26938b682fa2517162fed860c1f5'
 });
 
 function text(value, label) {
@@ -76,7 +76,7 @@ export function createCardanoPreprodCaptureSessionManifest({
   if (!planCheck.ok) throw new Error(`Invalid Cardano Preprod capture plan: ${planCheck.errors.join('; ')}`);
   const id = text(sessionId, 'sessionId');
   const checkpoint = plainObject(baseline, 'baseline');
-  if (checkpoint.checkpointRef !== CARDANO_PREPROD_CAPTURE_BASELINE.checkpointRef) throw new Error('Capture session must be based on the sealed 0.6.56 checkpoint.');
+  if (checkpoint.checkpointRef !== CARDANO_PREPROD_CAPTURE_BASELINE.checkpointRef) throw new Error('Capture session must be based on the sealed 0.6.57 checkpoint.');
   exactGitSha(checkpoint.sourceCommitSha, 'baseline.sourceCommitSha');
   exactSha256(checkpoint.archiveSha256, 'baseline.archiveSha256');
   exactSha256(checkpoint.sourceTreeSha256, 'baseline.sourceTreeSha256');
