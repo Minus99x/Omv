@@ -11,10 +11,8 @@ const SEALED_CHECKPOINT = Object.freeze({
 const REQUIRED_ACTIONS = Object.freeze(['initialize', 'heartbeat', 'approve', 'execute']);
 const REQUIRED_CAPTURE_KEYS = Object.freeze([
   'acquiredTip',
-  'utxoSnapshot',
   'protocolParameters',
-  'ogmiosEvaluation',
-  'phaseOneValidation'
+  'ogmiosEvaluation'
 ]);
 
 function arg(name, fallback = null) {
@@ -150,8 +148,9 @@ const report = Object.freeze({
     supportClaimAuthorized: false
   }),
   currentEvidenceScope: Object.freeze({
-    campaignPurpose: 'synchronized Preprod evaluation evidence only',
+    campaignPurpose: 'stable-tip public-Preprod Ogmios evaluation evidence only',
     fixtureCandidatesAreNotPublicNetworkRecoveryProof: true,
+    fullPhaseOneValidationRemainsSeparateLaterGate: true,
     signingAndSubmissionRemainSeparateLaterGates: true
   }),
   nextCommands: Object.freeze({
