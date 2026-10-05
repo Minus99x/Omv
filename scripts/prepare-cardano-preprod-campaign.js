@@ -58,17 +58,15 @@ const runbook = [
   'Prepared lifecycle sessions:',
   ...campaign.sessions.map(item => `- ${item.action}: ${item.directory}`),
   '',
-  'For each action, capture the five files named by that session manifest:',
-  '- one acquired Preprod tip',
-  '- same-tip UTxO snapshot',
-  '- same-tip protocol parameters with independent confirmation',
-  '- same-tip Ogmios evaluation response',
-  '- independent same-tip phase-1 validation',
+  'For each action, capture the three external evidence files named by that session manifest:',
+  '- one stable acquired Preprod tip',
+  '- current same-tip protocol parameters with at least two independent confirmations',
+  '- Ogmios evaluation response bracketed by that same tip before and after evaluation',
   '',
   'Then run:',
   `npm run cardano:preprod:campaign:verify -- --campaign "${output}"`,
   '',
-  'This campaign is evidence preparation only. It does not authorize wallet signing, transaction submission, live-value movement, public-network recovery or an OmegaVault support claim.'
+  'This campaign is public-Preprod evaluation evidence preparation only. It does not establish full phase-1 validity and does not authorize wallet signing, transaction submission, live-value movement, public-network recovery or an OmegaVault support claim.'
 ].join('\n');
 await writeFile(join(output, 'RUNBOOK.md'), `${runbook}\n`);
 
