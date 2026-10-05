@@ -17,7 +17,8 @@ Preferred path:
 3. Use a managed **Cardano Preprod Ogmios** endpoint for synchronized ledger-state/evaluation capture.
 4. Use **two independent current Preprod sources** for protocol-parameter confirmation; Koios + Blockfrost is the recommended pair.
 5. Capture and verify the four lifecycle sessions: `initialize`, `heartbeat`, `approve`, `execute`.
-6. Stop before wallet signing or transaction submission.
+6. Each lifecycle session now needs only **three external capture files**; the supplemental fixture UTxO context is generated and cryptographically bound by OmegaVault.
+7. Stop before full phase-1 validation, wallet signing, or transaction submission.
 
 A self-hosted Cardano node + Ogmios remains available as a fallback, but it adds installation, disk use and initial chain synchronization time.
 
@@ -74,6 +75,18 @@ Recommended first-time wallet path:
 
 Do not sign an OmegaVault Cardano campaign transaction during the current gate.
 
+### What the faucet is for
+
+No faucet request is technically required to complete the current evaluation-only campaign because no transaction is submitted. A faucet-funded test wallet is advance preparation for the **later** signed public-network gate.
+
+When that later gate is opened:
+
+- use **test ADA only**;
+- use the official Cardano faucet on **Preprod**;
+- never send real ADA;
+- never import a mainnet seed phrase;
+- keep the test wallet dedicated to OmegaVault validation so its history is easy to audit.
+
 ## Fastest infrastructure path
 
 ### Ogmios
@@ -93,7 +106,7 @@ Recommended pair:
 1. Koios Preprod.
 2. Blockfrost Preprod.
 
-Koios public access can be used for basic requests. Blockfrost requires a Preprod project/API key.
+Koios public access can be used for basic requests. Blockfrost requires a Preprod project/API key. Treat Blockfrost and any managed-Ogmios key as workstation secrets: use environment variables or the provider's local credential mechanism and never paste them into a tracked OmegaVault file.
 
 The two sources must describe the same current protocol state used for the acquired session tip. A disagreement fails closed.
 
@@ -160,15 +173,17 @@ For each of:
 - `approve`
 - `execute`
 
-the session requires five externally acquired files:
+the session requires **three externally acquired files**:
 
-1. acquired Preprod tip;
-2. same-tip UTxO snapshot;
-3. same-tip current protocol parameters with independent confirmation;
-4. same-tip Ogmios evaluation response for the exact prepared candidate;
-5. independent same-tip phase-1 validation record.
+1. one acquired stable Preprod tip;
+2. current protocol parameters bound to that tip and independently confirmed by at least two sources;
+3. the Ogmios `evaluateTransaction` response bracketed by the same tip hash immediately before and after evaluation.
 
-All five must bind to the same tip and exact transaction body required by that session. Do not hand-edit identities to force a match.
+The prepared request already contains an explicit supplemental UTxO set for the deterministic fixture inputs, and the session manifest binds its SHA-256 identity. This removes the impossible requirement to pretend those fixture references are live on-chain UTxOs.
+
+The evaluation candidate is intentionally unsigned and uses zero execution budgets. Ogmios evaluation establishes script execution-unit evidence, **not full phase-1 validity**. Full phase-1 validation belongs to the later final-transaction gate after evaluated budgets have been applied to the final candidate.
+
+All three captures must bind to the same stable tip and exact transaction body required by that session. Do not hand-edit identities to force a match.
 
 ## Final campaign verification
 
@@ -178,10 +193,11 @@ After all four actions have complete capture files:
 npm run cardano:preprod:campaign:verify -- --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
 ```
 
-A successful result may establish only the synchronized-evaluation campaign state defined by the verifier.
+A successful result may establish only the synchronized public-Preprod **evaluation** campaign state defined by the verifier. It explicitly reports `fullPhaseOneValidated: false`.
 
 It does **not** establish or authorize:
 
+- full phase-1 validity of a finalized transaction;
 - wallet signing;
 - transaction submission;
 - live-value movement;
@@ -195,7 +211,7 @@ It does **not** establish or authorize:
 
 **STOP after campaign verification.**
 
-A later gate must be separately designed, tested and explicitly authorized before any OmegaVault Cardano transaction is signed or submitted.
+A later gate must first apply evaluated execution budgets to a finalized candidate, perform independent full phase-1 checks, and only then—under a separately designed, tested and explicitly authorized gate—allow wallet signing or submission.
 
 ## If the operator gets stuck
 
