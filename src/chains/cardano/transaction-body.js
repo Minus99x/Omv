@@ -237,9 +237,9 @@ export function buildCardanoEvaluationAdditionalUtxoSet(action) {
   return Object.freeze(entries);
 }
 
-export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '200000', scriptDataHashHex = '99'.repeat(32) } = {}) {
+export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '200000', scriptDataHashHex = '99'.repeat(32), evaluationContext = false } = {}) {
   if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('action must be initialize, heartbeat, approve, or execute.');
-  const timing = fixtureTiming(action);
+  const timing = evaluationContext ? fixtureTiming(action) : null;
 
   const inputs = Cardano.TransactionInputs.new();
   inputs.add(transactionInput(action === 'initialize' ? CARDANO_APPLIED_FIXTURE.seedTxId : 'cd'.repeat(32), 0));
@@ -253,7 +253,9 @@ export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '2000
     outputs.add(Cardano.TransactionOutput.new(rescueAddress, valueWithBeacon('10000000', false)));
   } else {
     const approvals = action === 'approve' ? [fixtureKeys.contact] : [];
-    const heartbeat = action === 'heartbeat' ? timing.lowerTimeMs : timing.priorHeartbeatMs;
+    const heartbeat = evaluationContext
+      ? (action === 'heartbeat' ? timing.lowerTimeMs : timing.priorHeartbeatMs)
+      : (action === 'heartbeat' ? 1100000 : 1000000);
     const output = Cardano.TransactionOutput.new(scriptAddress, valueWithBeacon('10000000', true));
     output.set_plutus_data(createCardanoVaultDatumData({
       ownerKeyHash: fixtureKeys.owner,
@@ -272,8 +274,8 @@ export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '2000
   if (!/^[0-9a-f]{64}$/i.test(scriptDataHashHex)) throw new TypeError('scriptDataHashHex must be 32 bytes.');
   const body = Cardano.TransactionBody.new_tx_body(inputs, outputs, Cardano.BigNum.from_str(String(feeLovelace)));
   body.set_network_id(Cardano.NetworkId.testnet());
-  body.set_validity_start_interval_bignum(Cardano.BigNum.from_str(String(timing.lowerSlot)));
-  body.set_ttl(Cardano.BigNum.from_str(String(timing.upperSlot)));
+  body.set_validity_start_interval_bignum(Cardano.BigNum.from_str(String(evaluationContext ? timing.lowerSlot : (action === 'heartbeat' ? 1100 : 1060))));
+  body.set_ttl(Cardano.BigNum.from_str(String(evaluationContext ? timing.upperSlot : 1200)));
   const collateral = Cardano.TransactionInputs.new();
   collateral.add(transactionInput('12'.repeat(32), 0));
   body.set_collateral(collateral);
@@ -304,7 +306,13 @@ export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '2000
     outputCount: decoded.outputs().len(),
     hasCollateral: decoded.collateral().len() === 1,
     mintQuantity: action === 'initialize' ? 1 : action === 'execute' ? -1 : 0,
-    validity: timing,
+    validity: evaluationContext ? timing : Object.freeze({
+      lowerSlot: action === 'heartbeat' ? 1100 : 1060,
+      upperSlot: 1200,
+      lowerTimeMs: null,
+      priorHeartbeatMs: null
+    }),
+    evaluationContext,
     requiresLiveProtocolParameters: true,
     scriptDataHashIsFixtureOnly: true
   });
