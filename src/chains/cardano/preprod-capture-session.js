@@ -50,11 +50,19 @@ function withoutDigest(value, digestKey) {
 function verifyCapturePlan(plan) {
   plainObject(plan, 'capturePlan');
   const errors = [];
-  if (plan.schema !== 'omegavault.cardano.preprod-evidence-capture-plan.v1') errors.push('Capture plan schema is not supported.');
+  if (plan.schema !== 'omegavault.cardano.preprod-evidence-capture-plan.v2') errors.push('Capture plan schema is not supported.');
   if (plan.network !== 'preprod') errors.push('Capture plan must target Cardano Preprod.');
   if (!SHA256.test(String(plan.transactionBodyHash ?? ''))) errors.push('Capture plan transaction body hash is invalid.');
   if (!SHA256.test(String(plan.transactionCborSha256 ?? ''))) errors.push('Capture plan CBOR digest is invalid.');
   if (!SHA256.test(String(plan.planSha256 ?? ''))) errors.push('Capture plan digest is invalid.');
+  if (!SHA256.test(String(plan.evaluationContext?.supplementalUtxoSha256 ?? ''))) errors.push('Capture plan supplemental UTxO digest is invalid.');
+  if (!Array.isArray(plan.evaluationRequest?.params?.additionalUtxoSet) || plan.evaluationRequest.params.additionalUtxoSet.length < 1) {
+    errors.push('Capture plan must carry a supplemental UTxO evaluation context.');
+  }
+  if (plan.evaluationContext?.syntheticSupplementalUtxoContext !== true ||
+      plan.evaluationContext?.fullPhaseOneValidationPerformed !== false) {
+    errors.push('Capture plan evaluation-only boundary is invalid.');
+  }
   if (errors.length === 0) {
     const recomputed = hashCardanoEvidence(withoutDigest(plan, 'planSha256'));
     if (recomputed !== plan.planSha256) errors.push('Capture plan self-digest mismatch.');
@@ -90,7 +98,7 @@ export function createCardanoPreprodCaptureSessionManifest({
   const invariantProgram = createCardanoPreprodInvariantEvidenceProgram({ checkpoint: boundCheckpoint });
 
   const core = Object.freeze({
-    schema: 'omegavault.cardano.preprod-capture-session-manifest.v1',
+    schema: 'omegavault.cardano.preprod-capture-session-manifest.v2',
     network: 'preprod',
     sessionId: id,
     checkpoint: boundCheckpoint,
@@ -99,24 +107,24 @@ export function createCardanoPreprodCaptureSessionManifest({
     files: Object.freeze({
       evaluationRequest: 'ogmios-evaluation-request.json',
       acquiredTip: 'captures/acquired-tip.json',
-      utxoSnapshot: 'captures/utxo-snapshot.json',
       protocolParameters: 'captures/protocol-parameters.json',
       ogmiosEvaluation: 'captures/ogmios-evaluation.json',
-      phaseOneValidation: 'captures/phase-one-validation.json',
       evidence: 'cardano-preprod-synchronized-evidence.json'
     }),
     readinessRules: Object.freeze({
       exactCheckpointBaselineRequired: true,
-      oneAcquiredTipRequired: true,
+      oneAcquiredStableTipRequired: true,
       minimumIndependentProtocolParameterSources: 2,
       independentProtocolParameterConfirmationRequired: true,
-      independentPhaseOneValidationRequired: true,
+      tipBracketedOgmiosEvaluationRequired: true,
+      supplementalFixtureUtxoContextRequired: true,
+      fullPhaseOneValidationClaimAuthorized: false,
       walletSigningAuthorized: false,
       transactionSubmissionAuthorized: false,
       liveValueMovementAuthorized: false
     }),
-    purpose: 'Prepare and verify synchronized Cardano Preprod evaluation evidence without wallet signing or transaction submission.',
-    authorityBoundary: 'This manifest coordinates evidence capture only. It cannot authorize wallet signing, transaction submission, live-value movement, deployment, inclusion/finality claims or connector promotion.'
+    purpose: 'Prepare and verify stable-tip Cardano Preprod script-evaluation evidence without claiming full phase-1 validity or authorizing wallet signing/submission.',
+    authorityBoundary: 'This manifest coordinates public-Preprod evaluation evidence only. It cannot authorize or prove full phase-1 validity, wallet witnesses, transaction submission, live-value movement, inclusion/finality, recovery, deployment or connector promotion.'
   });
 
   return Object.freeze({ ...core, manifestSha256: hashCardanoEvidence(core) });
@@ -126,7 +134,7 @@ export function verifyCardanoPreprodCaptureSessionManifest(manifest) {
   const errors = [];
   try {
     plainObject(manifest, 'manifest');
-    if (manifest.schema !== 'omegavault.cardano.preprod-capture-session-manifest.v1') errors.push('Capture session manifest schema is not supported.');
+    if (manifest.schema !== 'omegavault.cardano.preprod-capture-session-manifest.v2') errors.push('Capture session manifest schema is not supported.');
     if (manifest.network !== 'preprod') errors.push('Capture session manifest must target Cardano Preprod.');
 
     const baseline = manifest.checkpoint ?? {};
@@ -146,8 +154,10 @@ export function verifyCardanoPreprodCaptureSessionManifest(manifest) {
 
     if (manifest.readinessRules?.minimumIndependentProtocolParameterSources !== 2 ||
         manifest.readinessRules?.independentProtocolParameterConfirmationRequired !== true ||
-        manifest.readinessRules?.independentPhaseOneValidationRequired !== true) {
-      errors.push('Capture session readiness rules were weakened.');
+        manifest.readinessRules?.tipBracketedOgmiosEvaluationRequired !== true ||
+        manifest.readinessRules?.supplementalFixtureUtxoContextRequired !== true ||
+        manifest.readinessRules?.fullPhaseOneValidationClaimAuthorized !== false) {
+      errors.push('Capture session readiness/evidence boundaries were weakened.');
     }
     if (manifest.readinessRules?.walletSigningAuthorized !== false ||
         manifest.readinessRules?.transactionSubmissionAuthorized !== false ||
@@ -163,10 +173,8 @@ export function verifyCardanoPreprodCaptureSessionManifest(manifest) {
 export function evaluateCardanoPreprodCaptureSession({
   manifest,
   acquiredTip,
-  utxoSnapshot,
   protocolParameterSnapshot,
   ogmiosEvaluation,
-  phaseOneValidation,
   safetyMarginPercent = 10
 }) {
   const manifestCheck = verifyCardanoPreprodCaptureSessionManifest(manifest);
@@ -181,15 +189,13 @@ export function evaluateCardanoPreprodCaptureSession({
   const evidence = createCardanoPreprodSynchronizedEvaluationEvidence({
     plan: manifest.capturePlan,
     acquiredTip,
-    utxoSnapshot,
     protocolParameterSnapshot,
     ogmiosEvaluation,
-    phaseOneValidation,
     safetyMarginPercent
   });
 
   const core = Object.freeze({
-    schema: 'omegavault.cardano.preprod-capture-session-result.v1',
+    schema: 'omegavault.cardano.preprod-capture-session-result.v2',
     sessionId: manifest.sessionId,
     checkpoint: manifest.checkpoint,
     manifestSha256: manifest.manifestSha256,
@@ -199,6 +205,7 @@ export function evaluateCardanoPreprodCaptureSession({
       independentlyConfirmed: true
     }),
     synchronizedEvaluationReady: true,
+    fullPhaseOneValidated: false,
     evidence,
     invariantEvidenceStatus: Object.freeze({
       programSha256: manifest.invariantProgram.programSha256,
@@ -207,7 +214,7 @@ export function evaluateCardanoPreprodCaptureSession({
       lifecycleProgramComplete: false,
       supportClaimAuthorized: false
     }),
-    nextLiveGate: 'transaction-signing-and-submission-remain-separately-gated',
+    nextLiveGate: 'final-transaction-construction-phase-one-wallet-signing-submission-and-finality-remain-separately-gated',
     liveActions: Object.freeze({
       walletSigningAuthorized: false,
       transactionSubmissionAuthorized: false,
