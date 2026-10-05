@@ -17,10 +17,11 @@ test('Cardano Preprod session CLI prepares an offline checkpoint-bound manifest 
   assert.equal(prep.ok, true);
   assert.equal(prep.networkRequestsPerformed, false);
   assert.equal(prep.walletSigningAuthorized, false);
+  assert.equal(prep.supportClaimAuthorized, false);
 
   const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'capture-manifest.json'), 'utf8'));
-  assert.equal(manifest.checkpoint.checkpointRef, '0.6.53-dev');
-  assert.equal(manifest.checkpoint.sourceCommitSha, 'e4f1c87f572d74852c7602df56e93e4efd70815e');
+  assert.equal(manifest.checkpoint.checkpointRef, '0.6.56-dev');
+  assert.equal(manifest.checkpoint.sourceCommitSha, 'a14e7e4061dbe0b32399b8188d98d9851321ee14');
   assert.equal(fs.existsSync(path.join(dir, manifest.files.evaluationRequest)), true);
 
   const status = run(['scripts/verify-cardano-preprod-session.js', '--session', dir]);
@@ -30,6 +31,7 @@ test('Cardano Preprod session CLI prepares an offline checkpoint-bound manifest 
   assert.equal(report.missing.length, 5);
   assert.equal(report.walletSigningAuthorized, false);
   assert.equal(report.transactionSubmissionAuthorized, false);
+  assert.equal(report.supportClaimAuthorized, false);
 });
 
 test('Cardano Preprod session CLI binds complete synchronized captures and still refuses signing/submission authority', () => {
@@ -95,6 +97,8 @@ test('Cardano Preprod session CLI binds complete synchronized captures and still
   assert.equal(report.walletSigningAuthorized, false);
   assert.equal(report.transactionSubmissionAuthorized, false);
   assert.equal(report.publicNetworkRecoveryProven, false);
+  assert.equal(report.invariantLifecycleProgramComplete, false);
+  assert.equal(report.supportClaimAuthorized, false);
 
   const evidence = JSON.parse(fs.readFileSync(path.join(dir, manifest.files.evidence), 'utf8'));
   assert.equal(evidence.synchronizedEvaluationReady, true);
