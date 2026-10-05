@@ -56,34 +56,21 @@ const templates = {
     slot: '<optional-integer>',
     blockHeight: '<optional-integer>'
   },
-  'utxo-snapshot.template.json': {
-    tipHash: '<same-tip-hash>',
-    source: '<node/provider>',
-    capturedAt: '<ISO-8601>',
-    utxos: []
-  },
   'protocol-parameters.template.json': {
-    note: 'Capture current Preprod protocol parameters bound to the same tip. source.independentSourceCount must be at least 2 and promotion.independentlyConfirmed must be true.'
+    note: 'Capture current Preprod protocol parameters bound to the acquired tip. source.independentSourceCount must be at least 2 and promotion.independentlyConfirmed must be true.'
   },
   'ogmios-evaluation.template.json': {
-    tipHash: '<same-tip-hash>',
+    tipBeforeHash: '<same-tip-hash>',
+    tipAfterHash: '<same-tip-hash>',
+    syntheticSupplementalUtxoContext: true,
+    walletSigningPerformed: false,
+    transactionSubmissionPerformed: false,
     response: {
       jsonrpc: '2.0',
       method: 'evaluateTransaction',
       id: plan.evaluationRequest.id,
       result: []
     }
-  },
-  'phase-one-validation.template.json': {
-    tipHash: '<same-tip-hash>',
-    transactionBodyHash: plan.transactionBodyHash,
-    source: '<independent-ledger-validation-source>',
-    independentOfOgmiosEvaluation: true,
-    passed: false,
-    balanced: false,
-    minimumAdaSatisfied: false,
-    collateralSatisfied: false,
-    witnessesSatisfied: false
   }
 };
 for (const [name, value] of Object.entries(templates)) {
@@ -100,27 +87,33 @@ const readme = [
   `Required lifecycle evidence: ${manifest.invariantProgram.requiredLifecycleActions.join(', ')}`,
   `Action: ${plan.action}`,
   `Transaction body hash: ${plan.transactionBodyHash}`,
+  `Supplemental evaluation UTxO SHA-256: ${plan.evaluationContext.supplementalUtxoSha256}`,
   '',
-  'Required capture files:',
+  'Required external capture files:',
   ...Object.entries(manifest.files)
     .filter(([key]) => !['evaluationRequest', 'evidence'].includes(key))
-    .map(([, path]) => `- ${path}`),
+    .map(([, filePath]) => `- ${filePath}`),
   '',
-  'This single synchronized-evaluation session is only one part of the invariant evidence program and cannot establish an OmegaVault support claim.',
-  'The prepared evaluation transaction is an evidence candidate only. Do not sign or submit it.',
-  'Run npm run cardano:preprod:verify -- --session <directory> after capture files are populated.'
+  'The Ogmios request already contains the explicit synthetic supplemental UTxO context needed to resolve the offline fixture inputs.',
+  'Capture the network tip immediately before and after evaluateTransaction and accept the response only if both hashes equal the acquired tip.',
+  'This is public-Preprod execution-unit evaluation evidence only. Ogmios evaluation does not establish full phase-1 validity.',
+  'The prepared evaluation transaction is unsigned. Do not sign or submit it.',
+  'Run npm run cardano:preprod:verify -- --session <directory> after the three capture files are populated.'
 ].join('\n');
 await writeFile(join(output, 'README.md'), `${readme}\n`);
 
 process.stdout.write(`${JSON.stringify({
-  schema: 'omegavault.cardano.preprod-session-preparation-result.v1',
+  schema: 'omegavault.cardano.preprod-session-preparation-result.v2',
   ok: true,
   output,
   manifestSha256: manifest.manifestSha256,
   invariantProgramSha256: manifest.invariantProgram.programSha256,
   supportClaimAuthorized: false,
   transactionBodyHash: plan.transactionBodyHash,
+  supplementalUtxoSha256: plan.evaluationContext.supplementalUtxoSha256,
   requestId: plan.evaluationRequest.id,
+  externalCaptureFileCount: 3,
+  fullPhaseOneValidated: false,
   networkRequestsPerformed: false,
   walletSigningAuthorized: false,
   transactionSubmissionAuthorized: false
