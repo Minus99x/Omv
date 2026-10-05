@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
-import { createCardanoEvaluationEvidenceBundle, hashCardanoEvidence } from './evidence-binding.js';
+import { createCardanoSynchronizedEvaluationBundle, hashCardanoEvidence } from './evidence-binding.js';
 import {
-  createCardanoLedgerEvaluationGate,
   createCardanoOgmiosEvaluationRequest,
   normalizeCardanoOgmiosEvaluation
 } from './ogmios-evaluation.js';
@@ -27,22 +26,14 @@ function plainObject(value, label) {
   return value;
 }
 
-function sha256HexBytes(hex) {
-  return createHash('sha256').update(Buffer.from(hex, 'hex')).digest('hex');
+function sha256HexBytes(value) {
+  return createHash('sha256').update(Buffer.from(value, 'hex')).digest('hex');
 }
 
 function assertSameTip(expected, value, label) {
   const normalized = hex32(value, label);
   if (normalized !== expected) throw new Error(`${label} is not bound to the acquired Cardano Preprod tip.`);
   return normalized;
-}
-
-function phaseOnePassed(validation) {
-  return validation?.passed === true &&
-    validation?.balanced === true &&
-    validation?.minimumAdaSatisfied === true &&
-    validation?.collateralSatisfied === true &&
-    validation?.witnessesSatisfied === true;
 }
 
 export function createCardanoPreprodEvidenceCapturePlan({
@@ -54,12 +45,15 @@ export function createCardanoPreprodEvidenceCapturePlan({
 }) {
   if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('action must be initialize, heartbeat, approve, or execute.');
   if (typeof transactionCborHex !== 'string' || !HEX.test(transactionCborHex)) throw new TypeError('transactionCborHex must be non-empty base16 CBOR.');
+  if (!Array.isArray(additionalUtxoSet) || additionalUtxoSet.length < 1) {
+    throw new TypeError('additionalUtxoSet is required for the offline fixture evaluation context.');
+  }
   const label = text(captureLabel, 'captureLabel');
   const id = requestId ?? `${label}-${action}-evaluate`;
   const evaluation = createCardanoOgmiosEvaluationRequest({ transactionCborHex, additionalUtxoSet, id });
 
   const core = Object.freeze({
-    schema: 'omegavault.cardano.preprod-evidence-capture-plan.v1',
+    schema: 'omegavault.cardano.preprod-evidence-capture-plan.v2',
     network: 'preprod',
     action,
     captureLabel: label,
@@ -67,20 +61,24 @@ export function createCardanoPreprodEvidenceCapturePlan({
     transactionCborHex: transactionCborHex.toLowerCase(),
     transactionCborSha256: sha256HexBytes(transactionCborHex),
     evaluationRequest: evaluation.request,
+    evaluationContext: Object.freeze({
+      supplementalUtxoSha256: hashCardanoEvidence(additionalUtxoSet),
+      syntheticSupplementalUtxoContext: true,
+      keyWitnessesRequiredForEvaluation: false,
+      fullPhaseOneValidationPerformed: false
+    }),
     expectedValidators: Object.freeze([...evaluation.expectedValidators]),
     requiredCaptures: Object.freeze([
-      'acquired-tip',
-      'same-tip-utxo-snapshot',
-      'same-tip-protocol-parameters',
-      'same-tip-ogmios-evaluation-response',
-      'independent-same-tip-phase-one-validation'
+      'acquired-stable-tip',
+      'same-tip-current-protocol-parameters-with-independent-confirmation',
+      'tip-bracketed-ogmios-evaluation-response'
     ]),
     liveActions: Object.freeze({
       walletSigningAuthorized: false,
       transactionSubmissionAuthorized: false,
       liveValueMovementAuthorized: false
     }),
-    authorityBoundary: 'This plan prepares evidence capture only. It cannot authorize wallet signing, transaction submission, live-value movement, deployment or connector promotion.'
+    authorityBoundary: 'This plan proves public-Preprod script evaluation only. The evaluation candidate is unsigned and uses an explicit supplemental fixture UTxO context. Full phase-1 validation, wallet witnesses, submission, inclusion, finality, recovery and support promotion remain separate later gates.'
   });
 
   return Object.freeze({ ...core, planSha256: hashCardanoEvidence(core) });
@@ -89,30 +87,37 @@ export function createCardanoPreprodEvidenceCapturePlan({
 export function createCardanoPreprodSynchronizedEvaluationEvidence({
   plan,
   acquiredTip,
-  utxoSnapshot,
   protocolParameterSnapshot,
   ogmiosEvaluation,
-  phaseOneValidation,
   safetyMarginPercent = 10
 }) {
   plainObject(plan, 'plan');
-  if (plan.schema !== 'omegavault.cardano.preprod-evidence-capture-plan.v1' || plan.network !== 'preprod') {
-    throw new TypeError('A Cardano Preprod evidence capture plan is required.');
+  if (plan.schema !== 'omegavault.cardano.preprod-evidence-capture-plan.v2' || plan.network !== 'preprod') {
+    throw new TypeError('A Cardano Preprod v2 evidence capture plan is required.');
   }
   const tip = plainObject(acquiredTip, 'acquiredTip');
   const tipHash = hex32(tip.hash, 'acquiredTip.hash');
   if (!Number.isInteger(tip.epoch) || tip.epoch < 0) throw new TypeError('acquiredTip.epoch must be a non-negative integer.');
 
-  const utxo = plainObject(utxoSnapshot, 'utxoSnapshot');
-  assertSameTip(tipHash, utxo.tipHash, 'utxoSnapshot.tipHash');
-
   const protocol = plainObject(protocolParameterSnapshot, 'protocolParameterSnapshot');
   assertSameTip(tipHash, protocol?.tip?.blockHash, 'protocolParameterSnapshot.tip.blockHash');
   if (protocol?.tip?.epoch !== tip.epoch) throw new Error('Protocol-parameter epoch does not match the acquired tip epoch.');
   const normalizedParameters = normalizeCardanoProtocolParameterSnapshot(protocol);
+  if (!normalizedParameters.independentlyConfirmed || normalizedParameters.sourceCount < 2) {
+    throw new Error('Current Cardano Preprod protocol parameters require at least two independent confirming sources.');
+  }
 
   const capturedEvaluation = plainObject(ogmiosEvaluation, 'ogmiosEvaluation');
-  assertSameTip(tipHash, capturedEvaluation.tipHash, 'ogmiosEvaluation.tipHash');
+  const tipBeforeHash = assertSameTip(tipHash, capturedEvaluation.tipBeforeHash, 'ogmiosEvaluation.tipBeforeHash');
+  const tipAfterHash = assertSameTip(tipHash, capturedEvaluation.tipAfterHash, 'ogmiosEvaluation.tipAfterHash');
+  if (tipBeforeHash !== tipAfterHash) throw new Error('Ogmios evaluation was not bracketed by one stable Preprod tip.');
+  if (capturedEvaluation.syntheticSupplementalUtxoContext !== true) {
+    throw new Error('Ogmios evaluation must explicitly declare the supplemental fixture UTxO context.');
+  }
+  if (capturedEvaluation.walletSigningPerformed !== false || capturedEvaluation.transactionSubmissionPerformed !== false) {
+    throw new Error('Evaluation capture attempted to cross the no-signing/no-submission authority boundary.');
+  }
+
   const evaluation = normalizeCardanoOgmiosEvaluation({
     response: capturedEvaluation.response,
     requestId: plan.evaluationRequest.id,
@@ -120,48 +125,35 @@ export function createCardanoPreprodSynchronizedEvaluationEvidence({
     parameters: normalizedParameters,
     safetyMarginPercent
   });
-  const boundEvaluation = Object.freeze({ ...evaluation, transactionBodyHash: plan.transactionBodyHash, tipHash });
-
-  const phaseOne = plainObject(phaseOneValidation, 'phaseOneValidation');
-  assertSameTip(tipHash, phaseOne.tipHash, 'phaseOneValidation.tipHash');
-  if (phaseOne.independentOfOgmiosEvaluation !== true) throw new Error('Phase-1 validation must be independent of Ogmios execution-unit evaluation.');
-  text(phaseOne.source, 'phaseOneValidation.source');
-  if (!phaseOnePassed(phaseOne)) throw new Error('Independent Cardano phase-1 validation must pass completely.');
-  if (hex32(phaseOne.transactionBodyHash, 'phaseOneValidation.transactionBodyHash') !== plan.transactionBodyHash) {
-    throw new Error('Phase-1 validation is bound to a different Cardano transaction body.');
-  }
+  const boundEvaluation = Object.freeze({
+    ...evaluation,
+    transactionBodyHash: plan.transactionBodyHash,
+    tipHash,
+    tipBeforeHash,
+    tipAfterHash
+  });
 
   const synchronizedState = Object.freeze({
     acquiredTipHash: tipHash,
     protocolParametersTipHash: tipHash,
-    utxoSnapshotTipHash: tipHash,
-    evaluationTipHash: tipHash,
-    phaseOneTipHash: tipHash,
+    evaluationTipBeforeHash: tipHash,
+    evaluationTipAfterHash: tipHash,
     transactionBodyHash: plan.transactionBodyHash,
-    evaluationTransactionBodyHash: plan.transactionBodyHash,
-    phaseOneTransactionBodyHash: plan.transactionBodyHash
+    evaluationTransactionBodyHash: plan.transactionBodyHash
   });
 
-  const ledgerGate = createCardanoLedgerEvaluationGate({
-    evaluation: boundEvaluation,
-    synchronizedState,
-    phaseOneValidation: phaseOne
-  });
-  if (!ledgerGate.ready) throw new Error(ledgerGate.reason || 'Cardano synchronized evaluation gate is not ready.');
-
-  const bundle = createCardanoEvaluationEvidenceBundle({
+  const bundle = createCardanoSynchronizedEvaluationBundle({
     network: 'preprod',
     transactionBodyHash: plan.transactionBodyHash,
     transactionCborHex: plan.transactionCborHex,
     synchronizedState,
-    utxoSnapshot: utxo,
     protocolParameters: protocol,
     evaluation: boundEvaluation,
-    phaseOneValidation: phaseOne
+    evaluationRequest: plan.evaluationRequest
   });
 
   const core = Object.freeze({
-    schema: 'omegavault.cardano.preprod-synchronized-evaluation-evidence.v1',
+    schema: 'omegavault.cardano.preprod-synchronized-evaluation-evidence.v2',
     network: 'preprod',
     action: plan.action,
     captureLabel: plan.captureLabel,
@@ -169,17 +161,24 @@ export function createCardanoPreprodSynchronizedEvaluationEvidence({
     acquiredTip: Object.freeze({ hash: tipHash, epoch: tip.epoch, slot: tip.slot ?? null, blockHeight: tip.blockHeight ?? null }),
     transactionBodyHash: plan.transactionBodyHash,
     transactionCborSha256: plan.transactionCborSha256,
+    evaluationContext: plan.evaluationContext,
     evaluation: boundEvaluation,
-    phaseOneValidation: phaseOne,
     evidenceBundle: bundle,
+    validationState: Object.freeze({
+      synchronizedPublicPreprodEvaluationComplete: true,
+      fullPhaseOneValidated: false,
+      walletWitnessesValidated: false,
+      transactionSubmitted: false,
+      inclusionOrFinalityProven: false
+    }),
     liveActions: Object.freeze({
       walletSigningAuthorized: false,
       transactionSubmissionAuthorized: false,
       liveValueMovementAuthorized: false,
       publicNetworkRecoveryProven: false
     }),
-    status: 'synchronized-evaluation-evidence-only',
-    authorityBoundary: 'This evidence proves same-tip evaluation and independent phase-1 validation for the supplied transaction candidate only. It does not authorize or prove wallet signing, submission, inclusion, finality, recovery, deployment or connector promotion.'
+    status: 'synchronized-public-preprod-evaluation-only',
+    authorityBoundary: 'This evidence proves a stable-tip public-Preprod Ogmios evaluation of the exact unsigned candidate with its explicit supplemental fixture UTxO context. It does not prove full phase-1 validity, wallet witnesses, submission, inclusion, finality, recovery, deployment or connector promotion.'
   });
   return Object.freeze({ ...core, evidenceSha256: hashCardanoEvidence(core) });
 }
