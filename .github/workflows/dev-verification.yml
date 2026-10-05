@@ -58,6 +58,9 @@ jobs:
       - name: Focused Cardano Preprod capture session/manifest
         run: npm run test:cardano-preprod-session
 
+      - name: Focused Cardano Preprod invariant evidence program
+        run: npm run test:cardano-preprod-invariants
+
       - name: Focused Cardano workstation launch gate
         run: npm run test:cardano-workstation-launch
 
