@@ -61,6 +61,9 @@ jobs:
       - name: Focused Cardano Preprod invariant evidence program
         run: npm run test:cardano-preprod-invariants
 
+      - name: Focused Cardano Preprod four-action campaign
+        run: npm run test:cardano-preprod-campaign
+
       - name: Focused Cardano workstation launch gate
         run: npm run test:cardano-workstation-launch
 
