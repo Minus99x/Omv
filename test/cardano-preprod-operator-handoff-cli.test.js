@@ -24,6 +24,7 @@ test('Cardano operator handoff reports the sealed checkpoint, fastest infrastruc
   assert.equal(report.operatorBoundary.walletSigningAuthorized, false);
   assert.equal(report.operatorBoundary.transactionSubmissionAuthorized, false);
   assert.equal(report.operatorBoundary.supportClaimAuthorized, false);
+  assert.equal(report.currentEvidenceScope.fullPhaseOneValidationRemainsSeparateLaterGate, true);
   assert.equal(report.networkRequestsPerformed, false);
 });
 
@@ -39,7 +40,7 @@ test('Cardano operator handoff inventories all four prepared campaign sessions a
   assert.equal(report.campaign.structurallyReady, true);
   assert.deepEqual(report.campaign.actions, ['initialize', 'heartbeat', 'approve', 'execute']);
   assert.equal(report.campaign.incomplete.length, 4);
-  for (const entry of report.campaign.incomplete) assert.equal(entry.missing.length, 5);
+  for (const entry of report.campaign.incomplete) assert.equal(entry.missing.length, 3);
   assert.equal(report.operatorBoundary.walletSigningAuthorized, false);
   assert.equal(report.networkRequestsPerformed, false);
 
