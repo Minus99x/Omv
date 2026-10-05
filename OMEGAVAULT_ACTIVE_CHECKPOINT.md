@@ -1,19 +1,19 @@
 # OmegaVault Active Checkpoint
 
-Current development checkpoint: **0.6.57-dev**
+Current development checkpoint: **0.6.58-dev**
 
-Archive filename: `omegavault-mvp-0.6.57-dev.zip`
-Checkpoint sidecar filename: `omegavault-mvp-0.6.57-dev.checkpoint-manifest.json`
-External review index filename: `omegavault-mvp-0.6.57-dev.review-index.json`
+Archive filename: `omegavault-mvp-0.6.58-dev.zip`
+Checkpoint sidecar filename: `omegavault-mvp-0.6.58-dev.checkpoint-manifest.json`
+External review index filename: `omegavault-mvp-0.6.58-dev.review-index.json`
 
-## 0.6.57 delta
+## 0.6.58 delta
 
-- Re-anchored Cardano Preprod capture to the exact sealed 0.6.56 Core Invariant Hardening checkpoint.
-- Added a Cardano Preprod invariant-evidence program requiring all 13 canonical OmegaVault invariants.
-- Required `initialize`, `heartbeat`, `approve`, and `execute` public-testnet lifecycle evidence before the invariant program can ever be considered complete.
-- Explicitly kept synchronized evaluation insufficient for an “OmegaVault supported” claim.
-- Carried invariant-program identity and fail-closed authority boundaries through session preparation, verification and workstation launch.
-- Preserved all earlier sealed work and all no-sign/no-submit/no-promotion boundaries.
+- Re-anchored Cardano Preprod capture to the exact sealed 0.6.57 checkpoint.
+- Added one fail-closed campaign binding all four required lifecycle sessions: `initialize`, `heartbeat`, `approve`, and `execute`.
+- Added exact per-action bindings for session manifest, invariant program, capture plan, transaction body and transaction CBOR identities.
+- Added offline campaign preparation that creates all four workspaces, capture templates, Ogmios requests and an operator runbook in one operation.
+- Added campaign verification that rejects missing/duplicate actions, action/session cross-wiring and authority escalation, and reports every missing external capture.
+- Preserved all non-custodial, no-sign, no-submit, no-recovery-claim and no-support-promotion boundaries.
 
 ## Verification
 
@@ -27,15 +27,16 @@ External review index filename: `omegavault-mvp-0.6.57-dev.review-index.json`
 - Cardano Preprod evidence harness: **6/6 passed**.
 - Cardano Preprod capture-session/manifest: **4/4 passed**.
 - Cardano Preprod invariant-evidence program: **6/6 passed**.
+- Cardano Preprod four-action campaign: **6/6 passed**.
 - Cardano workstation launch gate: **4/4 passed**.
-- Full suite: **470/470 passed**.
+- Full suite: **476/476 passed**.
 - Offline-resume: **ok: true** with **16/16** Stellar and **11/11** Bitcoin checks.
 - Global checks: **passed**.
 
 ## Next Cardano objective
 
-Seal 0.6.57, then use that exact sealed artifact on the user-controlled workstation. The launch gate itself remains offline. The next evidence acquisition requires Cardano Preprod network access to capture one synchronized tip, UTxOs, independently confirmed protocol parameters, Ogmios evaluation and independent phase-1 validation.
+Seal 0.6.58. The remaining Cardano step now genuinely requires a workstation plus Preprod network access: populate the externally acquired capture files for the prepared lifecycle campaign and verify them.
 
 ## Promotion boundary
 
-Cardano remains `offline-verified`. 0.6.57 authorizes no wallet signature, transaction submission, live-value movement, production deployment, connector promotion, public-network recovery claim, or “OmegaVault supported” claim.
+Cardano remains `offline-verified`. 0.6.58 authorizes no wallet signature, transaction submission, live-value movement, production deployment, connector promotion, public-network recovery claim, or “OmegaVault supported” claim.
