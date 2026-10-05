@@ -31,7 +31,7 @@ const beacon = JSON.parse(await readFile(join(root, 'validators/cardano/fixtures
 const vault = JSON.parse(await readFile(join(root, 'validators/cardano/fixtures/recovery-vault.applied.json'), 'utf8'));
 const beaconCode = beacon.validators.find(item => item.title === 'omegavault.state_beacon.mint').compiledCode;
 const recoveryCode = vault.validators.find(item => item.title === 'omegavault.recovery_vault.spend').compiledCode;
-const candidate = buildCardanoOgmiosEvaluationFixture({ action, parameters, recoveryCompiledCode: recoveryCode, beaconCompiledCode: beaconCode });
+const candidate = buildCardanoPublicPreprodOgmiosEvaluationFixture({ action, parameters, recoveryCompiledCode: recoveryCode, beaconCompiledCode: beaconCode });
 const plan = createCardanoPreprodEvidenceCapturePlan({
   action,
   transactionCborHex: candidate.transactionCborHex,
