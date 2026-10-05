@@ -23,7 +23,7 @@ test('Cardano campaign CLI prepares all four offline sessions and reports captur
   assert.equal(prep.supportClaimAuthorized, false);
 
   const campaign = JSON.parse(fs.readFileSync(path.join(dir, 'campaign-manifest.json'), 'utf8'));
-  assert.equal(campaign.checkpoint.checkpointRef, '0.6.57-dev');
+  assert.equal(campaign.checkpoint.checkpointRef, '0.6.58-dev');
   assert.equal(campaign.sessions.length, 4);
   assert.equal(fs.existsSync(path.join(dir, 'RUNBOOK.md')), true);
   for (const entry of campaign.sessions) {
