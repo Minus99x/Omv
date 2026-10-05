@@ -5,6 +5,9 @@ const HEX_28 = /^[0-9a-f]{56}$/i;
 const HEX_32 = /^[0-9a-f]{64}$/i;
 
 export const CARDANO_PREPROD_NETWORK_ID = 0;
+export const CARDANO_PREPROD_NETWORK_MAGIC = 1;
+export const CARDANO_PREPROD_SLOT_ANCHOR = 86400;
+export const CARDANO_PREPROD_TIME_ANCHOR_MS = 1655769600000;
 
 export const CARDANO_APPLIED_FIXTURE = Object.freeze({
   purpose: 'offline-reproducibility-only',
@@ -18,8 +21,22 @@ export const CARDANO_APPLIED_FIXTURE = Object.freeze({
   recoveryValidatorAddress: 'addr_test1wqh4nh6vmugenmmg6uzmdgc0vuuv7vg8t5mpdykt3fvvfdqp2ftmw'
 });
 
-function bytes(hex) {
-  return Uint8Array.from(Buffer.from(hex, 'hex'));
+const fixtureKeys = Object.freeze({
+  owner: '11'.repeat(28),
+  contact: '22'.repeat(28),
+  contactB: '33'.repeat(28),
+  rescue: '66'.repeat(28)
+});
+
+const FIXTURE_VALIDITY_START = Object.freeze({
+  initialize: 100000060,
+  heartbeat: 100000100,
+  approve: 100000060,
+  execute: 100000060
+});
+
+function bytes(value) {
+  return Uint8Array.from(Buffer.from(value, 'hex'));
 }
 
 function hex(value) {
@@ -57,6 +74,24 @@ function addressDatumFromKeyHash(keyHash) {
   const credential = plutusConstr(0, [plutusBytes(assertHex(keyHash, HEX_28, 'rescueKeyHash'))]);
   const noStakeCredential = plutusConstr(1, []);
   return plutusConstr(0, [credential, noStakeCredential]);
+}
+
+export function cardanoPreprodSlotToUnixTimeMs(slot) {
+  if (!Number.isSafeInteger(slot) || slot < 0) throw new TypeError('slot must be a non-negative safe integer.');
+  return CARDANO_PREPROD_TIME_ANCHOR_MS + ((slot - CARDANO_PREPROD_SLOT_ANCHOR) * 1000);
+}
+
+function fixtureTiming(action) {
+  const lowerSlot = FIXTURE_VALIDITY_START[action];
+  if (!lowerSlot) throw new TypeError('Unknown Cardano fixture action.');
+  const upperSlot = lowerSlot + 140;
+  const lowerTimeMs = cardanoPreprodSlotToUnixTimeMs(lowerSlot);
+  return Object.freeze({
+    lowerSlot,
+    upperSlot,
+    lowerTimeMs,
+    priorHeartbeatMs: lowerTimeMs - 60000
+  });
 }
 
 export function createCardanoVaultDatumData({
@@ -124,10 +159,87 @@ function setBeaconMint(body, quantity) {
   body.set_mint(mint);
 }
 
-const fixtureKeys = Object.freeze({ owner: '11'.repeat(28), contact: '22'.repeat(28), rescue: '66'.repeat(28) });
+function vaultDatumForInput(action) {
+  const timing = fixtureTiming(action);
+  const approvals = action === 'execute'
+    ? [fixtureKeys.contact, fixtureKeys.contactB]
+    : action === 'heartbeat'
+      ? [fixtureKeys.contact]
+      : [];
+  return createCardanoVaultDatumData({
+    ownerKeyHash: fixtureKeys.owner,
+    rescueKeyHash: fixtureKeys.rescue,
+    contactKeyHashes: [fixtureKeys.contact, fixtureKeys.contactB],
+    threshold: 2,
+    inactivityMs: 60000,
+    lastHeartbeatMs: timing.priorHeartbeatMs,
+    approvalKeyHashes: approvals
+  });
+}
+
+function ogmiosReference(transactionId, index) {
+  return Object.freeze({
+    transaction: Object.freeze({ id: transactionId }),
+    output: Object.freeze({ index })
+  });
+}
+
+function ogmiosValue(lovelace, includeBeacon = false) {
+  const value = { lovelace: Number(lovelace) };
+  if (includeBeacon) {
+    value[CARDANO_APPLIED_FIXTURE.beaconPolicyId] = Object.freeze({
+      [CARDANO_APPLIED_FIXTURE.assetNameHex]: 1
+    });
+  }
+  return Object.freeze(value);
+}
+
+function ogmiosOutput({ address, lovelace, includeBeacon = false, datum = null }) {
+  const output = {
+    address,
+    value: ogmiosValue(lovelace, includeBeacon)
+  };
+  if (datum != null) output.datum = datum.to_hex();
+  return Object.freeze(output);
+}
+
+export function buildCardanoEvaluationAdditionalUtxoSet(action) {
+  if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('action must be initialize, heartbeat, approve, or execute.');
+  const ownerAddress = enterpriseKeyAddress(fixtureKeys.owner).to_bech32();
+  const entries = [];
+
+  if (action === 'initialize') {
+    entries.push(Object.freeze([
+      ogmiosReference(CARDANO_APPLIED_FIXTURE.seedTxId, CARDANO_APPLIED_FIXTURE.seedOutputIndex),
+      ogmiosOutput({ address: ownerAddress, lovelace: 10000000 })
+    ]));
+  } else {
+    entries.push(Object.freeze([
+      ogmiosReference('cd'.repeat(32), 0),
+      ogmiosOutput({
+        address: CARDANO_APPLIED_FIXTURE.recoveryValidatorAddress,
+        lovelace: 10000000,
+        includeBeacon: true,
+        datum: vaultDatumForInput(action)
+      })
+    ]));
+  }
+
+  entries.push(Object.freeze([
+    ogmiosReference('ef'.repeat(32), 1),
+    ogmiosOutput({ address: ownerAddress, lovelace: 3000000 })
+  ]));
+  entries.push(Object.freeze([
+    ogmiosReference('12'.repeat(32), 0),
+    ogmiosOutput({ address: ownerAddress, lovelace: 5000000 })
+  ]));
+
+  return Object.freeze(entries);
+}
 
 export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '200000', scriptDataHashHex = '99'.repeat(32) } = {}) {
   if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('action must be initialize, heartbeat, approve, or execute.');
+  const timing = fixtureTiming(action);
 
   const inputs = Cardano.TransactionInputs.new();
   inputs.add(transactionInput(action === 'initialize' ? CARDANO_APPLIED_FIXTURE.seedTxId : 'cd'.repeat(32), 0));
@@ -141,12 +253,12 @@ export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '2000
     outputs.add(Cardano.TransactionOutput.new(rescueAddress, valueWithBeacon('10000000', false)));
   } else {
     const approvals = action === 'approve' ? [fixtureKeys.contact] : [];
-    const heartbeat = action === 'heartbeat' ? 1100000 : 1000000;
+    const heartbeat = action === 'heartbeat' ? timing.lowerTimeMs : timing.priorHeartbeatMs;
     const output = Cardano.TransactionOutput.new(scriptAddress, valueWithBeacon('10000000', true));
     output.set_plutus_data(createCardanoVaultDatumData({
       ownerKeyHash: fixtureKeys.owner,
       rescueKeyHash: fixtureKeys.rescue,
-      contactKeyHashes: [fixtureKeys.contact, '33'.repeat(28)],
+      contactKeyHashes: [fixtureKeys.contact, fixtureKeys.contactB],
       threshold: 2,
       inactivityMs: 60000,
       lastHeartbeatMs: heartbeat,
@@ -160,8 +272,8 @@ export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '2000
   if (!/^[0-9a-f]{64}$/i.test(scriptDataHashHex)) throw new TypeError('scriptDataHashHex must be 32 bytes.');
   const body = Cardano.TransactionBody.new_tx_body(inputs, outputs, Cardano.BigNum.from_str(String(feeLovelace)));
   body.set_network_id(Cardano.NetworkId.testnet());
-  body.set_validity_start_interval_bignum(Cardano.BigNum.from_str(action === 'heartbeat' ? '1100' : '1060'));
-  body.set_ttl(Cardano.BigNum.from_str('1200'));
+  body.set_validity_start_interval_bignum(Cardano.BigNum.from_str(String(timing.lowerSlot)));
+  body.set_ttl(Cardano.BigNum.from_str(String(timing.upperSlot)));
   const collateral = Cardano.TransactionInputs.new();
   collateral.add(transactionInput('12'.repeat(32), 0));
   body.set_collateral(collateral);
@@ -192,6 +304,7 @@ export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '2000
     outputCount: decoded.outputs().len(),
     hasCollateral: decoded.collateral().len() === 1,
     mintQuantity: action === 'initialize' ? 1 : action === 'execute' ? -1 : 0,
+    validity: timing,
     requiresLiveProtocolParameters: true,
     scriptDataHashIsFixtureOnly: true
   });
