@@ -67,6 +67,9 @@ jobs:
       - name: Focused Cardano workstation launch gate
         run: npm run test:cardano-workstation-launch
 
+      - name: Focused Cardano campaign workstation launch gate
+        run: npm run test:cardano-campaign-workstation-launch
+
       - name: Full test suite
         run: npm test
 
