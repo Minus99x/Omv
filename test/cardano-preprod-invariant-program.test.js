@@ -8,13 +8,13 @@ import {
 } from '../src/chains/cardano/preprod-invariant-program.js';
 import { CARDANO_PREPROD_CAPTURE_BASELINE } from '../src/chains/cardano/preprod-capture-session.js';
 
-test('Cardano Preprod invariant program binds the exact sealed 0.6.57 checkpoint', () => {
+test('Cardano Preprod invariant program binds the exact sealed 0.6.58 checkpoint', () => {
   const program = createCardanoPreprodInvariantEvidenceProgram({ checkpoint: CARDANO_PREPROD_CAPTURE_BASELINE });
   assert.deepEqual(program.checkpoint, CARDANO_PREPROD_CAPTURE_BASELINE);
-  assert.equal(program.checkpoint.checkpointRef, '0.6.57-dev');
-  assert.equal(program.checkpoint.sourceCommitSha, '85ec91ac28b327f21799c2a63a272dafd3778aa9');
-  assert.equal(program.checkpoint.archiveSha256, '309d607e9c7256d6ba464755e40142f0047f6b30c62187e630c6102c286ac7f3');
-  assert.equal(program.checkpoint.sourceTreeSha256, '2b0c41d13c6c15aa941916d5e739fe8d5d9d26938b682fa2517162fed860c1f5');
+  assert.equal(program.checkpoint.checkpointRef, '0.6.58-dev');
+  assert.equal(program.checkpoint.sourceCommitSha, 'f3f67a62d66dc9a509c85d33eb35674133e08bb3');
+  assert.equal(program.checkpoint.archiveSha256, '2e9129ed9d1eac5c61d85b625aebd7828988da8298c7b5914169769fde2bb463');
+  assert.equal(program.checkpoint.sourceTreeSha256, '59d543758df1915d36b4f7b984425a37503468704c187c6ceb4ed3cfd763ff58');
   assert.equal(verifyCardanoPreprodInvariantEvidenceProgram(program, { expectedCheckpoint: CARDANO_PREPROD_CAPTURE_BASELINE }).valid, true);
 });
 
