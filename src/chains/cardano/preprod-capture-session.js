@@ -1,5 +1,9 @@
 import { hashCardanoEvidence } from './evidence-binding.js';
 import {
+  createCardanoPreprodInvariantEvidenceProgram,
+  verifyCardanoPreprodInvariantEvidenceProgram
+} from './preprod-invariant-program.js';
+import {
   createCardanoPreprodSynchronizedEvaluationEvidence
 } from './preprod-evidence-harness.js';
 import {
@@ -11,10 +15,10 @@ const SHA256 = /^[0-9a-f]{64}$/i;
 const GIT_SHA = /^[0-9a-f]{40}$/i;
 
 export const CARDANO_PREPROD_CAPTURE_BASELINE = Object.freeze({
-  checkpointRef: '0.6.53-dev',
-  sourceCommitSha: 'e4f1c87f572d74852c7602df56e93e4efd70815e',
-  archiveSha256: 'a25d23e08da6dced47fdfe2af550e1bd0e901a8aed9b69945c6c1dc9269485ce',
-  sourceTreeSha256: '44f490e34761584bb9581c7bde5c3f858263134f7b2598abc42d1746ae9811a9'
+  checkpointRef: '0.6.56-dev',
+  sourceCommitSha: 'a14e7e4061dbe0b32399b8188d98d9851321ee14',
+  archiveSha256: '6c2ba7e857be0cbe2f5a2dd40c23c11fe432351ca3dbacbdc7107ff86715cb87',
+  sourceTreeSha256: '8081a98574e11e98a65d84bc87f636aec60d16960fbc35aab7e791abb13c082a'
 });
 
 function text(value, label) {
@@ -72,21 +76,25 @@ export function createCardanoPreprodCaptureSessionManifest({
   if (!planCheck.ok) throw new Error(`Invalid Cardano Preprod capture plan: ${planCheck.errors.join('; ')}`);
   const id = text(sessionId, 'sessionId');
   const checkpoint = plainObject(baseline, 'baseline');
-  if (checkpoint.checkpointRef !== CARDANO_PREPROD_CAPTURE_BASELINE.checkpointRef) throw new Error('Capture session must be based on the sealed 0.6.53 checkpoint.');
+  if (checkpoint.checkpointRef !== CARDANO_PREPROD_CAPTURE_BASELINE.checkpointRef) throw new Error('Capture session must be based on the sealed 0.6.56 checkpoint.');
   exactGitSha(checkpoint.sourceCommitSha, 'baseline.sourceCommitSha');
   exactSha256(checkpoint.archiveSha256, 'baseline.archiveSha256');
   exactSha256(checkpoint.sourceTreeSha256, 'baseline.sourceTreeSha256');
+
+  const boundCheckpoint = Object.freeze({
+    checkpointRef: checkpoint.checkpointRef,
+    sourceCommitSha: checkpoint.sourceCommitSha.toLowerCase(),
+    archiveSha256: checkpoint.archiveSha256.toLowerCase(),
+    sourceTreeSha256: checkpoint.sourceTreeSha256.toLowerCase()
+  });
+  const invariantProgram = createCardanoPreprodInvariantEvidenceProgram({ checkpoint: boundCheckpoint });
 
   const core = Object.freeze({
     schema: 'omegavault.cardano.preprod-capture-session-manifest.v1',
     network: 'preprod',
     sessionId: id,
-    checkpoint: Object.freeze({
-      checkpointRef: checkpoint.checkpointRef,
-      sourceCommitSha: checkpoint.sourceCommitSha.toLowerCase(),
-      archiveSha256: checkpoint.archiveSha256.toLowerCase(),
-      sourceTreeSha256: checkpoint.sourceTreeSha256.toLowerCase()
-    }),
+    checkpoint: boundCheckpoint,
+    invariantProgram,
     capturePlan,
     files: Object.freeze({
       evaluationRequest: 'ogmios-evaluation-request.json',
@@ -125,6 +133,9 @@ export function verifyCardanoPreprodCaptureSessionManifest(manifest) {
     for (const [field, expected] of Object.entries(CARDANO_PREPROD_CAPTURE_BASELINE)) {
       if (baseline[field] !== expected) errors.push(`Checkpoint baseline mismatch for ${field}.`);
     }
+
+    const invariantProgramCheck = verifyCardanoPreprodInvariantEvidenceProgram(manifest.invariantProgram, { expectedCheckpoint: baseline });
+    errors.push(...invariantProgramCheck.errors);
 
     const planCheck = verifyCapturePlan(manifest.capturePlan);
     errors.push(...planCheck.errors);
@@ -189,6 +200,13 @@ export function evaluateCardanoPreprodCaptureSession({
     }),
     synchronizedEvaluationReady: true,
     evidence,
+    invariantEvidenceStatus: Object.freeze({
+      programSha256: manifest.invariantProgram.programSha256,
+      requiredEvidenceLevel: manifest.invariantProgram.requiredEvidenceLevel,
+      completedInvariantIds: Object.freeze([]),
+      lifecycleProgramComplete: false,
+      supportClaimAuthorized: false
+    }),
     nextLiveGate: 'transaction-signing-and-submission-remain-separately-gated',
     liveActions: Object.freeze({
       walletSigningAuthorized: false,
