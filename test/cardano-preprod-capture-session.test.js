@@ -27,10 +27,13 @@ const planCore = {
 };
 const plan = Object.freeze({ ...planCore, planSha256: hashCardanoEvidence(planCore) });
 
-test('Cardano capture session manifest is pinned to the exact sealed 0.6.53 checkpoint', () => {
+test('Cardano capture session manifest is pinned to the exact sealed 0.6.56 checkpoint', () => {
   const manifest = createCardanoPreprodCaptureSessionManifest({ capturePlan: plan, sessionId: 'unit-test' });
   assert.deepEqual(manifest.checkpoint, CARDANO_PREPROD_CAPTURE_BASELINE);
   assert.equal(manifest.readinessRules.minimumIndependentProtocolParameterSources, 2);
+  assert.equal(manifest.invariantProgram.checkpoint.checkpointRef, '0.6.56-dev');
+  assert.equal(manifest.invariantProgram.requiredEvidenceLevel, 'public-testnet');
+  assert.equal(manifest.invariantProgram.supportClaimAuthorized, false);
   assert.equal(manifest.readinessRules.walletSigningAuthorized, false);
   assert.equal(manifest.readinessRules.transactionSubmissionAuthorized, false);
   assert.equal(verifyCardanoPreprodCaptureSessionManifest(manifest).valid, true);
