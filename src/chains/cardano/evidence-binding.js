@@ -113,3 +113,76 @@ export function createCardanoEvaluationEvidenceBundle({
     promotionReadyEvidenceBinding: true
   });
 }
+
+
+export function createCardanoSynchronizedEvaluationBundle({
+  network = 'preprod',
+  transactionBodyHash,
+  transactionCborHex,
+  synchronizedState,
+  protocolParameters,
+  evaluation,
+  evaluationRequest
+}) {
+  if (network !== 'preprod') throw new Error('Only Cardano Preprod evidence may be accepted by this gate.');
+  const bodyHash = assertHex32(transactionBodyHash, 'transactionBodyHash');
+  if (typeof transactionCborHex !== 'string' || !HEX.test(transactionCborHex)) throw new TypeError('transactionCborHex must be non-empty base16 CBOR.');
+  if (!protocolParameters || !evaluation || !evaluationRequest) throw new TypeError('Protocol-parameter, evaluation-request and evaluation-response evidence are required.');
+
+  const tipFields = [
+    'acquiredTipHash',
+    'protocolParametersTipHash',
+    'evaluationTipBeforeHash',
+    'evaluationTipAfterHash'
+  ];
+  const tips = tipFields.map(field => assertText(synchronizedState?.[field], `synchronizedState.${field}`));
+  if (new Set(tips).size !== 1) throw new Error('Cardano evaluation evidence is not bracketed by one stable acquired node tip.');
+  const tipHash = tips[0];
+
+  const transactionHashes = [
+    ['synchronizedState.transactionBodyHash', synchronizedState?.transactionBodyHash],
+    ['synchronizedState.evaluationTransactionBodyHash', synchronizedState?.evaluationTransactionBodyHash],
+    ['evaluation.transactionBodyHash', evaluation?.transactionBodyHash]
+  ].map(([label, value]) => assertHex32(value, label));
+  if (transactionHashes.some(value => value !== bodyHash)) throw new Error('Cardano evaluation evidence is bound to a different transaction body.');
+
+  if (evaluationRequest?.method !== 'evaluateTransaction') throw new Error('Cardano evaluation request must use evaluateTransaction.');
+  if (evaluationRequest?.params?.transaction?.cbor?.toLowerCase() !== transactionCborHex.toLowerCase()) {
+    throw new Error('Cardano evaluation request CBOR does not match the bound candidate.');
+  }
+  if (!Array.isArray(evaluationRequest?.params?.additionalUtxoSet) || evaluationRequest.params.additionalUtxoSet.length < 1) {
+    throw new Error('Cardano evaluation request must carry an explicit supplemental UTxO context for the offline fixture inputs.');
+  }
+
+  const componentDigests = Object.freeze({
+    protocolParametersSha256: hashCardanoEvidence(protocolParameters),
+    evaluationRequestSha256: hashCardanoEvidence(evaluationRequest),
+    supplementalUtxoSha256: hashCardanoEvidence(evaluationRequest.params.additionalUtxoSet),
+    evaluationSha256: hashCardanoEvidence(evaluation)
+  });
+
+  const core = Object.freeze({
+    schema: 'omegavault.cardano.synchronized-evaluation-evidence.v2',
+    network,
+    tipHash,
+    transaction: Object.freeze({
+      bodyHash,
+      cborSha256: createHash('sha256').update(Buffer.from(transactionCborHex, 'hex')).digest('hex')
+    }),
+    components: componentDigests,
+    evidenceBoundary: Object.freeze({
+      unsignedEvaluationOnly: true,
+      syntheticSupplementalUtxoContext: true,
+      fullPhaseOneValidated: false,
+      walletWitnessesValidated: false,
+      submissionValidated: false
+    })
+  });
+
+  return Object.freeze({
+    ...core,
+    bundleSha256: hashCardanoEvidence(core),
+    synchronized: true,
+    promotionReadyEvidenceBinding: false
+  });
+}
