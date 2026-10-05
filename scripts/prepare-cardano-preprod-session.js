@@ -25,7 +25,8 @@ try {
 const action = arg('--action', 'execute');
 if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('--action must be initialize, heartbeat, approve, or execute.');
 
-const protocolEvidence = JSON.parse(await readFile(join(root, 'docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json'), 'utf8'));
+const protocolPath = resolve(arg('--protocol-parameters', join(root, 'docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json')));
+const protocolEvidence = JSON.parse(await readFile(protocolPath, 'utf8'));
 const parameters = normalizeCardanoProtocolParameterSnapshot(protocolEvidence);
 const beacon = JSON.parse(await readFile(join(root, 'validators/cardano/fixtures/state-beacon.applied.json'), 'utf8'));
 const vault = JSON.parse(await readFile(join(root, 'validators/cardano/fixtures/recovery-vault.applied.json'), 'utf8'));
