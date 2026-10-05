@@ -57,6 +57,14 @@ if (!bundleDirArg) {
     ], projectRoot);
     if (prepared.status !== 0) throw new Error(`Capture-session preparation failed: ${prepared.stderr || prepared.stdout}`);
     const preparation = JSON.parse(prepared.stdout);
+    if (!/^[0-9a-f]{64}$/i.test(String(preparation.invariantProgramSha256 ?? ''))) {
+      throw new Error('Capture-session preparation did not return a valid invariant-program identity.');
+    }
+    if (preparation.supportClaimAuthorized !== false ||
+        preparation.walletSigningAuthorized !== false ||
+        preparation.transactionSubmissionAuthorized !== false) {
+      throw new Error('Capture-session preparation attempted to weaken the workstation authority boundary.');
+    }
 
     process.stdout.write(`${JSON.stringify({
       schema: 'omegavault.cardano.preprod-workstation-launch.v1',
@@ -69,6 +77,8 @@ if (!bundleDirArg) {
       pinnedDependenciesReady: true,
       session,
       sessionManifestSha256: preparation.manifestSha256,
+      invariantProgramSha256: preparation.invariantProgramSha256,
+      supportClaimAuthorized: false,
       transactionBodyHash: preparation.transactionBodyHash,
       networkRequestsPerformed: false,
       walletSigningAuthorized: false,
