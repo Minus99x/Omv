@@ -20,7 +20,7 @@ const beaconCode = beacon.validators.find(item => item.title === 'omegavault.sta
 const recoveryCode = vault.validators.find(item => item.title === 'omegavault.recovery_vault.spend').compiledCode;
 
 function fixture() {
-  const candidate = buildCardanoOgmiosEvaluationFixture({
+  const candidate = buildCardanoPublicPreprodOgmiosEvaluationFixture({
     action: 'execute',
     parameters,
     recoveryCompiledCode: recoveryCode,
