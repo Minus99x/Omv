@@ -43,6 +43,9 @@ jobs:
       - name: Focused maturity/provenance suite
         run: npm run test:maturity-reconciliation
 
+      - name: Core invariant and support release gate
+        run: npm run test:core-invariants
+
       - name: Focused Cardano toolchain/evidence suite
         run: npm run test:cardano-toolchain
 
