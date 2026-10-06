@@ -68,7 +68,11 @@ export function buildCardanoWitnessSetFixture({
 
   if (action === 'initialize' || action === 'execute') {
     redeemers.add(redeemer(Cardano.RedeemerTag.new_mint(), plutusConstr(0), evaluationMode ? 0 : 91970, evaluationMode ? 0 : 27959404));
-    scripts.add(Cardano.PlutusScript.from_hex_with_version(beaconCompiledCode, Cardano.Language.new_plutus_v3()));
+    const beaconScript = Cardano.PlutusScript.from_hex_with_version(beaconCompiledCode, Cardano.Language.new_plutus_v3());
+    if (beaconScript.hash().to_hex() !== buildCardanoTransactionBodyFixture('initialize').mintPolicyId) {
+      throw new Error('Cardano beacon witness script hash does not match the transaction mint policy.');
+    }
+    scripts.add(beaconScript);
     if (!evaluationMode) {
       memory += 91970n;
       steps += 27959404n;
@@ -88,7 +92,7 @@ export function buildCardanoWitnessSetFixture({
   const scriptDataHash = Cardano.hash_script_data(redeemers, models).to_hex();
   const witnessSet = Cardano.TransactionWitnessSet.new();
   witnessSet.set_redeemers(redeemers);
-  witnessSet.set_plutus_v3_scripts(scripts);
+  witnessSet.set_plutus_scripts(scripts);
   const witnessBytes = witnessSet.to_bytes();
   const witnessRoundTrip = Cardano.TransactionWitnessSet.from_bytes(witnessBytes).to_bytes();
   if (hex(witnessBytes) !== hex(witnessRoundTrip)) throw new Error('Cardano witness-set CBOR did not round-trip exactly.');
