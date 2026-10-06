@@ -46,6 +46,24 @@ test('Cardano Ogmios v7 request uses additionalUtxo with the flat UTxO schema', 
   assert.equal(Object.hasOwn(result.request.params, 'additionalUtxoSet'), false);
 });
 
+test('Cardano Ogmios v7 structured validator pointer normalizes to canonical redeemer pointer', () => {
+  const request = requestFor('initialize');
+  const evaluation = normalizeCardanoOgmiosEvaluation({
+    response: {
+      jsonrpc: '2.0',
+      method: 'evaluateTransaction',
+      id: 'evaluate-initialize',
+      result: [
+        { validator: { purpose: 'mint', index: 0 }, budget: { memory: 91970, cpu: 27959404 } }
+      ]
+    },
+    requestId: request.request.id,
+    expectedValidators: request.expectedValidators,
+    parameters
+  });
+  assert.equal(evaluation.budgets[0].validator, 'mint:0');
+});
+
 test('Cardano Ogmios response applies a ceiling 10 percent budget margin', () => {
   const request = requestFor('execute');
   const evaluation = normalizeCardanoOgmiosEvaluation({
