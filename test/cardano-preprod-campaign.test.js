@@ -12,10 +12,12 @@ const actions = ['initialize', 'heartbeat', 'approve', 'execute'];
 function plan(action, index) {
   const hex = (index + 1).toString(16).padStart(2, '0');
   const transactionCborHex = '84'.repeat(8);
-  const additionalUtxoSet = [[
-    { transaction: { id: hex.repeat(32) }, output: { index: 0 } },
-    { address: 'addr_test1vptest', value: { lovelace: 10000000 } }
-  ]];
+  const additionalUtxoSet = [{
+    transaction: { id: hex.repeat(32) },
+    index: 0,
+    address: 'addr_test1vptest',
+    value: { ada: { lovelace: 10000000 } }
+  }];
   const core = {
     schema: 'omegavault.cardano.preprod-evidence-capture-plan.v2',
     network: 'preprod',
@@ -28,7 +30,7 @@ function plan(action, index) {
       jsonrpc: '2.0',
       method: 'evaluateTransaction',
       id: `test-${action}`,
-      params: { transaction: { cbor: transactionCborHex }, additionalUtxoSet }
+      params: { transaction: { cbor: transactionCborHex }, additionalUtxo: additionalUtxoSet }
     },
     evaluationContext: {
       supplementalUtxoSha256: hashCardanoEvidence(additionalUtxoSet),
