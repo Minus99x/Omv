@@ -7,6 +7,18 @@ function object(value, label) {
   return value;
 }
 
+function formatOgmiosRpcError(method, error) {
+  const code = error?.code != null ? ` code=${String(error.code)}` : '';
+  let detail = '';
+  if (error?.data != null) {
+    try {
+      const encoded = JSON.stringify(error.data);
+      detail = encoded.length > 4000 ? ` data=${encoded.slice(0, 4000)}…` : ` data=${encoded}`;
+    } catch {}
+  }
+  return new Error(`Ogmios ${method} failed:${code} ${error?.message ?? 'unknown error'}${detail}`);
+}
+
 function rpcResult(response, label) {
   const value = object(response, label);
   if (value.error) throw new Error(`${label} failed: ${value.error.message ?? value.error.code ?? 'unknown JSON-RPC error'}`);
@@ -72,7 +84,7 @@ export function createCardanoOgmiosHttpClient({
     });
     if (!response.ok) throw new Error(`Ogmios HTTP ${response.status} for ${method}.`);
     const json = await response.json();
-    if (json?.error) throw new Error(`Ogmios ${method} failed: ${json.error.message ?? json.error.code ?? 'unknown error'}`);
+    if (json?.error) throw formatOgmiosRpcError(method, json.error);
     return json;
   }
 
@@ -117,7 +129,7 @@ export function createCardanoOgmiosHttpClient({
           if (!entry) return;
           pending.delete(json.id);
           clearTimeout(entry.timer);
-          if (json?.error) entry.reject(new Error(`Ogmios ${entry.method} failed: ${json.error.message ?? json.error.code ?? 'unknown error'}`));
+          if (json?.error) entry.reject(formatOgmiosRpcError(entry.method, json.error));
           else entry.resolve(json);
         } catch (error) {
           rejectPending(error);
