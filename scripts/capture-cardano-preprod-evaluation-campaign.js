@@ -110,6 +110,7 @@ if (!campaignArg) {
       throw new Error('Live Cardano Preprod campaign destination already exists; choose a new directory so prior evidence is never overwritten or mixed.');
     }
 
+    process.stderr.write('Live capture stage 1/4: verifying sealed workstation gate...\n');
     const gate = runNode([
       'scripts/cardano-preprod-evaluation-workstation-gate.js',
       '--bundle-dir', resolve(bundleDirArg),
@@ -126,6 +127,7 @@ if (!campaignArg) {
       throw new Error('Sealed workstation gate attempted to weaken the evaluation-only authority boundary.');
     }
 
+    process.stderr.write('Live capture stage 2/4: acquiring stable independently-confirmed Preprod protocol context...\n');
     client = createCardanoOgmiosHttpClient({
       url: ogmiosUrl,
       apiKey: ogmiosApiKey,
@@ -133,11 +135,13 @@ if (!campaignArg) {
     });
 
     const live = await captureStableProtocolContext(client, blockfrostProjectId, retries);
+    process.stderr.write(`Stable Preprod context acquired at slot ${live.snapshot.tip.slot}.\n`);
     await mkdir(campaign, { recursive: true });
     await writeFile(join(campaign, 'workstation-gate-receipt.json'), `${JSON.stringify(gateReport, null, 2)}\n`);
     const protocolPath = join(campaign, 'current-preprod-protocol-parameters.json');
     await writeFile(protocolPath, `${JSON.stringify(live.snapshot, null, 2)}\n`);
 
+    process.stderr.write('Live capture stage 3/4: creating fresh campaign evidence directory and fixtures...\n');
     const prepared = runNode([
       'scripts/prepare-cardano-preprod-campaign.js',
       '--output', campaign,
@@ -150,7 +154,9 @@ if (!campaignArg) {
     const campaignManifest = JSON.parse(await readFile(join(campaign, 'campaign-manifest.json'), 'utf8'));
     const captured = [];
 
+    process.stderr.write('Live capture stage 4/4: evaluating initialize -> heartbeat -> approve -> execute against Preprod...\n');
     for (const entry of campaignManifest.sessions) {
+      process.stderr.write(`Evaluating ${entry.action}...\n`);
       const session = resolve(campaign, entry.directory);
       const manifest = JSON.parse(await readFile(join(session, 'capture-manifest.json'), 'utf8'));
       const request = JSON.parse(await readFile(join(session, manifest.files.evaluationRequest), 'utf8'));
@@ -223,6 +229,7 @@ if (!campaignArg) {
           report.supportClaimAuthorized !== false) {
         throw new Error(`${entry.action} session attempted to cross the evaluation-only authority boundary.`);
       }
+      process.stderr.write(`Evaluation ${entry.action}: verified and captured.\n`);
       captured.push({
         action: entry.action,
         tipHash: stable.tip.hash,
