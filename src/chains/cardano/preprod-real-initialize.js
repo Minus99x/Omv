@@ -164,7 +164,7 @@ function validateBinding(binding, identity) {
     throw new Error('Real UTxO binding evidence is bound to a different applied validator identity.');
   }
   if (!HEX_28.test(String(value.walletPaymentKeyHash ?? ''))) throw new Error('Real UTxO binding evidence is missing the wallet payment key hash.');
-  for (const role of ['seed', 'fee', 'collateral']) {
+  for (const role of ['seed', 'collateral']) {
     if (!value.roles?.[role]?.reference || !value.roles?.[role]?.address) throw new Error(`Real UTxO binding evidence is missing ${role}.`);
     positiveBigInt(value.roles[role].lovelace, `${role}.lovelace`);
   }
@@ -240,9 +240,8 @@ export function buildCardanoPreprodRealInitializeCandidate({
   const upperSlot = tipSlot + CARDANO_PREPROD_EVALUATION_VALIDITY_WINDOW_SLOTS;
   const heartbeatMs = cardanoPreprodSlotToUnixTimeMs(lowerSlot);
   const seedAmount = positiveBigInt(binding.roles.seed.lovelace, 'seed.lovelace');
-  const feeAmount = positiveBigInt(binding.roles.fee.lovelace, 'fee.lovelace');
   const collateralAmount = positiveBigInt(binding.roles.collateral.lovelace, 'collateral.lovelace');
-  const totalSpendInputs = seedAmount + feeAmount;
+  const totalSpendInputs = seedAmount;
 
   const beaconScript = Cardano.PlutusScript.new_v3(Uint8Array.from(Buffer.from(identity.beaconCode, 'hex')));
   const redeemers = Cardano.Redeemers.new();
@@ -283,7 +282,7 @@ export function buildCardanoPreprodRealInitializeCandidate({
 
   for (let iteration = 0; iteration < 12; iteration += 1) {
     iterations = iteration + 1;
-    if (totalSpendInputs <= config.stateLovelace + fee) throw new Error('Seed + fee UTxOs do not contain enough ADA for the protected state output plus fee.');
+    if (totalSpendInputs <= config.stateLovelace + fee) throw new Error('Seed UTxO does not contain enough ADA for the protected state output plus fee and change.');
     changeLovelace = totalSpendInputs - config.stateLovelace - fee;
 
     const stateOutput = Cardano.TransactionOutput.new(
@@ -313,7 +312,6 @@ export function buildCardanoPreprodRealInitializeCandidate({
 
     const inputs = Cardano.TransactionInputs.new();
     inputs.add(referenceInput(binding.roles.seed.reference));
-    inputs.add(referenceInput(binding.roles.fee.reference));
     const outputs = Cardano.TransactionOutputs.new();
     outputs.add(stateOutput);
     outputs.add(changeOutput);
