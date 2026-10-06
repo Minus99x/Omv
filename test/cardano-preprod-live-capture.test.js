@@ -40,11 +40,13 @@ test('Ogmios HTTP client sends JSON-RPC plus configured authentication without e
   assert.equal(body.id, 'x');
 });
 
-test('Ogmios WebSocket client supports authenticated wss endpoint JSON-RPC', async () => {
+test('Ogmios WebSocket client reuses one authenticated connection across JSON-RPC calls', async () => {
+  let connections = 0;
   class FakeWebSocket {
     constructor(url) {
       this.url = url;
       this.listeners = new Map();
+      connections += 1;
       queueMicrotask(() => this.emit('open', {}));
     }
     addEventListener(name, fn) {
@@ -57,18 +59,22 @@ test('Ogmios WebSocket client supports authenticated wss endpoint JSON-RPC', asy
     send(payload) {
       const request = JSON.parse(payload);
       queueMicrotask(() => this.emit('message', {
-        data: JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { epoch: 400 } })
+        data: JSON.stringify({ jsonrpc: '2.0', id: request.id, result: request.method === 'queryNetwork/tip' ? { id: 'ab'.repeat(32), slot: 123 } : { epoch: 400 } })
       }));
     }
-    close() {}
+    close() { this.emit('close', { code: 1000 }); }
   }
 
   const client = createCardanoOgmiosHttpClient({
     url: 'wss://authenticated.preprod.example.invalid',
     WebSocketImpl: FakeWebSocket
   });
-  const response = await client.rpc('queryLedgerState/epoch', undefined, 'ws-1');
-  assert.equal(response.result.epoch, 400);
+  const tip = await client.rpc('queryNetwork/tip', undefined, 'ws-1');
+  const epoch = await client.rpc('queryLedgerState/epoch', undefined, 'ws-2');
+  assert.equal(tip.result.slot, 123);
+  assert.equal(epoch.result.epoch, 400);
+  assert.equal(connections, 1);
+  client.close();
 });
 
 test('Ogmios WebSocket client rejects header-key mode so credentials are never silently dropped', async () => {
