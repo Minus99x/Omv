@@ -21,6 +21,7 @@ import {
   buildCardanoPreprodRealInitializeCandidate,
   verifyCardanoPreprodRealInitializeCandidate
 } from './preprod-real-initialize.js';
+import { createCardanoPreprodUnsignedInitializePreflight } from './preprod-unsigned-initialize-preflight.js';
 
 function sameTip(left, right) {
   return Boolean(left && right && left.hash === right.hash && left.slot === right.slot);
@@ -180,6 +181,14 @@ export async function captureCardanoPreprodRealInitializeEvaluation({
       throw new Error(`Real initialize post-evaluation candidate verification failed: ${finalCandidateCheck.errors.join('; ')}`);
     }
 
+    const unsignedPhaseOnePreflight = createCardanoPreprodUnsignedInitializePreflight({
+      candidate: finalUnsignedCandidate,
+      appliedValidatorIdentity,
+      utxoBindingEvidence,
+      parameters,
+      recoveryConfig
+    });
+
     const evaluationCore = Object.freeze({
       schema: 'omegavault.cardano.preprod-real-initialize-evaluation.v1',
       network: 'preprod',
@@ -192,6 +201,7 @@ export async function captureCardanoPreprodRealInitializeEvaluation({
       evaluationResponse,
       normalizedEvaluation: evaluation,
       finalUnsignedCandidateSha256: finalUnsignedCandidate.candidateSha256,
+      unsignedPhaseOnePreflightSha256: unsignedPhaseOnePreflight.preflightSha256,
       walletSigningPerformed: false,
       transactionSubmissionPerformed: false,
       fullPhaseOneValidated: false,
@@ -217,6 +227,7 @@ export async function captureCardanoPreprodRealInitializeEvaluation({
       evaluationCandidate,
       evaluationEvidence,
       finalUnsignedCandidate,
+      unsignedPhaseOnePreflight,
       fullPhaseOneValidated: false,
       walletSigningAuthorized: false,
       transactionSubmissionAuthorized: false,
