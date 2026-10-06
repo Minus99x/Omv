@@ -126,6 +126,51 @@ test('Blockfrost Preprod helper uses project_id and latest epoch parameter endpo
   assert.equal(calls[0].options.headers.project_id, 'preprod_key');
 });
 
+test('Ogmios WebSocket client preserves script execution failure code and data', async () => {
+  class FakeWebSocket {
+    constructor() {
+      this.listeners = new Map();
+      queueMicrotask(() => this.emit('open', {}));
+    }
+    addEventListener(name, fn) {
+      if (!this.listeners.has(name)) this.listeners.set(name, []);
+      this.listeners.get(name).push(fn);
+    }
+    on(name, fn) { this.addEventListener(name, fn); }
+    emit(name, event) {
+      for (const fn of this.listeners.get(name) ?? []) fn(event);
+    }
+    send(payload) {
+      const request = JSON.parse(payload);
+      queueMicrotask(() => this.emit('message', {
+        data: JSON.stringify({
+          jsonrpc: '2.0',
+          id: request.id,
+          error: {
+            code: 3010,
+            message: 'Some scripts of the transactions terminated with error(s).',
+            data: [{ validator: 'spend:0', error: 'fixture-script-failure' }]
+          }
+        })
+      }));
+    }
+    close() { this.emit('close', { code: 1000 }); }
+  }
+
+  const client = createCardanoOgmiosHttpClient({
+    url: 'wss://preprod.example.invalid',
+    WebSocketImpl: FakeWebSocket
+  });
+
+  await assert.rejects(
+    () => client.rpc('evaluateTransaction', { transaction: { cbor: '00' } }, 'eval-fail'),
+    error => /code=3010/.test(error.message) &&
+      /spend:0/.test(error.message) &&
+      /fixture-script-failure/.test(error.message)
+  );
+  client.close();
+});
+
 test('Ogmios/Blockfrost helpers fail closed on RPC or HTTP errors', async () => {
   assert.throws(() => parseCardanoOgmiosTipResponse({ error: { message: 'bad tip' } }), /bad tip/);
   const failFetch = async () => ({ ok: false, status: 403, json: async () => ({}) });
