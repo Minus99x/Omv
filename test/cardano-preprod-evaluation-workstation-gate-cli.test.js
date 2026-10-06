@@ -14,8 +14,16 @@ const run = args => spawnSync(process.execPath, args, { cwd: process.cwd(), enco
 function makeBundle() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-evaluation-gate-bundle-'));
   const sealedSource = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-evaluation-sealed-source-'));
-  fs.copyFileSync('package.json', path.join(sealedSource, 'package.json'));
-  fs.copyFileSync('package-lock.json', path.join(sealedSource, 'package-lock.json'));
+  const sourceRoot = process.cwd();
+  fs.cpSync(sourceRoot, sealedSource, {
+    recursive: true,
+    filter: source => {
+      const rel = path.relative(sourceRoot, source);
+      if (!rel) return true;
+      const first = rel.split(path.sep)[0];
+      return first !== '.git' && first !== 'node_modules';
+    }
+  });
 
   const pkgText = fs.readFileSync(path.join(sealedSource, 'package.json'), 'utf8');
   const lockText = fs.readFileSync(path.join(sealedSource, 'package-lock.json'), 'utf8');
@@ -27,7 +35,7 @@ function makeBundle() {
   fs.writeFileSync(archive, 'evaluation-workstation-gate-fixture');
 
   const lock = verifyPackageLockIntegrity({ packageJsonText: pkgText, packageLockText: lockText });
-  const inventory = createSourceTreeInventory(sealedSource);
+  const inventory = createSourceTreeInventory(sourceRoot);
   const manifest = createCheckpointManifest({
     checkpoint: { ref: pkg.version, archive: path.basename(archive), archiveSha256: sha(fs.readFileSync(archive)) },
     dependencyLock: lock.binding,
