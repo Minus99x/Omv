@@ -51,7 +51,15 @@ export function createCardanoPlutusV3CostModels(costModelValues) {
   return models;
 }
 
-export function buildCardanoWitnessSetFixture({ action, parameters, recoveryCompiledCode, beaconCompiledCode, evaluationMode = false, publicPreprodEvaluation = false }) {
+export function buildCardanoWitnessSetFixture({
+  action,
+  parameters,
+  recoveryCompiledCode,
+  beaconCompiledCode,
+  evaluationMode = false,
+  publicPreprodEvaluation = false,
+  evaluationSlot = null
+}) {
   if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('Unknown Cardano fixture action.');
   const redeemers = Cardano.Redeemers.new();
   const scripts = Cardano.PlutusScripts.new();
@@ -95,7 +103,8 @@ export function buildCardanoWitnessSetFixture({ action, parameters, recoveryComp
     const bodyFixture = buildCardanoTransactionBodyFixture(action, {
       feeLovelace: fee,
       scriptDataHashHex: scriptDataHash,
-      evaluationContext: publicPreprodEvaluation
+      evaluationContext: publicPreprodEvaluation,
+      evaluationSlot
     });
     const body = Cardano.TransactionBody.from_hex(bodyFixture.cborHex);
     keyWitnessCount = evaluationMode ? 0 : attachKeyWitnesses(witnessSet, body, action);
