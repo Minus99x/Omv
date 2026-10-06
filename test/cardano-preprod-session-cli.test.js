@@ -25,7 +25,7 @@ test('Cardano Preprod session CLI prepares an offline checkpoint-bound manifest 
   assert.equal(manifest.checkpoint.checkpointRef, '0.6.58-dev');
   assert.equal(manifest.checkpoint.sourceCommitSha, 'f3f67a62d66dc9a509c85d33eb35674133e08bb3');
   assert.equal(fs.existsSync(path.join(dir, manifest.files.evaluationRequest)), true);
-  assert.equal(manifest.capturePlan.evaluationRequest.params.additionalUtxoSet.length, 3);
+  assert.equal(manifest.capturePlan.evaluationRequest.params.additionalUtxo.length, 3);
 
   const status = run(['scripts/verify-cardano-preprod-session.js', '--session', dir]);
   assert.equal(status.status, 2);
