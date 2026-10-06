@@ -74,53 +74,106 @@ export function createCardanoOgmiosHttpClient({
     return json;
   }
 
-  async function rpcWebSocket(method, params, requestId) {
+  let socket = null;
+  let socketOpen = false;
+  let socketOpening = null;
+  const pending = new Map();
+
+  function rejectPending(error) {
+    for (const entry of pending.values()) {
+      clearTimeout(entry.timer);
+      entry.reject(error);
+    }
+    pending.clear();
+  }
+
+  async function ensureWebSocket() {
     if (apiKey) {
       throw new Error('WebSocket Ogmios authentication must use an authenticated endpoint URL; header-based WebSocket authentication is not supported by this client.');
     }
-    const request = { jsonrpc: '2.0', method, id: requestId ?? `omegavault-${++id}` };
-    if (params !== undefined) request.params = params;
+    if (socket && socketOpen) return socket;
+    if (socketOpening) return socketOpening;
 
-    return await new Promise((resolve, reject) => {
-      let settled = false;
+    socketOpening = new Promise((resolve, reject) => {
       const ws = new WebSocketImpl(url);
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        try { ws.close(); } catch {}
-        reject(new Error(`Ogmios WebSocket timeout for ${method}.`));
-      }, 15000);
-
-      const finish = (fn, value) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        try { ws.close(); } catch {}
-        fn(value);
-      };
+      socket = ws;
+      let opened = false;
 
       ws.addEventListener('open', () => {
-        try { ws.send(JSON.stringify(request)); }
-        catch (error) { finish(reject, error); }
+        opened = true;
+        socketOpen = true;
+        const ready = socketOpening;
+        socketOpening = null;
+        resolve(ws);
+        return ready;
       });
 
       ws.addEventListener('message', event => {
         try {
           const raw = typeof event.data === 'string' ? event.data : Buffer.from(event.data).toString('utf8');
           const json = JSON.parse(raw);
-          if (json?.id !== request.id) return;
-          if (json?.error) return finish(reject, new Error(`Ogmios ${method} failed: ${json.error.message ?? json.error.code ?? 'unknown error'}`));
-          finish(resolve, json);
+          const entry = pending.get(json?.id);
+          if (!entry) return;
+          pending.delete(json.id);
+          clearTimeout(entry.timer);
+          if (json?.error) entry.reject(new Error(`Ogmios ${entry.method} failed: ${json.error.message ?? json.error.code ?? 'unknown error'}`));
+          else entry.resolve(json);
         } catch (error) {
-          finish(reject, error);
+          rejectPending(error);
         }
       });
 
-      ws.addEventListener('error', () => finish(reject, new Error(`Ogmios WebSocket connection failed for ${method}.`)));
+      ws.addEventListener('error', () => {
+        const error = new Error('Ogmios WebSocket connection failed.');
+        if (!opened) {
+          socketOpening = null;
+          socket = null;
+          reject(error);
+        }
+        rejectPending(error);
+      });
+
       ws.addEventListener('close', event => {
-        if (!settled) finish(reject, new Error(`Ogmios WebSocket closed before response for ${method} (code ${event.code}).`));
+        socketOpen = false;
+        socketOpening = null;
+        socket = null;
+        rejectPending(new Error(`Ogmios WebSocket closed (code ${event.code}).`));
       });
     });
+
+    return socketOpening;
+  }
+
+  async function rpcWebSocket(method, params, requestId) {
+    const ws = await ensureWebSocket();
+    const rpcId = requestId ?? `omegavault-${++id}`;
+    const request = { jsonrpc: '2.0', method, id: rpcId };
+    if (params !== undefined) request.params = params;
+
+    return await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        pending.delete(rpcId);
+        reject(new Error(`Ogmios WebSocket timeout for ${method}.`));
+      }, 15000);
+      pending.set(rpcId, { resolve, reject, timer, method });
+      try {
+        ws.send(JSON.stringify(request));
+      } catch (error) {
+        pending.delete(rpcId);
+        clearTimeout(timer);
+        reject(error);
+      }
+    });
+  }
+
+  function close() {
+    if (socket) {
+      try { socket.close(); } catch {}
+    }
+    socket = null;
+    socketOpen = false;
+    socketOpening = null;
+    rejectPending(new Error('Ogmios client closed.'));
   }
 
   return Object.freeze({
@@ -128,7 +181,8 @@ export function createCardanoOgmiosHttpClient({
       return isWebSocket
         ? rpcWebSocket(method, params, requestId)
         : rpcHttp(method, params, requestId);
-    }
+    },
+    close
   });
 }
 
