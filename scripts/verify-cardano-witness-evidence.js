@@ -20,6 +20,30 @@ assert.equal(gate.liveConstructionReady, false);
 assert.equal(witnessEvidence.liveConstructionReady, false);
 assert.equal(witnessEvidence.costModelSourceCount, 1);
 
+const correctedFixtures = {};
+for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
+  const actual = buildCardanoWitnessSetFixture({ action, parameters, recoveryCompiledCode: recoveryCode, beaconCompiledCode: beaconCode });
+  const evaluationFixture = buildCardanoOgmiosEvaluationFixture({ action, parameters, recoveryCompiledCode: recoveryCode, beaconCompiledCode: beaconCode });
+  const evaluationRequest = createCardanoOgmiosEvaluationRequest({ transactionCborHex: evaluationFixture.transactionCborHex, id: `evaluate-${action}` });
+  correctedFixtures[action] = {
+    scriptDataHash: actual.scriptDataHash,
+    witnessSetBytes: actual.witnessSetBytes,
+    witnessSetSha256: sha256Hex(actual.witnessSetCborHex),
+    transactionBytes: actual.transactionBytes,
+    transactionSha256: sha256Hex(actual.transactionCborHex),
+    minimumFee: actual.minimumFee,
+    memory: actual.memory,
+    steps: actual.steps,
+    keyWitnessCount: actual.keyWitnessCount,
+    feeConvergenceIterations: actual.feeConvergenceIterations,
+    minimumAda: actual.minimumAda,
+    collateral: actual.collateral,
+    evaluationTransactionBodyHash: evaluationRequest.transactionBodyHash,
+    evaluationValidators: evaluationRequest.expectedValidators
+  };
+}
+console.log(`CARDANO_WITNESS_CORRECTION_FIXTURES=${JSON.stringify(correctedFixtures)}`);
+
 for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
   const actual = buildCardanoWitnessSetFixture({ action, parameters, recoveryCompiledCode: recoveryCode, beaconCompiledCode: beaconCode });
   const expected = witnessEvidence.fixtures[action];
