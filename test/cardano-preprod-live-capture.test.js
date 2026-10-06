@@ -3,12 +3,14 @@ import assert from 'node:assert/strict';
 import {
   cardanoSameTip,
   createCardanoOgmiosHttpClient,
+  createCardanoOgmiosUtxoByOutputReferencesParams,
   fetchCardanoBlockfrostPreprodProtocolParameters,
   normalizeCardanoOgmiosWebSocketUrl,
   parseCardanoOgmiosBlockHeightResponse,
   parseCardanoOgmiosEpochResponse,
   parseCardanoOgmiosProtocolParametersResponse,
-  parseCardanoOgmiosTipResponse
+  parseCardanoOgmiosTipResponse,
+  parseCardanoOgmiosUtxoResponse
 } from '../src/chains/cardano/preprod-live-capture.js';
 
 test('Ogmios endpoint normalization forces WebSocket transport without changing host/path/query', () => {
@@ -31,6 +33,52 @@ test('Ogmios response parsers accept current JSON-RPC tip/epoch/height/parameter
   assert.deepEqual(parseCardanoOgmiosProtocolParametersResponse({ result: { minFeeCoefficient: 44 } }), { minFeeCoefficient: 44 });
   assert.equal(cardanoSameTip({ hash, slot: 1 }, { hash, slot: 1 }), true);
   assert.equal(cardanoSameTip({ hash, slot: 1 }, { hash, slot: 2 }), false);
+});
+
+test('Ogmios UTxO query builder and parser bind exact output references and values', () => {
+  const txId = 'ab'.repeat(32);
+  const params = createCardanoOgmiosUtxoByOutputReferencesParams([
+    { transaction: { id: txId.toUpperCase() }, index: 2 }
+  ]);
+  assert.deepEqual(params, {
+    outputReferences: [{ transaction: { id: txId }, index: 2 }]
+  });
+
+  const result = parseCardanoOgmiosUtxoResponse({
+    result: [{
+      transaction: { id: txId },
+      index: 2,
+      address: 'addr_test1vfixture',
+      value: {
+        ada: { lovelace: 5000000 },
+        ['cd'.repeat(28)]: { '4F56': 1 }
+      },
+      datum: '80'
+    }]
+  });
+  assert.equal(result.length, 1);
+  assert.equal(result[0].transaction.id, txId);
+  assert.equal(result[0].index, 2);
+  assert.equal(result[0].value.ada.lovelace, '5000000');
+  assert.equal(result[0].value['cd'.repeat(28)]['4f56'], '1');
+  assert.equal(result[0].datum, '80');
+
+  assert.throws(
+    () => createCardanoOgmiosUtxoByOutputReferencesParams([
+      { transaction: { id: txId }, index: 2 },
+      { transaction: { id: txId }, index: 2 }
+    ]),
+    /Duplicate/
+  );
+  assert.throws(
+    () => parseCardanoOgmiosUtxoResponse({
+      result: [
+        { transaction: { id: txId }, index: 2, address: 'addr_test1vfixture', value: { ada: { lovelace: 1 } } },
+        { transaction: { id: txId }, index: 2, address: 'addr_test1vfixture', value: { ada: { lovelace: 1 } } }
+      ]
+    }),
+    /duplicate/i
+  );
 });
 
 test('Ogmios HTTP client sends JSON-RPC plus configured authentication without exposing it in output', async () => {
