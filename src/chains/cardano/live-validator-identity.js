@@ -26,24 +26,36 @@ function normalizeAssetName(assetNameHex) {
   return value;
 }
 
-function plutusConstr(alternative, fields) {
-  const list = Cardano.PlutusList.new();
-  for (const field of fields) list.add(field);
-  return Cardano.PlutusData.new_constr_plutus_data(
-    Cardano.ConstrPlutusData.new(Cardano.BigNum.from_str(String(alternative)), list)
-  );
+function canonicalCborUnsigned(value) {
+  const n = BigInt(value);
+  if (n < 0n) throw new TypeError('CBOR unsigned integer cannot be negative.');
+  if (n < 24n) return n.toString(16).padStart(2, '0');
+  if (n <= 0xffn) return `18${n.toString(16).padStart(2, '0')}`;
+  if (n <= 0xffffn) return `19${n.toString(16).padStart(4, '0')}`;
+  if (n <= 0xffffffffn) return `1a${n.toString(16).padStart(8, '0')}`;
+  if (n <= 0xffffffffffffffffn) return `1b${n.toString(16).padStart(16, '0')}`;
+  throw new RangeError('CBOR unsigned integer exceeds uint64.');
+}
+
+function canonicalCborBytes(hexValue) {
+  const bytes = Buffer.from(hexValue, 'hex');
+  const length = bytes.length;
+  const header = length < 24
+    ? (0x40 + length).toString(16).padStart(2, '0')
+    : `58${length.toString(16).padStart(2, '0')}`;
+  return `${header}${hexValue}`;
 }
 
 export function encodeCardanoOutputReferencePlutusData(seedReference) {
   const seed = normalizeSeedReference(seedReference);
-  const transactionId = Cardano.PlutusData.new_bytes(Uint8Array.from(Buffer.from(seed.transaction.id, 'hex')));
-  const outputIndex = Cardano.PlutusData.new_integer(Cardano.BigInt.from_str(String(seed.index)));
-  return plutusConstr(0, [transactionId, outputIndex]).to_hex();
+  // Aiken blueprint application is byte-sensitive. Use the same definite-list
+  // canonical PlutusData encoding produced by the pinned fixture workflow:
+  // Constr 0 (tag 121) + definite array[2] + bytes32 tx id + unsigned index.
+  return `d87982${canonicalCborBytes(seed.transaction.id)}${canonicalCborUnsigned(seed.index)}`;
 }
 
 export function encodeCardanoAssetNamePlutusData(assetNameHex) {
-  const normalized = normalizeAssetName(assetNameHex);
-  return Cardano.PlutusData.new_bytes(Uint8Array.from(Buffer.from(normalized, 'hex'))).to_hex();
+  return canonicalCborBytes(normalizeAssetName(assetNameHex));
 }
 
 function compiledScriptIdentity(compiledCode, label) {
