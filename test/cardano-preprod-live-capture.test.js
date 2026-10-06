@@ -77,17 +77,41 @@ test('Ogmios WebSocket client reuses one authenticated connection across JSON-RP
   client.close();
 });
 
-test('Ogmios WebSocket client rejects header-key mode so credentials are never silently dropped', async () => {
-  class FakeWebSocket {}
+test('Ogmios WebSocket client sends configured Demeter authentication header', async () => {
+  let constructorArgs = null;
+  class FakeWebSocket {
+    constructor(...args) {
+      constructorArgs = args;
+      this.listeners = new Map();
+      queueMicrotask(() => this.emit('open', {}));
+    }
+    addEventListener(name, fn) {
+      if (!this.listeners.has(name)) this.listeners.set(name, []);
+      this.listeners.get(name).push(fn);
+    }
+    emit(name, event) {
+      for (const fn of this.listeners.get(name) ?? []) fn(event);
+    }
+    send(payload) {
+      const request = JSON.parse(payload);
+      queueMicrotask(() => this.emit('message', {
+        data: JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { epoch: 400 } })
+      }));
+    }
+    close() { this.emit('close', { code: 1000 }); }
+  }
+
   const client = createCardanoOgmiosHttpClient({
     url: 'wss://preprod.example.invalid',
     apiKey: 'secret',
+    apiKeyHeader: 'dmtr-api-key',
     WebSocketImpl: FakeWebSocket
   });
-  await assert.rejects(
-    () => client.rpc('queryLedgerState/epoch'),
-    /authenticated endpoint URL/
-  );
+  const response = await client.rpc('queryLedgerState/epoch', undefined, 'ws-auth');
+  assert.equal(response.result.epoch, 400);
+  assert.equal(constructorArgs[0], 'wss://preprod.example.invalid');
+  assert.equal(constructorArgs[2].headers['dmtr-api-key'], 'secret');
+  client.close();
 });
 
 test('Blockfrost Preprod helper uses project_id and latest epoch parameter endpoint', async () => {
