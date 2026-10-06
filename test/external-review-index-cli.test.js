@@ -13,24 +13,25 @@ function sha256(buffer) { return createHash('sha256').update(buffer).digest('hex
 test('review-index CLI generates and verifies an externally bound review package', () => {
   const root = process.cwd();
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-review-index-'));
-  const archivePath = path.join(dir, 'omegavault-mvp-0.6.40-dev.zip');
+  const packageJsonText = fs.readFileSync(path.join(root, 'package.json'), 'utf8');
+  const packageLockText = fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8');
+  const pkg = JSON.parse(packageJsonText);
+  const archivePath = path.join(dir, `omegavault-mvp-${pkg.version}.zip`);
   const archiveBytes = Buffer.from('deterministic-fixture-archive');
   fs.writeFileSync(archivePath, archiveBytes);
 
-  const packageJsonText = fs.readFileSync(path.join(root, 'package.json'), 'utf8');
-  const packageLockText = fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8');
   const dependency = verifyPackageLockIntegrity({ packageJsonText, packageLockText });
   assert.equal(dependency.ok, true);
   const sourceInventory = createSourceTreeInventory(root);
   const manifest = createCheckpointManifest({
-    checkpoint: { ref: '0.6.40-dev', archive: path.basename(archivePath), archiveSha256: sha256(archiveBytes) },
+    checkpoint: { ref: pkg.version, archive: path.basename(archivePath), archiveSha256: sha256(archiveBytes) },
     dependencyLock: dependency.binding,
     sourceInventory
   });
   const sidecar = { ...manifest, sourceInventory };
-  const manifestPath = path.join(dir, 'omegavault-mvp-0.6.40-dev.checkpoint-manifest.json');
+  const manifestPath = path.join(dir, `omegavault-mvp-${pkg.version}.checkpoint-manifest.json`);
   fs.writeFileSync(manifestPath, `${JSON.stringify(sidecar, null, 2)}\n`);
-  const indexPath = path.join(dir, 'omegavault-mvp-0.6.40-dev.review-index.json');
+  const indexPath = path.join(dir, `omegavault-mvp-${pkg.version}.review-index.json`);
 
   const generated = spawnSync(process.execPath, ['scripts/generate-external-review-index.js', '--archive', archivePath, '--checkpoint-manifest', manifestPath, '--output', indexPath], { cwd: root, encoding: 'utf8' });
   assert.equal(generated.status, 0, generated.stderr);
