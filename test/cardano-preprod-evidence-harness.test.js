@@ -1,4 +1,5 @@
 import test from 'node:test';
+import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { buildCardanoPublicPreprodOgmiosEvaluationFixture } from '../src/chains/cardano/witness-set.js';
@@ -52,6 +53,20 @@ function fixture() {
   };
   return { plan, acquiredTip, protocolParameterSnapshot: protocolSnapshot, ogmiosEvaluation };
 }
+
+test('public Preprod evaluation candidate carries Plutus V3 scripts in the V3 witness field', () => {
+  const candidate = buildCardanoPublicPreprodOgmiosEvaluationFixture({
+    action: 'execute',
+    parameters,
+    recoveryCompiledCode: recoveryCode,
+    beaconCompiledCode: beaconCode
+  });
+  const transaction = Cardano.Transaction.from_hex(candidate.transactionCborHex);
+  const witnessSet = transaction.witness_set();
+  assert.equal(witnessSet.plutus_scripts(), undefined);
+  assert.equal(witnessSet.plutus_v2_scripts(), undefined);
+  assert.equal(witnessSet.plutus_v3_scripts()?.len(), 2);
+});
 
 test('Cardano Preprod capture plan freezes an Ogmios-resolvable zero-budget candidate without authorizing live actions', () => {
   const input = fixture();
