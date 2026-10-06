@@ -52,7 +52,6 @@ function binding(appliedIdentity) {
   const ownerAddress = walletAddress('11'.repeat(28));
   const roles = {
     seed: { transaction: { id: fixtureEvidence.parameters.seedTxId }, index: fixtureEvidence.parameters.seedOutputIndex },
-    fee: { transaction: { id: 'ef'.repeat(32) }, index: 1 },
     collateral: { transaction: { id: '12'.repeat(32) }, index: 0 }
   };
   const plan = createCardanoPreprodRealUtxoBindingPlan({
@@ -66,8 +65,7 @@ function binding(appliedIdentity) {
     tipBefore: tip,
     tipAfter: tip,
     queriedUtxo: [
-      { ...roles.seed, address: ownerAddress, value: { ada: { lovelace: '10000000' } } },
-      { ...roles.fee, address: ownerAddress, value: { ada: { lovelace: '3000000' } } },
+      { ...roles.seed, address: ownerAddress, value: { ada: { lovelace: '20000000' } } },
       { ...roles.collateral, address: ownerAddress, value: { ada: { lovelace: '5000000' } } }
     ]
   });
@@ -110,7 +108,7 @@ test('Cardano real initialize evaluation candidate is balanced, unsigned and led
   assert.match(candidate.candidateSha256, /^[0-9a-f]{64}$/);
 
   const tx = Cardano.Transaction.from_hex(candidate.transaction.cborHex);
-  assert.equal(tx.body().inputs().len(), 2);
+  assert.equal(tx.body().inputs().len(), 1);
   assert.equal(tx.body().collateral().len(), 1);
   assert.equal(tx.body().outputs().len(), 2);
   assert.equal(tx.witness_set().vkeys(), undefined);
