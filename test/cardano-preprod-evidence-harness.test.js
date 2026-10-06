@@ -54,7 +54,7 @@ function fixture() {
   return { plan, acquiredTip, protocolParameterSnapshot: protocolSnapshot, ogmiosEvaluation };
 }
 
-test('public Preprod evaluation candidate carries Plutus V3 scripts in the V3 witness field', () => {
+test('public Preprod evaluation candidate carries both required Plutus V3 witness scripts', () => {
   const candidate = buildCardanoPublicPreprodOgmiosEvaluationFixture({
     action: 'execute',
     parameters,
@@ -62,10 +62,18 @@ test('public Preprod evaluation candidate carries Plutus V3 scripts in the V3 wi
     beaconCompiledCode: beaconCode
   });
   const transaction = Cardano.Transaction.from_hex(candidate.transactionCborHex);
-  const witnessSet = transaction.witness_set();
-  assert.equal(witnessSet.plutus_scripts(), undefined);
-  assert.equal(witnessSet.plutus_v2_scripts(), undefined);
-  assert.equal(witnessSet.plutus_v3_scripts()?.len(), 2);
+  const scripts = transaction.witness_set().plutus_scripts();
+  assert.equal(scripts?.len(), 2);
+  const hashes = [];
+  for (let index = 0; index < scripts.len(); index += 1) {
+    const script = scripts.get(index);
+    assert.equal(script.language_version().kind(), Cardano.LanguageKind.PlutusV3);
+    hashes.push(script.hash().to_hex());
+  }
+  assert.deepEqual(hashes.sort(), [
+    '2f59df4cdf1199ef68d705b6a30f6738cf31075d361692cb8a58c4b4',
+    '3c298bd60240d5d6d89811dc9fcffd9f37c6d60df8f74562cc01fcd6'
+  ].sort());
 });
 
 test('Cardano Preprod capture plan freezes an Ogmios-resolvable zero-budget candidate without authorizing live actions', () => {
