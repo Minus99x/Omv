@@ -16,7 +16,14 @@ function formatOgmiosRpcError(method, error) {
       detail = encoded.length > 4000 ? ` data=${encoded.slice(0, 4000)}…` : ` data=${encoded}`;
     } catch {}
   }
-  return new Error(`Ogmios ${method} failed:${code} ${error?.message ?? 'unknown error'}${detail}`);
+  const formatted = new Error(`Ogmios ${method} failed:${code} ${error?.message ?? 'unknown error'}${detail}`);
+  formatted.ogmios = Object.freeze({
+    method,
+    code: error?.code ?? null,
+    message: error?.message ?? 'unknown error',
+    data: error?.data ?? null
+  });
+  return formatted;
 }
 
 function rpcResult(response, label) {
