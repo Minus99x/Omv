@@ -4,13 +4,15 @@ import {
   cardanoSameTip,
   createCardanoOgmiosHttpClient,
   createCardanoOgmiosUtxoByOutputReferencesParams,
+  fetchCardanoBlockfrostPreprodAddressUtxos,
   fetchCardanoBlockfrostPreprodProtocolParameters,
   normalizeCardanoOgmiosWebSocketUrl,
   parseCardanoOgmiosBlockHeightResponse,
   parseCardanoOgmiosEpochResponse,
   parseCardanoOgmiosProtocolParametersResponse,
   parseCardanoOgmiosTipResponse,
-  parseCardanoOgmiosUtxoResponse
+  parseCardanoOgmiosUtxoResponse,
+  selectCardanoPreprodInitializeUtxos
 } from '../src/chains/cardano/preprod-live-capture.js';
 
 test('Ogmios endpoint normalization forces WebSocket transport without changing host/path/query', () => {
@@ -173,6 +175,77 @@ test('Ogmios WebSocket client sends configured Demeter authentication header', a
   assert.equal(constructorArgs[0], 'wss://preprod.example.invalid');
   assert.equal(constructorArgs[2].headers['dmtr-api-key'], 'secret');
   client.close();
+});
+
+test('Blockfrost Preprod wallet UTxO discovery normalizes assets and deterministically selects seed/collateral', async () => {
+  const address = 'addr_test1vfixture';
+  const calls = [];
+  const fakeFetch = async (url, options) => {
+    calls.push({ url, options });
+    return {
+      ok: true,
+      status: 200,
+      json: async () => [
+        {
+          tx_hash: 'aa'.repeat(32),
+          output_index: 0,
+          amount: [{ unit: 'lovelace', quantity: '5000000' }],
+          data_hash: null,
+          inline_datum: null,
+          reference_script_hash: null
+        },
+        {
+          tx_hash: 'bb'.repeat(32),
+          output_index: 1,
+          amount: [{ unit: 'lovelace', quantity: '20000000' }],
+          data_hash: null,
+          inline_datum: null,
+          reference_script_hash: null
+        },
+        {
+          tx_hash: 'cc'.repeat(32),
+          output_index: 2,
+          amount: [
+            { unit: 'lovelace', quantity: '9000000' },
+            { unit: `${'dd'.repeat(28)}4f56`, quantity: '1' }
+          ],
+          data_hash: null,
+          inline_datum: null,
+          reference_script_hash: null
+        }
+      ]
+    };
+  };
+  const utxos = await fetchCardanoBlockfrostPreprodAddressUtxos({
+    projectId: 'preprod_key',
+    address,
+    fetchImpl: fakeFetch
+  });
+  assert.equal(utxos.length, 3);
+  assert.equal(utxos[2].value['dd'.repeat(28)]['4f56'], '1');
+  const selected = selectCardanoPreprodInitializeUtxos(utxos);
+  assert.equal(selected.seed.transaction.id, 'bb'.repeat(32));
+  assert.equal(selected.seedLovelace, '20000000');
+  assert.equal(selected.collateral.transaction.id, 'aa'.repeat(32));
+  assert.equal(selected.collateralLovelace, '5000000');
+  assert.equal(selected.candidateCount, 2);
+  assert.match(calls[0].url, /addresses\/addr_test1vfixture\/utxos\?count=100&page=1&order=asc$/);
+  assert.equal(calls[0].options.headers.project_id, 'preprod_key');
+});
+
+test('Cardano initialize UTxO selection refuses a wallet without two plain ADA-only outputs', () => {
+  assert.throws(
+    () => selectCardanoPreprodInitializeUtxos([{
+      transaction: { id: 'aa'.repeat(32) },
+      index: 0,
+      address: 'addr_test1vfixture',
+      value: { ada: { lovelace: '10000000' } },
+      datumHash: null,
+      inlineDatum: null,
+      referenceScriptHash: null
+    }]),
+    /at least two distinct/
+  );
 });
 
 test('Blockfrost Preprod helper uses project_id and latest epoch parameter endpoint', async () => {
