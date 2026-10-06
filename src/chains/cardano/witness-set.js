@@ -2,7 +2,7 @@ import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { calculateCardanoMinimumFee, calculateCardanoRequiredCollateral } from './protocol-parameters.js';
 import { calculateCardanoMinRequiredLovelace } from './recovery-validator.js';
-import { buildCardanoTransactionBodyFixture } from './transaction-body.js';
+import { CARDANO_APPLIED_FIXTURE, buildCardanoTransactionBodyFixture } from './transaction-body.js';
 
 function hex(value) {
   return Buffer.from(value).toString('hex');
@@ -69,7 +69,7 @@ export function buildCardanoWitnessSetFixture({
   if (action === 'initialize' || action === 'execute') {
     redeemers.add(redeemer(Cardano.RedeemerTag.new_mint(), plutusConstr(0), evaluationMode ? 0 : 91970, evaluationMode ? 0 : 27959404));
     const beaconScript = Cardano.PlutusScript.from_hex_with_version(beaconCompiledCode, Cardano.Language.new_plutus_v3());
-    if (beaconScript.hash().to_hex() !== buildCardanoTransactionBodyFixture('initialize').mintPolicyId) {
+    if (beaconScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.beaconPolicyId) {
       throw new Error('Cardano beacon witness script hash does not match the transaction mint policy.');
     }
     scripts.add(beaconScript);
@@ -81,7 +81,11 @@ export function buildCardanoWitnessSetFixture({
   if (action !== 'initialize') {
     const budget = action === 'heartbeat' ? [494618, 158755371] : action === 'approve' ? [566905, 179701350] : [423054, 133367503];
     redeemers.add(redeemer(Cardano.RedeemerTag.new_spend(), actionData(action), evaluationMode ? 0 : budget[0], evaluationMode ? 0 : budget[1]));
-    scripts.add(Cardano.PlutusScript.from_hex_with_version(recoveryCompiledCode, Cardano.Language.new_plutus_v3()));
+    const recoveryScript = Cardano.PlutusScript.from_hex_with_version(recoveryCompiledCode, Cardano.Language.new_plutus_v3());
+    if (recoveryScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.recoveryValidatorHash) {
+      throw new Error('Cardano recovery witness script hash does not match the transaction validator.');
+    }
+    scripts.add(recoveryScript);
     if (!evaluationMode) {
       memory += BigInt(budget[0]);
       steps += BigInt(budget[1]);
