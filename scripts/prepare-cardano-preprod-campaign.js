@@ -22,6 +22,11 @@ const projectRoot = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const defaultOutput = resolve(dirname(projectRoot), 'omegavault-cardano-preprod-campaign');
 const output = resolve(arg('--output', defaultOutput));
 const protocolParametersArg = arg('--protocol-parameters');
+const evaluationSlotArg = arg('--evaluation-slot');
+const evaluationSlot = evaluationSlotArg == null ? null : Number(evaluationSlotArg);
+if (evaluationSlot != null && (!Number.isSafeInteger(evaluationSlot) || evaluationSlot < 30)) {
+  throw new TypeError('--evaluation-slot must be a safe Cardano Preprod slot at least 30.');
+}
 const campaignPath = join(output, 'campaign-manifest.json');
 
 if (await exists(campaignPath)) {
@@ -40,6 +45,7 @@ for (const action of CARDANO_PREPROD_REQUIRED_LIFECYCLE_ACTIONS) {
     '--action', action
   ];
   if (protocolParametersArg) sessionArgs.push('--protocol-parameters', resolve(protocolParametersArg));
+  if (evaluationSlot != null) sessionArgs.push('--evaluation-slot', String(evaluationSlot));
   const prepared = run(process.execPath, sessionArgs, projectRoot);
   if (prepared.status !== 0) {
     throw new Error(`Failed to prepare Cardano Preprod ${action} session: ${prepared.stderr || prepared.stdout}`);
@@ -82,6 +88,7 @@ process.stdout.write(`${JSON.stringify({
   invariantProgramSha256: campaign.invariantProgramSha256,
   actions: campaign.requiredLifecycleActions,
   sessionCount: campaign.sessions.length,
+  evaluationSlot,
   networkRequestsPerformed: false,
   walletSigningAuthorized: false,
   transactionSubmissionAuthorized: false,
