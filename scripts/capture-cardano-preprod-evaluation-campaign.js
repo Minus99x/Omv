@@ -103,6 +103,7 @@ if (!campaignArg) {
   process.stderr.write('--stable-tip-retries must be an integer from 1 through 30.\n');
   process.exitCode = 2;
 } else {
+  let client = null;
   try {
     const campaign = resolve(campaignArg);
     if (await exists(campaign)) {
@@ -125,7 +126,7 @@ if (!campaignArg) {
       throw new Error('Sealed workstation gate attempted to weaken the evaluation-only authority boundary.');
     }
 
-    const client = createCardanoOgmiosHttpClient({
+    client = createCardanoOgmiosHttpClient({
       url: ogmiosUrl,
       apiKey: ogmiosApiKey,
       apiKeyHeader: ogmiosApiKeyHeader
@@ -220,6 +221,8 @@ if (!campaignArg) {
       throw new Error('Campaign verification attempted to cross the evaluation-only authority boundary.');
     }
 
+    client?.close?.();
+
     process.stdout.write(`${JSON.stringify({
       schema: 'omegavault.cardano.preprod-live-evaluation-campaign.v1',
       ok: true,
@@ -249,6 +252,7 @@ if (!campaignArg) {
       hardStop: 'STOP. Final transaction construction, full phase-1 validation, wallet signing, submission, inclusion/finality and public-network recovery remain separately gated.'
     }, null, 2)}\n`);
   } catch (error) {
+    client?.close?.();
     process.stderr.write(`Cardano Preprod live evaluation campaign blocked: ${error.message}\n`);
     process.exitCode = 2;
   }
