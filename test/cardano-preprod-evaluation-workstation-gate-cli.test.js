@@ -13,8 +13,12 @@ const run = args => spawnSync(process.execPath, args, { cwd: process.cwd(), enco
 
 function makeBundle() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-evaluation-gate-bundle-'));
-  const pkgText = fs.readFileSync('package.json', 'utf8');
-  const lockText = fs.readFileSync('package-lock.json', 'utf8');
+  const sealedSource = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-evaluation-sealed-source-'));
+  fs.copyFileSync('package.json', path.join(sealedSource, 'package.json'));
+  fs.copyFileSync('package-lock.json', path.join(sealedSource, 'package-lock.json'));
+
+  const pkgText = fs.readFileSync(path.join(sealedSource, 'package.json'), 'utf8');
+  const lockText = fs.readFileSync(path.join(sealedSource, 'package-lock.json'), 'utf8');
   const pkg = JSON.parse(pkgText);
   const base = `omegavault-mvp-${pkg.version}`;
   const archive = path.join(dir, `${base}.zip`);
@@ -23,7 +27,7 @@ function makeBundle() {
   fs.writeFileSync(archive, 'evaluation-workstation-gate-fixture');
 
   const lock = verifyPackageLockIntegrity({ packageJsonText: pkgText, packageLockText: lockText });
-  const inventory = createSourceTreeInventory(process.cwd());
+  const inventory = createSourceTreeInventory(sealedSource);
   const manifest = createCheckpointManifest({
     checkpoint: { ref: pkg.version, archive: path.basename(archive), archiveSha256: sha(fs.readFileSync(archive)) },
     dependencyLock: lock.binding,
@@ -33,15 +37,16 @@ function makeBundle() {
 
   const generated = run(['scripts/generate-external-review-index.js', '--archive', archive, '--checkpoint-manifest', manifestPath, '--output', indexPath]);
   assert.equal(generated.status, 0, generated.stderr);
-  return { dir };
+  return { dir, sealedSource, inventory };
 }
 
-test('Cardano evaluation workstation gate verifies sealed source and stops before network/campaign work', () => {
+test('Cardano evaluation workstation gate verifies a separate sealed source and stops before network/campaign work', () => {
   const bundle = makeBundle();
   const campaign = path.join(os.tmpdir(), `omegavault-live-campaign-${process.pid}`);
   const gated = run([
     'scripts/cardano-preprod-evaluation-workstation-gate.js',
     '--bundle-dir', bundle.dir,
+    '--sealed-source', bundle.sealedSource,
     '--campaign', campaign
   ]);
   assert.equal(gated.status, 0, gated.stderr);
@@ -49,6 +54,10 @@ test('Cardano evaluation workstation gate verifies sealed source and stops befor
   assert.equal(report.ok, true);
   assert.equal(report.externalReviewVerified, true);
   assert.equal(report.pinnedDependenciesReady, true);
+  assert.equal(report.sealedSourceRoot, path.resolve(bundle.sealedSource));
+  assert.equal(report.sealedSourceTreeSha256, bundle.inventory.sha256);
+  assert.equal(report.toolingRoot, path.resolve(process.cwd()));
+  assert.match(report.toolingSourceTreeSha256, /^[0-9a-f]{64}$/);
   assert.equal(report.networkRequestsPerformed, false);
   assert.equal(report.walletSigningAuthorized, false);
   assert.equal(report.transactionSubmissionAuthorized, false);
@@ -57,4 +66,19 @@ test('Cardano evaluation workstation gate verifies sealed source and stops befor
   assert.match(report.nextCommand, /cardano:preprod:campaign:capture/);
   assert.equal(fs.existsSync(path.join(campaign, 'campaign-manifest.json')), false);
   fs.rmSync(bundle.dir, { recursive: true, force: true });
+  fs.rmSync(bundle.sealedSource, { recursive: true, force: true });
+});
+
+test('Cardano evaluation workstation gate fails closed if the separate sealed source is altered', () => {
+  const bundle = makeBundle();
+  fs.writeFileSync(path.join(bundle.sealedSource, 'unexpected-file.txt'), 'tamper');
+  const gated = run([
+    'scripts/cardano-preprod-evaluation-workstation-gate.js',
+    '--bundle-dir', bundle.dir,
+    '--sealed-source', bundle.sealedSource
+  ]);
+  assert.equal(gated.status, 2);
+  assert.match(gated.stderr, /Checkpoint source gate failed/i);
+  fs.rmSync(bundle.dir, { recursive: true, force: true });
+  fs.rmSync(bundle.sealedSource, { recursive: true, force: true });
 });
