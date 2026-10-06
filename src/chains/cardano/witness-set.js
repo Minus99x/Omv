@@ -88,7 +88,7 @@ export function buildCardanoWitnessSetFixture({
   const scriptDataHash = Cardano.hash_script_data(redeemers, models).to_hex();
   const witnessSet = Cardano.TransactionWitnessSet.new();
   witnessSet.set_redeemers(redeemers);
-  witnessSet.set_plutus_scripts(scripts);
+  witnessSet.set_plutus_v3_scripts(scripts);
   const witnessBytes = witnessSet.to_bytes();
   const witnessRoundTrip = Cardano.TransactionWitnessSet.from_bytes(witnessBytes).to_bytes();
   if (hex(witnessBytes) !== hex(witnessRoundTrip)) throw new Error('Cardano witness-set CBOR did not round-trip exactly.');
