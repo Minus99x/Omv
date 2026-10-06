@@ -31,10 +31,10 @@ async function captureStableProtocolContext(client, blockfrostProjectId, retries
     const epoch = parseCardanoOgmiosEpochResponse(await client.rpc('queryLedgerState/epoch'));
     const height = parseCardanoOgmiosBlockHeightResponse(await client.rpc('queryNetwork/blockHeight'));
     const ogmiosParameters = parseCardanoOgmiosProtocolParametersResponse(await client.rpc('queryLedgerState/protocolParameters'));
+    const blockfrostParameters = await fetchCardanoBlockfrostPreprodProtocolParameters({ projectId: blockfrostProjectId });
     const tipAfter = await rpcTip(client);
     if (!cardanoSameTip(tipBefore, tipAfter)) continue;
 
-    const blockfrostParameters = await fetchCardanoBlockfrostPreprodProtocolParameters({ projectId: blockfrostProjectId });
     const snapshot = createCardanoPreprodLiveProtocolSnapshot({
       ogmiosParameters,
       blockfrostParameters,
@@ -42,20 +42,32 @@ async function captureStableProtocolContext(client, blockfrostProjectId, retries
       tip: tipAfter,
       blockHeight: height
     });
-    return { snapshot, epoch, ogmiosParameters, blockfrostParameters };
+    return { snapshot, attempt };
   }
-  throw new Error(`Could not obtain a stable Preprod protocol-parameter tip after ${retries} attempts.`);
+  throw new Error(`Could not obtain a stable independently-confirmed Preprod protocol context after ${retries} attempts.`);
 }
 
-async function evaluateAtStableTip({ client, request, retries }) {
+async function evaluateAtStableTip({ client, request, blockfrostProjectId, retries }) {
   for (let attempt = 1; attempt <= retries; attempt += 1) {
     const tipBefore = await rpcTip(client);
     const epoch = parseCardanoOgmiosEpochResponse(await client.rpc('queryLedgerState/epoch'));
+    const height = parseCardanoOgmiosBlockHeightResponse(await client.rpc('queryNetwork/blockHeight'));
+    const ogmiosParameters = parseCardanoOgmiosProtocolParametersResponse(await client.rpc('queryLedgerState/protocolParameters'));
+    const blockfrostParameters = await fetchCardanoBlockfrostPreprodProtocolParameters({ projectId: blockfrostProjectId });
     const evaluation = await client.rpc(request.method, request.params, request.id);
     const tipAfter = await rpcTip(client);
-    if (cardanoSameTip(tipBefore, tipAfter)) return { tip: tipAfter, epoch, evaluation, attempt };
+    if (!cardanoSameTip(tipBefore, tipAfter)) continue;
+
+    const snapshot = createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters,
+      blockfrostParameters,
+      epoch,
+      tip: tipAfter,
+      blockHeight: height
+    });
+    return { tip: tipAfter, epoch, evaluation, snapshot, attempt };
   }
-  throw new Error(`Ogmios evaluation could not be bracketed by one stable Preprod tip after ${retries} attempts.`);
+  throw new Error(`Ogmios evaluation and independently-confirmed protocol context could not be bracketed by one stable Preprod tip after ${retries} attempts.`);
 }
 
 const projectRoot = resolve(arg('--project-root', '.'));
@@ -95,7 +107,8 @@ if (!campaignArg) {
     const prepared = runNode([
       'scripts/prepare-cardano-preprod-campaign.js',
       '--output', campaign,
-      '--protocol-parameters', protocolPath
+      '--protocol-parameters', protocolPath,
+      '--evaluation-slot', String(live.snapshot.tip.slot)
     ], projectRoot);
     if (prepared.status !== 0) throw new Error(`Campaign preparation failed: ${prepared.stderr || prepared.stdout}`);
     const preparation = JSON.parse(prepared.stdout);
@@ -107,18 +120,18 @@ if (!campaignArg) {
       const session = resolve(campaign, entry.directory);
       const manifest = JSON.parse(await readFile(join(session, 'capture-manifest.json'), 'utf8'));
       const request = JSON.parse(await readFile(join(session, manifest.files.evaluationRequest), 'utf8'));
-      const stable = await evaluateAtStableTip({ client, request, retries });
+      const stable = await evaluateAtStableTip({
+        client,
+        request,
+        blockfrostProjectId,
+        retries
+      });
 
-      if (stable.epoch !== live.epoch) {
-        throw new Error(`Preprod epoch changed during campaign capture (${live.epoch} -> ${stable.epoch}); restart with a new campaign directory.`);
+      if (stable.epoch !== live.snapshot.tip.epoch) {
+        throw new Error(`Preprod epoch changed during campaign capture (${live.snapshot.tip.epoch} -> ${stable.epoch}); restart with a new campaign directory.`);
       }
 
-      const perSessionProtocol = createCardanoPreprodLiveProtocolSnapshot({
-        ogmiosParameters: live.ogmiosParameters,
-        blockfrostParameters: live.blockfrostParameters,
-        epoch: stable.epoch,
-        tip: stable.tip
-      });
+      const perSessionProtocol = stable.snapshot;
 
       const captures = {
         acquiredTip: {
@@ -182,6 +195,9 @@ if (!campaignArg) {
       campaignSha256: preparation.campaignSha256,
       invariantProgramSha256: preparation.invariantProgramSha256,
       independentlyConfirmedProtocolSources: 2,
+      campaignProtocolTipHash: live.snapshot.tip.blockHash,
+      campaignEvaluationSlot: live.snapshot.tip.slot,
+      protocolContextAttempt: live.attempt,
       captured,
       state: campaignReport.state,
       synchronizedEvaluationCampaignComplete: true,
