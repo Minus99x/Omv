@@ -131,3 +131,88 @@ export function createCardanoPreprodAppliedValidatorIdentity({
 
   return Object.freeze({ ...core, identitySha256: hashCardanoEvidence(core) });
 }
+
+
+export function verifyCardanoPreprodAppliedValidatorIdentity(identity) {
+  const errors = [];
+  try {
+    if (!identity || typeof identity !== 'object' || Array.isArray(identity)) {
+      throw new TypeError('Cardano Preprod applied validator identity is required.');
+    }
+    const allowed = new Set([
+      'schema',
+      'network',
+      'networkId',
+      'seedReference',
+      'assetNameHex',
+      'sourceBlueprintSha256',
+      'stateBeacon',
+      'recoveryVault',
+      'deterministicFromSeedAndAssetName',
+      'liveUtxoExistenceValidated',
+      'fullPhaseOneValidated',
+      'walletSigningAuthorized',
+      'transactionSubmissionAuthorized',
+      'liveValueMovementAuthorized',
+      'supportClaimAuthorized',
+      'authorityBoundary',
+      'identitySha256',
+      'provenance'
+    ]);
+    for (const key of Object.keys(identity)) {
+      if (!allowed.has(key)) errors.push(`Unexpected applied-validator identity field: ${key}.`);
+    }
+
+    if (identity.schema !== 'omegavault.cardano.preprod-applied-validator-identity.v1') errors.push('Applied-validator identity schema is not supported.');
+    if (identity.network !== 'preprod' || identity.networkId !== CARDANO_PREPROD_NETWORK_ID) errors.push('Applied-validator identity must target Cardano Preprod.');
+    normalizeSeedReference(identity.seedReference);
+    normalizeAssetName(identity.assetNameHex);
+    if (!HEX_32.test(String(identity.sourceBlueprintSha256 ?? ''))) errors.push('Applied-validator identity source blueprint digest is invalid.');
+
+    const beacon = compiledScriptIdentity(identity.stateBeacon?.compiledCode, 'beacon');
+    const recovery = compiledScriptIdentity(identity.recoveryVault?.compiledCode, 'recovery');
+    if (beacon.scriptHash !== String(identity.stateBeacon?.policyId ?? '').toLowerCase()) errors.push('Applied-validator beacon compiled code/hash identity mismatch.');
+    if (beacon.compiledCodeSha256 !== String(identity.stateBeacon?.compiledCodeSha256 ?? '').toLowerCase()) errors.push('Applied-validator beacon compiled-code digest mismatch.');
+    if (recovery.scriptHash !== String(identity.recoveryVault?.scriptHash ?? '').toLowerCase()) errors.push('Applied-validator recovery compiled code/hash identity mismatch.');
+    if (recovery.compiledCodeSha256 !== String(identity.recoveryVault?.compiledCodeSha256 ?? '').toLowerCase()) errors.push('Applied-validator recovery compiled-code digest mismatch.');
+    const recoveryAddress = deriveCardanoEnterpriseScriptAddress({
+      scriptHash: recovery.scriptHash,
+      networkId: CARDANO_PREPROD_NETWORK_ID
+    });
+    if (recoveryAddress !== identity.recoveryVault?.address) errors.push('Applied-validator recovery address derivation mismatch.');
+
+    if (identity.deterministicFromSeedAndAssetName !== true ||
+        identity.liveUtxoExistenceValidated !== false ||
+        identity.fullPhaseOneValidated !== false ||
+        identity.walletSigningAuthorized !== false ||
+        identity.transactionSubmissionAuthorized !== false ||
+        identity.liveValueMovementAuthorized !== false ||
+        identity.supportClaimAuthorized !== false) {
+      errors.push('Applied-validator identity authority/status boundary was weakened.');
+    }
+
+    const core = Object.freeze({
+      schema: identity.schema,
+      network: identity.network,
+      networkId: identity.networkId,
+      seedReference: identity.seedReference,
+      assetNameHex: identity.assetNameHex,
+      sourceBlueprintSha256: identity.sourceBlueprintSha256,
+      stateBeacon: identity.stateBeacon,
+      recoveryVault: identity.recoveryVault,
+      deterministicFromSeedAndAssetName: identity.deterministicFromSeedAndAssetName,
+      liveUtxoExistenceValidated: identity.liveUtxoExistenceValidated,
+      fullPhaseOneValidated: identity.fullPhaseOneValidated,
+      walletSigningAuthorized: identity.walletSigningAuthorized,
+      transactionSubmissionAuthorized: identity.transactionSubmissionAuthorized,
+      liveValueMovementAuthorized: identity.liveValueMovementAuthorized,
+      supportClaimAuthorized: identity.supportClaimAuthorized,
+      authorityBoundary: identity.authorityBoundary
+    });
+    if (!HEX_32.test(String(identity.identitySha256 ?? ''))) errors.push('Applied-validator identity digest is invalid.');
+    else if (hashCardanoEvidence(core) !== String(identity.identitySha256).toLowerCase()) errors.push('Applied-validator identity self-digest mismatch.');
+  } catch (error) {
+    errors.push(error.message);
+  }
+  return Object.freeze({ valid: errors.length === 0, errors: Object.freeze(errors) });
+}
