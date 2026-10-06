@@ -13,6 +13,7 @@ import {
   createCardanoPreprodRealUtxoBindingPlan
 } from '../src/chains/cardano/preprod-real-utxo-binding.js';
 import { buildCardanoPreprodRealInitializeCandidate, verifyCardanoPreprodRealInitializeCandidate } from '../src/chains/cardano/preprod-real-initialize.js';
+import { createCardanoPreprodUnsignedInitializePreflight, verifyCardanoPreprodUnsignedInitializePreflight } from '../src/chains/cardano/preprod-unsigned-initialize-preflight.js';
 
 const protocolSnapshot = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
 protocolSnapshot.source.independentSourceCount = 2;
@@ -145,6 +146,56 @@ test('Cardano real initialize live-budget candidate applies evaluated budget whi
   assert.equal(finalCandidate.checks.fullPhaseOneValidated, false);
   assert.equal(finalCandidate.liveActions.walletSigningAuthorized, false);
   assert.equal(finalCandidate.liveActions.transactionSubmissionAuthorized, false);
+});
+
+test('Cardano unsigned initialize preflight verifies real-input structure without escalating to full phase-one', () => {
+  const appliedIdentity = identity();
+  const utxoBindingEvidence = binding(appliedIdentity);
+  const mintBudget = { memory: '101167', steps: '30755345' };
+  const candidate = buildCardanoPreprodRealInitializeCandidate({
+    appliedValidatorIdentity: appliedIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig,
+    evaluationMode: false,
+    mintBudget
+  });
+  const preflight = createCardanoPreprodUnsignedInitializePreflight({
+    candidate,
+    appliedValidatorIdentity: appliedIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig
+  });
+  assert.equal(preflight.checks.unsignedPhaseOnePreflightComplete, true);
+  assert.equal(preflight.checks.walletWitnessesPresent, false);
+  assert.equal(preflight.checks.walletWitnessesValidated, false);
+  assert.equal(preflight.checks.fullPhaseOneValidated, false);
+  assert.equal(preflight.liveActions.walletSigningAuthorized, false);
+  assert.equal(preflight.liveActions.transactionSubmissionAuthorized, false);
+  assert.match(preflight.preflightSha256, /^[0-9a-f]{64}$/);
+
+  const verified = verifyCardanoPreprodUnsignedInitializePreflight({
+    preflight,
+    candidate,
+    appliedValidatorIdentity: appliedIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig
+  });
+  assert.equal(verified.valid, true, verified.errors.join('; '));
+
+  const tampered = structuredClone(preflight);
+  tampered.checks.fullPhaseOneValidated = true;
+  const rejected = verifyCardanoPreprodUnsignedInitializePreflight({
+    preflight: tampered,
+    candidate,
+    appliedValidatorIdentity: appliedIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig
+  });
+  assert.equal(rejected.valid, false);
 });
 
 test('Cardano real initialize candidate verifier reproduces exact evidence and rejects tampering', () => {
