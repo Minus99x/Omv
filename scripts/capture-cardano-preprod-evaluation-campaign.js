@@ -154,12 +154,17 @@ if (!campaignArg) {
       const session = resolve(campaign, entry.directory);
       const manifest = JSON.parse(await readFile(join(session, 'capture-manifest.json'), 'utf8'));
       const request = JSON.parse(await readFile(join(session, manifest.files.evaluationRequest), 'utf8'));
-      const stable = await evaluateAtStableTip({
-        client,
-        request,
-        blockfrostProjectId,
-        retries
-      });
+      let stable;
+      try {
+        stable = await evaluateAtStableTip({
+          client,
+          request,
+          blockfrostProjectId,
+          retries
+        });
+      } catch (error) {
+        throw new Error(`${entry.action} evaluation failed: ${error.message}`);
+      }
 
       if (stable.epoch !== live.snapshot.tip.epoch) {
         throw new Error(`Preprod epoch changed during campaign capture (${live.snapshot.tip.epoch} -> ${stable.epoch}); restart with a new campaign directory.`);
