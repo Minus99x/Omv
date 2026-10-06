@@ -443,3 +443,67 @@ export function buildCardanoPreprodRealInitializeCandidate({
 
   return Object.freeze({ ...core, candidateSha256: hashCardanoEvidence(core) });
 }
+
+
+export function verifyCardanoPreprodRealInitializeCandidate({
+  candidate,
+  appliedValidatorIdentity,
+  utxoBindingEvidence,
+  parameters,
+  recoveryConfig,
+  evaluationMode = true,
+  mintBudget = null
+}) {
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) {
+    return Object.freeze({ valid: false, errors: Object.freeze(['Cardano real initialize candidate is required.']), recomputedSha256: null });
+  }
+  const errors = [];
+  let recomputed;
+  try {
+    recomputed = buildCardanoPreprodRealInitializeCandidate({
+      appliedValidatorIdentity,
+      utxoBindingEvidence,
+      parameters,
+      recoveryConfig,
+      evaluationMode,
+      mintBudget
+    });
+  } catch (error) {
+    return Object.freeze({ valid: false, errors: Object.freeze([error.message]), recomputedSha256: null });
+  }
+
+  const selfCore = withoutDigest(candidate, 'candidateSha256');
+  if (candidate.candidateSha256 !== hashCardanoEvidence(selfCore)) {
+    errors.push('Cardano real initialize candidate self-digest mismatch.');
+  }
+  if (candidate.candidateSha256 !== recomputed.candidateSha256) {
+    errors.push('Cardano real initialize candidate does not reproduce from its bound identity, UTxOs, protocol parameters and recovery configuration.');
+  }
+
+  try {
+    const tx = Cardano.Transaction.from_hex(candidate.transaction?.cborHex ?? '');
+    if (tx.witness_set().vkeys() != null) errors.push('Cardano real initialize candidate contains unexpected wallet key witnesses.');
+    if (tx.body().network_id()?.kind() !== Cardano.NetworkId.testnet().kind()) errors.push('Cardano real initialize candidate is not testnet/Preprod network id 0.');
+    if (tx.body().inputs().len() !== 1) errors.push('Cardano real initialize candidate must consume exactly one normal seed input.');
+    if (tx.body().collateral()?.len() !== 1) errors.push('Cardano real initialize candidate must bind exactly one collateral input.');
+    if (tx.body().required_signers()?.len() !== 1) errors.push('Cardano real initialize candidate must require exactly one owner wallet signer.');
+  } catch (error) {
+    errors.push(`Cardano real initialize candidate CBOR is invalid: ${error.message}`);
+  }
+
+  if (candidate.checks?.unsignedStructuralPreflightPassed !== true ||
+      candidate.checks?.walletWitnessesValidated !== false ||
+      candidate.checks?.fullPhaseOneValidated !== false ||
+      candidate.liveActions?.walletSigningAuthorized !== false ||
+      candidate.liveActions?.transactionSubmissionAuthorized !== false ||
+      candidate.liveActions?.liveValueMovementAuthorized !== false ||
+      candidate.liveActions?.supportClaimAuthorized !== false) {
+    errors.push('Cardano real initialize candidate authority/phase-one boundary was weakened.');
+  }
+
+  return Object.freeze({
+    valid: errors.length === 0,
+    errors: Object.freeze(errors),
+    recomputedSha256: recomputed.candidateSha256
+  });
+}
