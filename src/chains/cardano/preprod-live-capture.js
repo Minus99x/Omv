@@ -1,3 +1,5 @@
+import WebSocket from 'ws';
+
 const HEX_32 = /^[0-9a-f]{64}$/i;
 
 function object(value, label) {
@@ -48,7 +50,7 @@ export function createCardanoOgmiosHttpClient({
   apiKey = null,
   apiKeyHeader = 'dmtr-api-key',
   fetchImpl = globalThis.fetch,
-  WebSocketImpl = globalThis.WebSocket
+  WebSocketImpl = WebSocket
 }) {
   if (typeof url !== 'string' || !/^(https?|wss?):\/\//i.test(url)) throw new TypeError('Ogmios endpoint must be an http(s) or ws(s) URL.');
 
@@ -88,14 +90,13 @@ export function createCardanoOgmiosHttpClient({
   }
 
   async function ensureWebSocket() {
-    if (apiKey) {
-      throw new Error('WebSocket Ogmios authentication must use an authenticated endpoint URL; header-based WebSocket authentication is not supported by this client.');
-    }
     if (socket && socketOpen) return socket;
     if (socketOpening) return socketOpening;
 
     socketOpening = new Promise((resolve, reject) => {
-      const ws = new WebSocketImpl(url);
+      const ws = apiKey
+        ? new WebSocketImpl(url, [], { headers: { [apiKeyHeader]: apiKey } })
+        : new WebSocketImpl(url);
       socket = ws;
       let opened = false;
 
