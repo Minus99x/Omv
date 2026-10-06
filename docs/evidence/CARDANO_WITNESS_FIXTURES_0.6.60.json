@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 3,
+  "network": "preprod",
+  "protocolParameterEvidence": "CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json",
+  "costModelSourceCount": 1,
+  "liveConstructionReady": false,
+  "keyWitnesses": "deterministic synthetic sizing witnesses; never deployable",
+  "correction": {
+    "supersedes": "CARDANO_WITNESS_FIXTURES_0.6.14.json",
+    "priorEvidenceRetained": true,
+    "implementationCommit": "eb690bf3f7bd4ebb9fa5d07879989521497d6e22",
+    "diagnosticCommit": "7685034ab41544eb39f68ddb663293af925a6a39",
+    "reason": "Aiken blueprint compiledCode is already CBOR-encoded script bytes. The Cardano witness must preserve those bytes so ledger serialization adds the outer witness CBOR layer; decoding compiledCode before constructing the Plutus V3 witness changes the script hash and causes Ogmios to report the mint witness as missing."
+  },
+  "fixtures": {
+    "initialize": {
+      "scriptDataHash": "05371fa460a912d9b9a581c256323d3e2d333053dd1acd1f124b0cab1d34c7e0",
+      "witnessSetBytes": 540,
+      "witnessSetSha256": "87ecf8a05d148a77c0a923db9fb37ad96ff1b563e19c37d1022be3967a8ab552",
+      "transactionBytes": 1166,
+      "transactionSha256": "a4cfbf00fae544437b8aa8d759125c5d320b9ee948eee53a2eecaaf136b1e889",
+      "minimumFee": "214008",
+      "memory": "91970",
+      "steps": "27959404",
+      "keyWitnessCount": 1,
+      "feeConvergenceIterations": 2,
+      "minimumAda": [{"index":0,"outputBytes":230,"actualLovelace":"10000000","minimumLovelace":"1680900","satisfied":true},{"index":1,"outputBytes":37,"actualLovelace":"3000000","minimumLovelace":"849070","satisfied":true}],
+      "collateral": {"declaredCollateral":"5000000","requiredCollateral":"321012","satisfied":true},
+      "evaluationTransactionBodyHash": "c0c7f7cbc3e909c61838b90fc3c8eb884f5c39687a49e814990ab5b919bf43d8",
+      "evaluationValidators": ["mint:0"]
+    },
+    "heartbeat": {
+      "scriptDataHash": "39736885ddcfa72c6ddec405fca64e4c5bab5c6c40e227ceca5b7c0efdad823f",
+      "witnessSetBytes": 3061,
+      "witnessSetSha256": "10b2e27e44d147a8e548fcb03a0c6d5810ffb135129cf377642f10fbf6b6c265",
+      "transactionBytes": 3650,
+      "transactionSha256": "7452fe2ee346e2c008737693324771e8b325e9a7ea6943e989885110842d133a",
+      "minimumFee": "355967",
+      "memory": "494618",
+      "steps": "158755371",
+      "keyWitnessCount": 1,
+      "feeConvergenceIterations": 2,
+      "minimumAda": [{"index":0,"outputBytes":230,"actualLovelace":"10000000","minimumLovelace":"1680900","satisfied":true},{"index":1,"outputBytes":37,"actualLovelace":"3000000","minimumLovelace":"849070","satisfied":true}],
+      "collateral": {"declaredCollateral":"5000000","requiredCollateral":"533951","satisfied":true},
+      "evaluationTransactionBodyHash": "e84286a12e6ff2149bf05a2fd2c353e780909738f6706d7b6bc1c1a5965c45bf",
+      "evaluationValidators": ["spend:0"]
+    },
+    "approve": {
+      "scriptDataHash": "db5a08c8c3e003525307f0df53eae83df14eaa0e7619f6e188afc2d491a43ef7",
+      "witnessSetBytes": 3092,
+      "witnessSetSha256": "bd5640ce1ede1b356d9008b846a3a41a96fca9d46182ce746f37ad25b570f82b",
+      "transactionBytes": 3813,
+      "transactionSha256": "bfc0105f0cdecf118dde63ee0b7a75940929007a9ff7975ca159d83b2f3274cd",
+      "minimumFee": "368820",
+      "memory": "566905",
+      "steps": "179701350",
+      "keyWitnessCount": 2,
+      "feeConvergenceIterations": 2,
+      "minimumAda": [{"index":0,"outputBytes":261,"actualLovelace":"10000000","minimumLovelace":"1814510","satisfied":true},{"index":1,"outputBytes":37,"actualLovelace":"3000000","minimumLovelace":"849070","satisfied":true}],
+      "collateral": {"declaredCollateral":"5000000","requiredCollateral":"553230","satisfied":true},
+      "evaluationTransactionBodyHash": "d50a3ce2fb6c447d0592bc1414d3f56529c8d7d38ddbecb7238ea883d7be0a8d",
+      "evaluationValidators": ["spend:0"]
+    },
+    "execute": {
+      "scriptDataHash": "8231e3fb88268be5219fd7fb426abd4a6420dea411553350919054d2c58f70c6",
+      "witnessSetBytes": 3593,
+      "witnessSetSha256": "a6d2397a1a6661ffdb125170a44bbe26ba5010984563695f19395c539f001cc3",
+      "transactionBytes": 3991,
+      "transactionSha256": "60240de3ec8723071328d6500c9d0bc6e3b7dcaf29810e672dce31489eaecc9f",
+      "minimumFee": "372334",
+      "memory": "515024",
+      "steps": "161326907",
+      "keyWitnessCount": 1,
+      "feeConvergenceIterations": 2,
+      "minimumAda": [{"index":0,"outputBytes":37,"actualLovelace":"10000000","minimumLovelace":"849070","satisfied":true},{"index":1,"outputBytes":37,"actualLovelace":"3000000","minimumLovelace":"849070","satisfied":true}],
+      "collateral": {"declaredCollateral":"5000000","requiredCollateral":"558501","satisfied":true},
+      "evaluationTransactionBodyHash": "cd4555eeef1a554fed84a859a787d8fda2a6bd4cccfec3e70d6cb713a428f3b4",
+      "evaluationValidators": ["mint:0","spend:0"]
+    }
+  },
+  "limitations": [
+    "Execution units are Aiken fixture measurements and require independent node evaluation against zero-budget evaluation candidates.",
+    "Synthetic key witnesses are included only to produce exact final-size and fee evidence; they are not user or deployment keys.",
+    "Ogmios evaluateTransaction does not perform complete phase-1 ledger validation, so a separate synchronized phase-1 gate is mandatory.",
+    "The full Plutus V3 cost model has only one machine-readable source in this capture.",
+    "These fixtures are not submit-ready and do not promote the connector."
+  ]
+}
