@@ -68,7 +68,7 @@ export function buildCardanoWitnessSetFixture({
 
   if (action === 'initialize' || action === 'execute') {
     redeemers.add(redeemer(Cardano.RedeemerTag.new_mint(), plutusConstr(0), evaluationMode ? 0 : 91970, evaluationMode ? 0 : 27959404));
-    const beaconScript = Cardano.PlutusScript.from_hex_with_version(beaconCompiledCode, Cardano.Language.new_plutus_v3());
+    const beaconScript = Cardano.PlutusScript.new_v3(Uint8Array.from(Buffer.from(beaconCompiledCode, 'hex')));
     if (beaconScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.beaconPolicyId) {
       throw new Error(`Cardano beacon witness script hash mismatch: witness=${beaconScript.hash().to_hex()} expected=${CARDANO_APPLIED_FIXTURE.beaconPolicyId}.`);
     }
@@ -81,7 +81,7 @@ export function buildCardanoWitnessSetFixture({
   if (action !== 'initialize') {
     const budget = action === 'heartbeat' ? [494618, 158755371] : action === 'approve' ? [566905, 179701350] : [423054, 133367503];
     redeemers.add(redeemer(Cardano.RedeemerTag.new_spend(), actionData(action), evaluationMode ? 0 : budget[0], evaluationMode ? 0 : budget[1]));
-    const recoveryScript = Cardano.PlutusScript.from_hex_with_version(recoveryCompiledCode, Cardano.Language.new_plutus_v3());
+    const recoveryScript = Cardano.PlutusScript.new_v3(Uint8Array.from(Buffer.from(recoveryCompiledCode, 'hex')));
     if (recoveryScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.recoveryValidatorHash) {
       throw new Error(`Cardano recovery witness script hash mismatch: witness=${recoveryScript.hash().to_hex()} expected=${CARDANO_APPLIED_FIXTURE.recoveryValidatorHash}.`);
     }
