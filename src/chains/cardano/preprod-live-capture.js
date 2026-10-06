@@ -47,27 +47,87 @@ export function createCardanoOgmiosHttpClient({
   url,
   apiKey = null,
   apiKeyHeader = 'dmtr-api-key',
-  fetchImpl = globalThis.fetch
+  fetchImpl = globalThis.fetch,
+  WebSocketImpl = globalThis.WebSocket
 }) {
-  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) throw new TypeError('Ogmios HTTP endpoint must be an http(s) URL.');
-  if (typeof fetchImpl !== 'function') throw new TypeError('A fetch implementation is required.');
+  if (typeof url !== 'string' || !/^(https?|wss?):\/\//i.test(url)) throw new TypeError('Ogmios endpoint must be an http(s) or ws(s) URL.');
+
+  const isWebSocket = /^wss?:\/\//i.test(url);
+  if (!isWebSocket && typeof fetchImpl !== 'function') throw new TypeError('A fetch implementation is required.');
+  if (isWebSocket && typeof WebSocketImpl !== 'function') throw new TypeError('A WebSocket implementation is required.');
+
   const headers = { 'content-type': 'application/json' };
   if (apiKey) headers[apiKeyHeader] = apiKey;
   let id = 0;
 
+  async function rpcHttp(method, params, requestId) {
+    const body = { jsonrpc: '2.0', method, id: requestId ?? `omegavault-${++id}` };
+    if (params !== undefined) body.params = params;
+    const response = await fetchImpl(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body)
+    });
+    if (!response.ok) throw new Error(`Ogmios HTTP ${response.status} for ${method}.`);
+    const json = await response.json();
+    if (json?.error) throw new Error(`Ogmios ${method} failed: ${json.error.message ?? json.error.code ?? 'unknown error'}`);
+    return json;
+  }
+
+  async function rpcWebSocket(method, params, requestId) {
+    if (apiKey) {
+      throw new Error('WebSocket Ogmios authentication must use an authenticated endpoint URL; header-based WebSocket authentication is not supported by this client.');
+    }
+    const request = { jsonrpc: '2.0', method, id: requestId ?? `omegavault-${++id}` };
+    if (params !== undefined) request.params = params;
+
+    return await new Promise((resolve, reject) => {
+      let settled = false;
+      const ws = new WebSocketImpl(url);
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        try { ws.close(); } catch {}
+        reject(new Error(`Ogmios WebSocket timeout for ${method}.`));
+      }, 15000);
+
+      const finish = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { ws.close(); } catch {}
+        fn(value);
+      };
+
+      ws.addEventListener('open', () => {
+        try { ws.send(JSON.stringify(request)); }
+        catch (error) { finish(reject, error); }
+      });
+
+      ws.addEventListener('message', event => {
+        try {
+          const raw = typeof event.data === 'string' ? event.data : Buffer.from(event.data).toString('utf8');
+          const json = JSON.parse(raw);
+          if (json?.id !== request.id) return;
+          if (json?.error) return finish(reject, new Error(`Ogmios ${method} failed: ${json.error.message ?? json.error.code ?? 'unknown error'}`));
+          finish(resolve, json);
+        } catch (error) {
+          finish(reject, error);
+        }
+      });
+
+      ws.addEventListener('error', () => finish(reject, new Error(`Ogmios WebSocket connection failed for ${method}.`)));
+      ws.addEventListener('close', event => {
+        if (!settled) finish(reject, new Error(`Ogmios WebSocket closed before response for ${method} (code ${event.code}).`));
+      });
+    });
+  }
+
   return Object.freeze({
     async rpc(method, params = undefined, requestId = undefined) {
-      const body = { jsonrpc: '2.0', method, id: requestId ?? `omegavault-${++id}` };
-      if (params !== undefined) body.params = params;
-      const response = await fetchImpl(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body)
-      });
-      if (!response.ok) throw new Error(`Ogmios HTTP ${response.status} for ${method}.`);
-      const json = await response.json();
-      if (json?.error) throw new Error(`Ogmios ${method} failed: ${json.error.message ?? json.error.code ?? 'unknown error'}`);
-      return json;
+      return isWebSocket
+        ? rpcWebSocket(method, params, requestId)
+        : rpcHttp(method, params, requestId);
     }
   });
 }
