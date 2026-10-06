@@ -61,7 +61,7 @@ test('Cardano Preprod capture plan freezes an Ogmios-resolvable zero-budget cand
   assert.match(input.plan.transactionBodyHash, /^[0-9a-f]{64}$/);
   assert.deepEqual(input.plan.expectedValidators, ['mint:0', 'spend:0']);
   assert.equal(input.plan.evaluationRequest.method, 'evaluateTransaction');
-  assert.equal(input.plan.evaluationRequest.params.additionalUtxoSet.length, 3);
+  assert.equal(input.plan.evaluationRequest.params.additionalUtxo.length, 3);
   assert.equal(input.plan.evaluationContext.syntheticSupplementalUtxoContext, true);
   assert.equal(input.plan.evaluationContext.fullPhaseOneValidationPerformed, false);
   assert.equal(input.plan.liveActions.walletSigningAuthorized, false);
