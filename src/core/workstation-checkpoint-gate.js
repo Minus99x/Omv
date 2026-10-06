@@ -142,7 +142,10 @@ export function verifyWorkstationCheckpointSource({
   if (dependencyBytesMatch && sourceBytesMatch && checkpointManifest?.checkpoint) {
     const verification = verifyCheckpointManifest(checkpointManifest, {
       checkpoint: checkpointManifest.checkpoint,
-      dependencyLock: checkpointManifest.dependencyLock,
+      dependencyLock: {
+        schema: 'omegavault.dependency-lock.v1',
+        ...checkpointManifest.dependencyLock
+      },
       sourceInventory: checkpointManifest.sourceInventory,
       proofBundleSha256: checkpointManifest.proofBundleSha256 ?? null
     });
