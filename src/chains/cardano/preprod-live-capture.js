@@ -64,6 +64,22 @@ export function cardanoSameTip(left, right) {
   return Boolean(left && right && left.hash === right.hash && left.slot === right.slot);
 }
 
+export function normalizeCardanoOgmiosWebSocketUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) throw new TypeError('Ogmios endpoint URL is required.');
+  let parsed;
+  try {
+    parsed = new URL(value.trim());
+  } catch {
+    throw new TypeError('Ogmios endpoint must be a valid URL.');
+  }
+  if (parsed.protocol === 'https:') parsed.protocol = 'wss:';
+  else if (parsed.protocol === 'http:') parsed.protocol = 'ws:';
+  if (parsed.protocol !== 'wss:' && parsed.protocol !== 'ws:') {
+    throw new TypeError('Ogmios endpoint must resolve to a WebSocket URL.');
+  }
+  return parsed.toString();
+}
+
 export function createCardanoOgmiosHttpClient({
   url,
   apiKey = null,
