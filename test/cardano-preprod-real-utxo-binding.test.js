@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
-import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { createCardanoPreprodAppliedValidatorIdentity } from '../src/chains/cardano/live-validator-identity.js';
 import {
   CARDANO_APPLIED_FIXTURE,
   CARDANO_PREPROD_NETWORK_ID
@@ -27,20 +29,29 @@ function ref(byte, index) {
   return { transaction: { id: byte.repeat(32) }, index };
 }
 
-function appliedIdentity(seedReference) {
-  const core = {
-    schema: 'omegavault.cardano.preprod-applied-validator-identity.v1',
-    network: 'preprod',
-    networkId: CARDANO_PREPROD_NETWORK_ID,
-    seedReference,
-    assetNameHex: CARDANO_APPLIED_FIXTURE.assetNameHex,
-    stateBeacon: { policyId: CARDANO_APPLIED_FIXTURE.beaconPolicyId },
-    recoveryVault: {
-      scriptHash: CARDANO_APPLIED_FIXTURE.recoveryValidatorHash,
-      address: CARDANO_APPLIED_FIXTURE.recoveryValidatorAddress
-    }
-  };
-  return { ...core, identitySha256: hashCardanoEvidence(core) };
+const fixtureEvidence = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_APPLIED_FIXTURE_0.6.12.json', import.meta.url), 'utf8'));
+const beaconBlueprint = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/state-beacon.applied.json', import.meta.url), 'utf8'));
+const vaultBlueprint = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/recovery-vault.applied.json', import.meta.url), 'utf8'));
+const beaconCompiledCode = beaconBlueprint.validators.find(item => item.title === 'omegavault.state_beacon.mint').compiledCode;
+const recoveryCompiledCode = vaultBlueprint.validators.find(item => item.title === 'omegavault.recovery_vault.spend').compiledCode;
+const sourceBlueprintSha256 = createHash('sha256')
+  .update(readFileSync(new URL('../validators/cardano/plutus.json', import.meta.url)))
+  .digest('hex');
+
+function appliedIdentity() {
+  return createCardanoPreprodAppliedValidatorIdentity({
+    seedReference: {
+      transaction: { id: fixtureEvidence.parameters.seedTxId },
+      index: fixtureEvidence.parameters.seedOutputIndex
+    },
+    assetNameHex: fixtureEvidence.parameters.assetNameHex,
+    sourceBlueprintSha256,
+    beaconCompiledCode,
+    recoveryCompiledCode,
+    aikenPolicyId: fixtureEvidence.stateBeacon.policyId,
+    aikenRecoveryHash: fixtureEvidence.recoveryVault.scriptHash,
+    aikenRecoveryAddress: fixtureEvidence.recoveryVault.preprodAddress
+  });
 }
 
 function walletUtxo(reference, lovelace, address = ownerAddress) {
@@ -53,13 +64,16 @@ function walletUtxo(reference, lovelace, address = ownerAddress) {
 
 function initializePlan() {
   const roles = {
-    seed: ref('aa', 0),
+    seed: {
+      transaction: { id: fixtureEvidence.parameters.seedTxId },
+      index: fixtureEvidence.parameters.seedOutputIndex
+    },
     collateral: ref('cc', 2)
   };
   return createCardanoPreprodRealUtxoBindingPlan({
     action: 'initialize',
     roles,
-    appliedValidatorIdentity: appliedIdentity(roles.seed)
+    appliedValidatorIdentity: appliedIdentity()
   });
 }
 
@@ -82,7 +96,7 @@ test('Cardano real initialize UTxO plan binds distinct seed/collateral reference
         seed: ref('aa', 0),
         collateral: ref('aa', 0)
       },
-      appliedValidatorIdentity: appliedIdentity(ref('aa', 0))
+      appliedValidatorIdentity: appliedIdentity()
     }),
     /distinct/
   );
@@ -94,7 +108,7 @@ test('Cardano real initialize UTxO plan binds distinct seed/collateral reference
         seed: ref('aa', 0),
         collateral: ref('cc', 2)
       },
-      appliedValidatorIdentity: appliedIdentity(ref('ff', 0))
+      appliedValidatorIdentity: appliedIdentity()
     }),
     /exactly match/
   );
@@ -200,7 +214,7 @@ test('Cardano real UTxO evidence fails closed on tip drift, missing roles, non-A
 });
 
 test('Cardano real state UTxO binding uses the bound dynamic recovery address, beacon and inline datum', () => {
-  const identity = appliedIdentity(ref('aa', 0));
+  const identity = appliedIdentity();
   const plan = createCardanoPreprodRealUtxoBindingPlan({
     action: 'heartbeat',
     roles: {
