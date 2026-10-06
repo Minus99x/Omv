@@ -118,6 +118,42 @@ export function createCardanoPreprodRealUtxoBindingPlan({ action, roles }) {
   return Object.freeze({ ...core, planSha256: hashCardanoEvidence(core) });
 }
 
+export function verifyCardanoPreprodRealUtxoBindingPlan(plan) {
+  const errors = [];
+  try {
+    const value = plainObject(plan, 'plan');
+    if (value.schema !== 'omegavault.cardano.preprod-real-utxo-binding-plan.v1') errors.push('Real UTxO binding plan schema is not supported.');
+    if (value.network !== 'preprod' || value.networkId !== CARDANO_PREPROD_NETWORK_ID) errors.push('Real UTxO binding plan must target Cardano Preprod.');
+    if (!ACTIONS.includes(value.action)) errors.push('Real UTxO binding plan action is invalid.');
+    const expectedRoles = REQUIRED_ROLES[value.action] ?? [];
+    const actualRoles = value.roles && typeof value.roles === 'object' && !Array.isArray(value.roles) ? Object.keys(value.roles) : [];
+    if (actualRoles.length !== expectedRoles.length || !expectedRoles.every(role => actualRoles.includes(role))) {
+      errors.push('Real UTxO binding plan role set is invalid.');
+    } else {
+      const refs = [];
+      for (const role of expectedRoles) refs.push(refKey(normalizeReference(value.roles[role], `roles.${role}`)));
+      if (new Set(refs).size !== refs.length) errors.push('Real UTxO binding plan contains duplicate role references.');
+    }
+    if (value.query?.method !== 'queryLedgerState/utxo') errors.push('Real UTxO binding plan must use queryLedgerState/utxo.');
+    const expectedParams = expectedRoles.length === 0 ? null : createCardanoOgmiosUtxoByOutputReferencesParams(expectedRoles.map(role => value.roles[role]));
+    if (expectedParams && hashCardanoEvidence(value.query?.params) !== hashCardanoEvidence(expectedParams)) {
+      errors.push('Real UTxO binding plan query does not match its role references.');
+    }
+    if (value.requiredStableTipBracket !== true ||
+        value.fullPhaseOneValidationPerformed !== false ||
+        value.walletSigningAuthorized !== false ||
+        value.transactionSubmissionAuthorized !== false ||
+        value.liveValueMovementAuthorized !== false) {
+      errors.push('Real UTxO binding plan authority boundary was weakened.');
+    }
+    if (!/^[0-9a-f]{64}$/i.test(String(value.planSha256 ?? ''))) errors.push('Real UTxO binding plan digest is invalid.');
+    else if (hashCardanoEvidence(withoutDigest(value, 'planSha256')) !== value.planSha256) errors.push('Real UTxO binding plan self-digest mismatch.');
+  } catch (error) {
+    errors.push(error.message);
+  }
+  return Object.freeze({ valid: errors.length === 0, errors: Object.freeze(errors) });
+}
+
 export function createCardanoPreprodRealUtxoBindingEvidence({
   plan,
   tipBefore,
