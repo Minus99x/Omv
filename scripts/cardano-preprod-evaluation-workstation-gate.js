@@ -2,6 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createWorkstationResumeReport } from '../src/core/dependency-integrity.js';
+import { createSourceTreeInventory } from '../src/core/checkpoint-manifest.js';
 import { verifyWorkstationCheckpointSource } from '../src/core/workstation-checkpoint-gate.js';
 
 function arg(name, fallback = null) {
@@ -14,6 +15,7 @@ function run(command, args, cwd) {
 }
 
 const projectRoot = resolve(arg('--project-root', '.'));
+const sealedSourceRoot = resolve(arg('--sealed-source', projectRoot));
 const bundleDirArg = arg('--bundle-dir');
 const campaign = arg('--campaign', resolve(projectRoot, '..', 'omegavault-cardano-preprod-live-campaign'));
 
@@ -23,15 +25,16 @@ if (!bundleDirArg) {
 } else {
   try {
     const bundleDir = resolve(bundleDirArg);
-    const pkg = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
-    const base = `omegavault-mvp-${pkg.version}`;
+    const toolingPkg = JSON.parse(await readFile(join(projectRoot, 'package.json'), 'utf8'));
+    const sealedPkg = JSON.parse(await readFile(join(sealedSourceRoot, 'package.json'), 'utf8'));
+    const base = `omegavault-mvp-${sealedPkg.version}`;
     const manifestPath = join(bundleDir, `${base}.checkpoint-manifest.json`);
     const archivePath = join(bundleDir, `${base}.zip`);
     const reviewIndexPath = join(bundleDir, `${base}.review-index.json`);
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
 
     const sourceGate = verifyWorkstationCheckpointSource({
-      projectRoot,
+      projectRoot: sealedSourceRoot,
       checkpointManifest: manifest,
       sourceArchivePath: archivePath
     });
@@ -50,14 +53,19 @@ if (!bundleDirArg) {
       const repair = workstation.npmCiRecommended ? ' Run npm ci, then repeat the gate.' : '';
       throw new Error(`Pinned workstation dependencies are not ready.${repair}`);
     }
+    const toolingInventory = createSourceTreeInventory(projectRoot);
 
     process.stdout.write(`${JSON.stringify({
-      schema: 'omegavault.cardano.preprod-evaluation-workstation-gate.v1',
+      schema: 'omegavault.cardano.preprod-evaluation-workstation-gate.v2',
       ok: true,
       checkpointRef: sourceGate.checkpointRef,
       checkpointArchiveSha256: sourceGate.archiveSha256,
-      sourceTreeSha256: sourceGate.sourceTreeSha256,
-      dependencyLockSha256: sourceGate.dependencyLockSha256,
+      sealedSourceRoot,
+      sealedSourceTreeSha256: sourceGate.sourceTreeSha256,
+      sealedDependencyLockSha256: sourceGate.dependencyLockSha256,
+      toolingRoot: projectRoot,
+      toolingPackageVersion: toolingPkg.version,
+      toolingSourceTreeSha256: toolingInventory.sha256,
       externalReviewVerified: true,
       pinnedDependenciesReady: true,
       networkRequestsPerformed: false,
