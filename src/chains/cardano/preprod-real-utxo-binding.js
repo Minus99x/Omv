@@ -5,7 +5,7 @@ import { createCardanoOgmiosUtxoByOutputReferencesParams } from './preprod-live-
 
 const ACTIONS = Object.freeze(['initialize', 'heartbeat', 'approve', 'execute']);
 const REQUIRED_ROLES = Object.freeze({
-  initialize: Object.freeze(['seed', 'fee', 'collateral']),
+  initialize: Object.freeze(['seed', 'collateral']),
   heartbeat: Object.freeze(['state', 'fee', 'collateral']),
   approve: Object.freeze(['state', 'fee', 'collateral']),
   execute: Object.freeze(['state', 'fee', 'collateral'])
