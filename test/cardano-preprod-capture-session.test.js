@@ -7,10 +7,12 @@ import {
   verifyCardanoPreprodCaptureSessionManifest
 } from '../src/chains/cardano/preprod-capture-session.js';
 
-const additionalUtxoSet = [[
-  { transaction: { id: 'aa'.repeat(32) }, output: { index: 0 } },
-  { address: 'addr_test1vptest', value: { lovelace: 10000000 } }
-]];
+const additionalUtxoSet = [{
+  transaction: { id: 'aa'.repeat(32) },
+  index: 0,
+  address: 'addr_test1vptest',
+  value: { ada: { lovelace: 10000000 } }
+}];
 const planCore = {
   schema: 'omegavault.cardano.preprod-evidence-capture-plan.v2',
   network: 'preprod',
@@ -22,7 +24,7 @@ const planCore = {
   evaluationRequest: {
     jsonrpc: '2.0',
     method: 'evaluateTransaction',
-    params: { transaction: { cbor: '84'.repeat(8) }, additionalUtxoSet },
+    params: { transaction: { cbor: '84'.repeat(8) }, additionalUtxo: additionalUtxoSet },
     id: 'test'
   },
   evaluationContext: {
