@@ -70,7 +70,7 @@ export function buildCardanoWitnessSetFixture({
     redeemers.add(redeemer(Cardano.RedeemerTag.new_mint(), plutusConstr(0), evaluationMode ? 0 : 91970, evaluationMode ? 0 : 27959404));
     const beaconScript = Cardano.PlutusScript.from_hex_with_version(beaconCompiledCode, Cardano.Language.new_plutus_v3());
     if (beaconScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.beaconPolicyId) {
-      throw new Error('Cardano beacon witness script hash does not match the transaction mint policy.');
+      throw new Error(`Cardano beacon witness script hash mismatch: witness=${beaconScript.hash().to_hex()} expected=${CARDANO_APPLIED_FIXTURE.beaconPolicyId}.`);
     }
     scripts.add(beaconScript);
     if (!evaluationMode) {
@@ -83,7 +83,7 @@ export function buildCardanoWitnessSetFixture({
     redeemers.add(redeemer(Cardano.RedeemerTag.new_spend(), actionData(action), evaluationMode ? 0 : budget[0], evaluationMode ? 0 : budget[1]));
     const recoveryScript = Cardano.PlutusScript.from_hex_with_version(recoveryCompiledCode, Cardano.Language.new_plutus_v3());
     if (recoveryScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.recoveryValidatorHash) {
-      throw new Error('Cardano recovery witness script hash does not match the transaction validator.');
+      throw new Error(`Cardano recovery witness script hash mismatch: witness=${recoveryScript.hash().to_hex()} expected=${CARDANO_APPLIED_FIXTURE.recoveryValidatorHash}.`);
     }
     scripts.add(recoveryScript);
     if (!evaluationMode) {
