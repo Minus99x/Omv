@@ -76,6 +76,8 @@ async function evaluateAtStableTip({ client, request, blockfrostProjectId, retri
 
 const projectRoot = resolve(arg('--project-root', '.'));
 const campaignArg = arg('--campaign');
+const bundleDirArg = arg('--bundle-dir');
+const sealedSourceArg = arg('--sealed-source');
 const ogmiosUrl = arg('--ogmios-url', process.env.OMEGAVAULT_OGMIOS_URL ?? null);
 const ogmiosApiKey = arg('--ogmios-api-key', process.env.OMEGAVAULT_OGMIOS_API_KEY ?? null);
 const ogmiosApiKeyHeader = arg('--ogmios-api-key-header', process.env.OMEGAVAULT_OGMIOS_API_KEY_HEADER ?? 'dmtr-api-key');
@@ -91,6 +93,12 @@ if (!campaignArg) {
 } else if (!blockfrostProjectId) {
   process.stderr.write('Set BLOCKFROST_PROJECT_ID (or --blockfrost-project-id) to a Cardano Preprod Blockfrost project key.\n');
   process.exitCode = 2;
+} else if (!bundleDirArg) {
+  process.stderr.write('Live Cardano Preprod evaluation capture requires --bundle-dir pointing to the sealed 0.6.59 checkpoint artifact bundle.\n');
+  process.exitCode = 2;
+} else if (!sealedSourceArg) {
+  process.stderr.write('Live Cardano Preprod evaluation capture requires --sealed-source pointing to the extracted sealed 0.6.59 source tree.\n');
+  process.exitCode = 2;
 } else if (!Number.isInteger(retries) || retries < 1 || retries > 30) {
   process.stderr.write('--stable-tip-retries must be an integer from 1 through 30.\n');
   process.exitCode = 2;
@@ -100,6 +108,23 @@ if (!campaignArg) {
     if (await exists(campaign)) {
       throw new Error('Live Cardano Preprod campaign destination already exists; choose a new directory so prior evidence is never overwritten or mixed.');
     }
+
+    const gate = runNode([
+      'scripts/cardano-preprod-evaluation-workstation-gate.js',
+      '--bundle-dir', resolve(bundleDirArg),
+      '--sealed-source', resolve(sealedSourceArg),
+      '--campaign', campaign
+    ], projectRoot);
+    if (gate.status !== 0) throw new Error(`Sealed workstation gate failed before network capture: ${gate.stderr || gate.stdout}`);
+    const gateReport = JSON.parse(gate.stdout);
+    if (gateReport.ok !== true ||
+        gateReport.networkRequestsPerformed !== false ||
+        gateReport.walletSigningAuthorized !== false ||
+        gateReport.transactionSubmissionAuthorized !== false ||
+        gateReport.supportClaimAuthorized !== false) {
+      throw new Error('Sealed workstation gate attempted to weaken the evaluation-only authority boundary.');
+    }
+
     const client = createCardanoOgmiosHttpClient({
       url: ogmiosUrl,
       apiKey: ogmiosApiKey,
@@ -108,6 +133,7 @@ if (!campaignArg) {
 
     const live = await captureStableProtocolContext(client, blockfrostProjectId, retries);
     await mkdir(campaign, { recursive: true });
+    await writeFile(join(campaign, 'workstation-gate-receipt.json'), `${JSON.stringify(gateReport, null, 2)}\n`);
     const protocolPath = join(campaign, 'current-preprod-protocol-parameters.json');
     await writeFile(protocolPath, `${JSON.stringify(live.snapshot, null, 2)}\n`);
 
@@ -201,6 +227,10 @@ if (!campaignArg) {
       campaign,
       campaignSha256: preparation.campaignSha256,
       invariantProgramSha256: preparation.invariantProgramSha256,
+      sealedCheckpointRef: gateReport.checkpointRef,
+      sealedCheckpointArchiveSha256: gateReport.checkpointArchiveSha256,
+      sealedSourceTreeSha256: gateReport.sealedSourceTreeSha256,
+      toolingSourceTreeSha256: gateReport.toolingSourceTreeSha256,
       independentlyConfirmedProtocolSources: 2,
       campaignProtocolTipHash: live.snapshot.tip.blockHash,
       campaignEvaluationSlot: live.snapshot.tip.slot,
