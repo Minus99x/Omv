@@ -166,7 +166,10 @@ test('Ogmios WebSocket client preserves script execution failure code and data',
     () => client.rpc('evaluateTransaction', { transaction: { cbor: '00' } }, 'eval-fail'),
     error => /code=3010/.test(error.message) &&
       /spend:0/.test(error.message) &&
-      /fixture-script-failure/.test(error.message)
+      /fixture-script-failure/.test(error.message) &&
+      error.ogmios?.code === 3010 &&
+      error.ogmios?.method === 'evaluateTransaction' &&
+      error.ogmios?.data?.[0]?.validator === 'spend:0'
   );
   client.close();
 });
