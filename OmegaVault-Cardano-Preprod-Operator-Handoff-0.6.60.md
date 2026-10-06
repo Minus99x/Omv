@@ -6,6 +6,10 @@ This runbook minimizes user-controlled workstation time while preserving every O
 
 ## BLUF
 
+**Live milestone reached 2026-10-06:** the guided public-Preprod campaign completed synchronized evaluation for the full lifecycle `initialize → heartbeat → approve → execute`. The successful result remained evaluation-only: no wallet signing, transaction submission, full phase-1 validation, finality claim, public recovery claim or support promotion occurred.
+
+The live work exposed and corrected two transport/encoding boundaries before that successful campaign: Aiken `compiledCode` must be preserved as the CBOR-encoded Plutus V3 witness bytes, and Ogmios v7 structured validator pointers must normalize to OmegaVault's canonical `purpose:index` form. Both corrections are regression-tested.
+
 For the current Cardano public-Preprod **evaluation-only** gate, the workstation needs:
 
 1. Git.
@@ -183,6 +187,27 @@ It explicitly reports:
 - support claim authorized: false
 
 Ogmios transaction evaluation is not complete phase-1 ledger validation. The later gate must first apply evaluated execution budgets to a finalized transaction candidate, then independently perform full phase-1 checks.
+
+## Post-evaluation construction — offline, no provider credentials
+
+After a synchronized campaign has completed successfully, the 0.6.60 tooling can derive the next fail-closed construction artifacts without another network call:
+
+```powershell
+npm.cmd run cardano:preprod:campaign:construct:evaluated -- --campaign "<PATH-TO-COMPLETED-LIVE-CAMPAIGN-DIR>"
+```
+
+This constructor:
+
+1. verifies the campaign/session manifests and the captured synchronized evaluation evidence before writing anything;
+2. applies the captured safety-margin execution budgets to each action;
+3. recomputes script-data hashes and converges the fee using the expected fixed-size wallet witness count;
+4. excludes all synthetic sizing witnesses from the derived unsigned candidates;
+5. writes one append-only `evaluated-unsigned-construction.json` per lifecycle session plus `evaluated-construction-manifest.json` at campaign root;
+6. keeps `ledgerUtxoExistenceValidated`, `fullPhaseOneValidated`, wallet-signing authorization, submission authorization, finality and support promotion explicitly false.
+
+The derived candidates still use the campaign's synthetic supplemental UTxO context. They are evidence/engineering artifacts for the next gate, **not submit-ready transactions**.
+
+The next live gate is therefore narrowed to **real Preprod UTxO binding plus complete phase-1 validation**. Wallet signing and submission remain later and separately authorized steps.
 
 ## Wallet and faucet — prepare now only if convenient
 
