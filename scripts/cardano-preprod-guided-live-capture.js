@@ -6,6 +6,7 @@ import { stdin as input, stdout as output } from 'node:process';
 import {
   createCardanoOgmiosHttpClient,
   fetchCardanoBlockfrostPreprodProtocolParameters,
+  normalizeCardanoOgmiosWebSocketUrl,
   parseCardanoOgmiosTipResponse
 } from '../src/chains/cardano/preprod-live-capture.js';
 
@@ -34,10 +35,17 @@ function validSecret(value) {
 }
 
 function validEndpoint(value) {
-  return typeof value === 'string' &&
-    ENDPOINT.test(value) &&
-    !PLACEHOLDER.test(value) &&
-    !/[\r\n]/.test(value);
+  if (typeof value !== 'string' || PLACEHOLDER.test(value) || /[\r\n]/.test(value)) return false;
+  try {
+    normalizeCardanoOgmiosWebSocketUrl(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isUnauthorized(error) {
+  return /(?:HTTP|handshake returned HTTP)\s+401\b/i.test(String(error?.message ?? error));
 }
 
 async function collectFromClipboard(rl, label, validator, invalidMessage) {
@@ -52,11 +60,24 @@ async function collectFromClipboard(rl, label, validator, invalidMessage) {
   }
 }
 
+async function probeOgmios(url, apiKey = null) {
+  const client = createCardanoOgmiosHttpClient({
+    url,
+    apiKey,
+    apiKeyHeader: 'dmtr-api-key'
+  });
+  try {
+    const response = await client.rpc('queryNetwork/tip', undefined, 'omegavault-guided-provider-preflight');
+    return parseCardanoOgmiosTipResponse(response);
+  } finally {
+    client.close();
+  }
+}
+
 const projectRoot = resolve(fileURLToPath(new URL('../', import.meta.url)));
 const forwarded = process.argv.slice(2);
 const rl = createInterface({ input, output });
 
-let client = null;
 try {
   output.write('OmegaVault Cardano Preprod guided provider bootstrap\n');
   output.write('Secrets remain process-local and are never printed or placed on the command line.\n');
@@ -69,35 +90,36 @@ try {
     'That clipboard value does not look like a Blockfrost project ID.'
   );
 
-  const ogmiosUrl = await collectFromClipboard(
+  const copiedOgmiosUrl = await collectFromClipboard(
     rl,
-    'the normal Demeter Ogmios Endpoint URL',
+    'a Demeter Ogmios Endpoint URL (normal OR authenticated)',
     validEndpoint,
-    'That clipboard value is not an http(s)/ws(s) endpoint URL.'
+    'That clipboard value is not a usable Ogmios endpoint URL.'
   );
+  const ogmiosUrl = normalizeCardanoOgmiosWebSocketUrl(copiedOgmiosUrl);
 
-  const ogmiosApiKey = await collectFromClipboard(
-    rl,
-    'the API Key from that SAME Demeter Ogmios resource',
-    validSecret,
-    'That clipboard value does not look like an Ogmios API key.'
-  );
+  output.write('\nTesting whether that Ogmios endpoint is already authenticated...\n');
+  let ogmiosApiKey = null;
+  let tip;
+  try {
+    tip = await probeOgmios(ogmiosUrl);
+    output.write('Authenticated Ogmios endpoint accepted without a separate API-key header.\n');
+  } catch (error) {
+    if (!isUnauthorized(error)) throw error;
+    output.write('Endpoint requires the separate Demeter API key.\n');
+    ogmiosApiKey = await collectFromClipboard(
+      rl,
+      'the API Key from that SAME Demeter Ogmios resource',
+      validSecret,
+      'That clipboard value does not look like an Ogmios API key.'
+    );
+    tip = await probeOgmios(ogmiosUrl, ogmiosApiKey);
+  }
 
   rl.close();
 
-  output.write('\nTesting providers before creating any campaign directory...\n');
-  client = createCardanoOgmiosHttpClient({
-    url: ogmiosUrl,
-    apiKey: ogmiosApiKey,
-    apiKeyHeader: 'dmtr-api-key'
-  });
-
-  const tip = parseCardanoOgmiosTipResponse(
-    await client.rpc('queryNetwork/tip', undefined, 'omegavault-guided-provider-preflight')
-  );
+  output.write('Testing Blockfrost Preprod before creating any campaign directory...\n');
   await fetchCardanoBlockfrostPreprodProtocolParameters({ projectId: blockfrostProjectId });
-  client.close();
-  client = null;
 
   output.write(`Provider preflight passed: Ogmios Preprod tip slot ${tip.slot}; Blockfrost Preprod responded successfully.\n`);
   output.write('Launching evaluation-only capture.\n\n');
@@ -113,7 +135,7 @@ try {
         ...process.env,
         BLOCKFROST_PROJECT_ID: blockfrostProjectId,
         OMEGAVAULT_OGMIOS_URL: ogmiosUrl,
-        OMEGAVAULT_OGMIOS_API_KEY: ogmiosApiKey,
+        OMEGAVAULT_OGMIOS_API_KEY: ogmiosApiKey ?? '',
         OMEGAVAULT_OGMIOS_API_KEY_HEADER: 'dmtr-api-key'
       }
     }
@@ -122,7 +144,6 @@ try {
   process.exitCode = Number.isInteger(result.status) ? result.status : 2;
 } catch (error) {
   try { rl.close(); } catch {}
-  client?.close?.();
   process.stderr.write(`OmegaVault Cardano provider bootstrap blocked: ${error.message}\n`);
   process.exitCode = 2;
 }
