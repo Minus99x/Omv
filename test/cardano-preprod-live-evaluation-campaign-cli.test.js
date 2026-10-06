@@ -40,9 +40,39 @@ test('live Preprod evaluation campaign refuses an existing destination before ne
     'scripts/capture-cardano-preprod-evaluation-campaign.js',
     '--campaign', campaign,
     '--ogmios-url', 'https://example.invalid',
-    '--blockfrost-project-id', 'preprod-test-key'
+    '--blockfrost-project-id', 'preprod-test-key',
+    '--bundle-dir', campaign,
+    '--sealed-source', campaign
   ]);
   assert.equal(result.status, 2);
   assert.match(result.stderr, /destination already exists/i);
   fs.rmSync(campaign, { recursive: true, force: true });
+});
+
+
+test('live Preprod evaluation campaign refuses missing sealed bundle before network capture', () => {
+  const campaign = path.join(os.tmpdir(), `omegavault-live-eval-missing-bundle-${process.pid}`);
+  const result = run([
+    'scripts/capture-cardano-preprod-evaluation-campaign.js',
+    '--campaign', campaign,
+    '--ogmios-url', 'https://example.invalid',
+    '--blockfrost-project-id', 'preprod-test-key'
+  ]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /requires --bundle-dir/i);
+  assert.equal(fs.existsSync(campaign), false);
+});
+
+test('live Preprod evaluation campaign refuses missing sealed source before network capture', () => {
+  const campaign = path.join(os.tmpdir(), `omegavault-live-eval-missing-sealed-source-${process.pid}`);
+  const result = run([
+    'scripts/capture-cardano-preprod-evaluation-campaign.js',
+    '--campaign', campaign,
+    '--ogmios-url', 'https://example.invalid',
+    '--blockfrost-project-id', 'preprod-test-key',
+    '--bundle-dir', os.tmpdir()
+  ]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /requires --sealed-source/i);
+  assert.equal(fs.existsSync(campaign), false);
 });
