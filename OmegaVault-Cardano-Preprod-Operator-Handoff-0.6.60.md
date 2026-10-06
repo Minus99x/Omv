@@ -100,20 +100,29 @@ A disagreement fails closed before campaign evidence is accepted.
 
 ## Workstation sequence
 
-Use the extracted **sealed checkpoint source** and its matching sealed bundle.
+Keep two directories separate:
 
-### 1. Install pinned project dependencies
+- **0.6.60 live-evaluation tooling checkout** — run the commands from here.
+- **sealed 0.6.59 source** — never modify it; the gate verifies it against the sealed bundle.
 
-```powershell
-npm ci
-npm run preflight:workstation
-```
+### 1. Install pinned tooling dependencies
 
-### 2. Verify the sealed package — no network capture yet
+From the 0.6.60 tooling checkout:
 
 ```powershell
-npm run cardano:preprod:first-run -- --bundle-dir "<PATH-TO-SEALED-BUNDLE>" --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
+npm.cmd ci
+npm.cmd run preflight:workstation
 ```
+
+### 2. Verify the separate sealed package — no network capture yet
+
+Still from the 0.6.60 tooling checkout:
+
+```powershell
+npm.cmd run cardano:preprod:first-run -- --bundle-dir "<PATH-TO-SEALED-BUNDLE>" --sealed-source "<PATH-TO-SEALED-0.6.59-SOURCE>" --campaign "<PATH-TO-NEW-LIVE-CAMPAIGN-DIR>"
+```
+
+The tooling source and sealed source are intentionally different. The gate records both source-tree identities and fails closed if the sealed source does not match its checkpoint manifest.
 
 This verifies:
 
@@ -131,7 +140,7 @@ It performs no Cardano network request and creates no stale campaign.
 After the Ogmios and Blockfrost environment variables are set:
 
 ```powershell
-npm run cardano:preprod:campaign:capture -- --campaign "<PATH-TO-NEW-CAMPAIGN-DIR>"
+npm.cmd run cardano:preprod:campaign:capture -- --campaign "<PATH-TO-NEW-LIVE-CAMPAIGN-DIR>"
 ```
 
 That command:
@@ -141,7 +150,7 @@ That command:
 3. independently confirms them with Blockfrost Preprod;
 4. fails closed on any parameter/cost-model disagreement;
 5. constructs the four lifecycle evaluation candidates using the **current** Plutus V3 cost model;
-6. binds an explicit synthetic supplemental UTxO context for the deterministic offline fixture references;
+6. binds an explicit synthetic supplemental UTxO context for the deterministic offline fixture references using the current Ogmios v7 `additionalUtxo` request field and flat UTxO schema;
 7. for each action — `initialize`, `heartbeat`, `approve`, `execute`:
    - reads a tip immediately before evaluation;
    - runs Ogmios `evaluateTransaction`;
