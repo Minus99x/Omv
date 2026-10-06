@@ -56,8 +56,8 @@ function verifyCapturePlan(plan) {
   if (!SHA256.test(String(plan.transactionCborSha256 ?? ''))) errors.push('Capture plan CBOR digest is invalid.');
   if (!SHA256.test(String(plan.planSha256 ?? ''))) errors.push('Capture plan digest is invalid.');
   if (!SHA256.test(String(plan.evaluationContext?.supplementalUtxoSha256 ?? ''))) errors.push('Capture plan supplemental UTxO digest is invalid.');
-  if (!Array.isArray(plan.evaluationRequest?.params?.additionalUtxoSet) || plan.evaluationRequest.params.additionalUtxoSet.length < 1) {
-    errors.push('Capture plan must carry a supplemental UTxO evaluation context.');
+  if (!Array.isArray(plan.evaluationRequest?.params?.additionalUtxo) || plan.evaluationRequest.params.additionalUtxo.length < 1) {
+    errors.push('Capture plan must carry an Ogmios v7 supplemental UTxO evaluation context.');
   }
   if (plan.evaluationContext?.syntheticSupplementalUtxoContext !== true ||
       plan.evaluationContext?.fullPhaseOneValidationPerformed !== false) {
