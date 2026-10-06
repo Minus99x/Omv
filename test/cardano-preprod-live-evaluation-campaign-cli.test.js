@@ -32,3 +32,17 @@ test('live Preprod evaluation campaign refuses missing Blockfrost confirmation b
   assert.match(result.stderr, /BLOCKFROST_PROJECT_ID/);
   assert.equal(fs.existsSync(path.join(campaign, 'campaign-manifest.json')), false);
 });
+
+
+test('live Preprod evaluation campaign refuses an existing destination before network capture', () => {
+  const campaign = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-live-eval-existing-'));
+  const result = run([
+    'scripts/capture-cardano-preprod-evaluation-campaign.js',
+    '--campaign', campaign,
+    '--ogmios-url', 'https://example.invalid',
+    '--blockfrost-project-id', 'preprod-test-key'
+  ]);
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /destination already exists/i);
+  fs.rmSync(campaign, { recursive: true, force: true });
+});
