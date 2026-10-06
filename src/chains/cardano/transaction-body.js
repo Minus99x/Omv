@@ -8,6 +8,7 @@ export const CARDANO_PREPROD_NETWORK_ID = 0;
 export const CARDANO_PREPROD_NETWORK_MAGIC = 1;
 export const CARDANO_PREPROD_SLOT_ANCHOR = 86400;
 export const CARDANO_PREPROD_TIME_ANCHOR_MS = 1655769600000;
+export const CARDANO_PREPROD_EVALUATION_VALIDITY_WINDOW_SLOTS = 1800;
 
 export const CARDANO_APPLIED_FIXTURE = Object.freeze({
   purpose: 'offline-reproducibility-only',
@@ -81,12 +82,26 @@ export function cardanoPreprodSlotToUnixTimeMs(slot) {
   return CARDANO_PREPROD_TIME_ANCHOR_MS + ((slot - CARDANO_PREPROD_SLOT_ANCHOR) * 1000);
 }
 
-function fixtureTiming(action) {
-  const lowerSlot = FIXTURE_VALIDITY_START[action];
-  if (!lowerSlot) throw new TypeError('Unknown Cardano fixture action.');
-  const upperSlot = lowerSlot + 140;
+function fixtureTiming(action, evaluationSlot = null) {
+  const fixedLowerSlot = FIXTURE_VALIDITY_START[action];
+  if (!fixedLowerSlot) throw new TypeError('Unknown Cardano fixture action.');
+
+  let lowerSlot = fixedLowerSlot;
+  let upperSlot = fixedLowerSlot + 140;
+  let liveTipSlot = null;
+
+  if (evaluationSlot !== null && evaluationSlot !== undefined) {
+    if (!Number.isSafeInteger(evaluationSlot) || evaluationSlot < 30) {
+      throw new TypeError('evaluationSlot must be a safe Preprod slot at least 30.');
+    }
+    liveTipSlot = evaluationSlot;
+    lowerSlot = evaluationSlot - 30;
+    upperSlot = evaluationSlot + CARDANO_PREPROD_EVALUATION_VALIDITY_WINDOW_SLOTS;
+  }
+
   const lowerTimeMs = cardanoPreprodSlotToUnixTimeMs(lowerSlot);
   return Object.freeze({
+    liveTipSlot,
     lowerSlot,
     upperSlot,
     lowerTimeMs,
@@ -159,8 +174,8 @@ function setBeaconMint(body, quantity) {
   body.set_mint(mint);
 }
 
-function vaultDatumForInput(action) {
-  const timing = fixtureTiming(action);
+function vaultDatumForInput(action, evaluationSlot = null) {
+  const timing = fixtureTiming(action, evaluationSlot);
   const approvals = action === 'execute'
     ? [fixtureKeys.contact, fixtureKeys.contactB]
     : action === 'heartbeat'
@@ -203,7 +218,7 @@ function ogmiosUtxo({ transactionId, index, address, lovelace, includeBeacon = f
   return Object.freeze(utxo);
 }
 
-export function buildCardanoEvaluationAdditionalUtxoSet(action) {
+export function buildCardanoEvaluationAdditionalUtxoSet(action, { evaluationSlot = null } = {}) {
   if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('action must be initialize, heartbeat, approve, or execute.');
   const ownerAddress = enterpriseKeyAddress(fixtureKeys.owner).to_bech32();
   const entries = [];
@@ -222,7 +237,7 @@ export function buildCardanoEvaluationAdditionalUtxoSet(action) {
       address: CARDANO_APPLIED_FIXTURE.recoveryValidatorAddress,
       lovelace: 10000000,
       includeBeacon: true,
-      datum: vaultDatumForInput(action)
+      datum: vaultDatumForInput(action, evaluationSlot)
     }));
   }
 
@@ -242,9 +257,17 @@ export function buildCardanoEvaluationAdditionalUtxoSet(action) {
   return Object.freeze(entries);
 }
 
-export function buildCardanoTransactionBodyFixture(action, { feeLovelace = '200000', scriptDataHashHex = '99'.repeat(32), evaluationContext = false } = {}) {
+export function buildCardanoTransactionBodyFixture(action, {
+  feeLovelace = '200000',
+  scriptDataHashHex = '99'.repeat(32),
+  evaluationContext = false,
+  evaluationSlot = null
+} = {}) {
   if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('action must be initialize, heartbeat, approve, or execute.');
-  const timing = evaluationContext ? fixtureTiming(action) : null;
+  if (!evaluationContext && evaluationSlot !== null && evaluationSlot !== undefined) {
+    throw new TypeError('evaluationSlot is only valid for a public Preprod evaluation context.');
+  }
+  const timing = evaluationContext ? fixtureTiming(action, evaluationSlot) : null;
 
   const inputs = Cardano.TransactionInputs.new();
   inputs.add(transactionInput(action === 'initialize' ? CARDANO_APPLIED_FIXTURE.seedTxId : 'cd'.repeat(32), 0));
