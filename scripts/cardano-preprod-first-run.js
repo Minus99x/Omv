@@ -7,17 +7,21 @@ function arg(name, fallback = null) {
 }
 
 const bundleDir = arg('--bundle-dir');
+const sealedSource = arg('--sealed-source');
 const campaign = resolve(arg('--campaign', resolve('..', 'omegavault-cardano-preprod-live-campaign')));
 
 if (!bundleDir) {
   process.stderr.write('Cardano Preprod first run requires --bundle-dir pointing to the sealed artifact bundle.\n');
   process.exitCode = 2;
 } else {
-  const result = spawnSync(process.execPath, [
+  const gateArgs = [
     'scripts/cardano-preprod-evaluation-workstation-gate.js',
     '--bundle-dir', resolve(bundleDir),
     '--campaign', campaign
-  ], { cwd: process.cwd(), encoding: 'utf8', windowsHide: true });
+  ];
+  if (sealedSource) gateArgs.push('--sealed-source', resolve(sealedSource));
+
+  const result = spawnSync(process.execPath, gateArgs, { cwd: process.cwd(), encoding: 'utf8', windowsHide: true });
 
   if (result.status !== 0) {
     process.stderr.write(result.stderr || result.stdout);
@@ -25,12 +29,16 @@ if (!bundleDir) {
   } else {
     const gate = JSON.parse(result.stdout);
     process.stdout.write(`${JSON.stringify({
-      schema: 'omegavault.cardano.preprod-first-run.v2',
+      schema: 'omegavault.cardano.preprod-first-run.v3',
       ok: true,
       checkpointRef: gate.checkpointRef,
       checkpointArchiveSha256: gate.checkpointArchiveSha256,
-      sourceTreeSha256: gate.sourceTreeSha256,
-      dependencyLockSha256: gate.dependencyLockSha256,
+      sealedSourceRoot: gate.sealedSourceRoot,
+      sealedSourceTreeSha256: gate.sealedSourceTreeSha256,
+      sealedDependencyLockSha256: gate.sealedDependencyLockSha256,
+      toolingRoot: gate.toolingRoot,
+      toolingPackageVersion: gate.toolingPackageVersion,
+      toolingSourceTreeSha256: gate.toolingSourceTreeSha256,
       externalReviewVerified: gate.externalReviewVerified,
       pinnedDependenciesReady: gate.pinnedDependenciesReady,
       campaign,
