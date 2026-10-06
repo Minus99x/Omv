@@ -1,5 +1,6 @@
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { hashCardanoEvidence } from './evidence-binding.js';
+import { verifyCardanoPreprodAppliedValidatorIdentity } from './live-validator-identity.js';
 import { CARDANO_PREPROD_NETWORK_ID } from './transaction-body.js';
 import { createCardanoOgmiosUtxoByOutputReferencesParams } from './preprod-live-capture.js';
 
@@ -39,14 +40,9 @@ function refKey(reference) {
 
 function normalizeValidatorIdentity(identity) {
   const value = plainObject(identity, 'appliedValidatorIdentity');
-  if (value.schema !== 'omegavault.cardano.preprod-applied-validator-identity.v1' ||
-      value.network !== 'preprod' ||
-      value.networkId !== CARDANO_PREPROD_NETWORK_ID) {
-    throw new Error('A Cardano Preprod applied validator identity is required.');
-  }
-  if (!HEX_32.test(String(value.identitySha256 ?? '')) ||
-      hashCardanoEvidence(withoutDigest(value, 'identitySha256')) !== String(value.identitySha256).toLowerCase()) {
-    throw new Error('Applied validator identity digest is invalid.');
+  const verified = verifyCardanoPreprodAppliedValidatorIdentity(value);
+  if (!verified.valid) {
+    throw new Error(`Applied validator identity verification failed: ${verified.errors.join('; ')}`);
   }
   const seedReference = normalizeReference(value.seedReference, 'appliedValidatorIdentity.seedReference');
   const assetNameHex = String(value.assetNameHex ?? '').toLowerCase();
