@@ -46,5 +46,5 @@ test('review-index CLI generates and verifies an externally bound review package
   fs.writeFileSync(archivePath, Buffer.from('swapped-archive'));
   const swapped = spawnSync(process.execPath, ['scripts/verify-external-review-index.js', '--index', indexPath, '--archive', archivePath, '--checkpoint-manifest', manifestPath], { cwd: root, encoding: 'utf8' });
   assert.equal(swapped.status, 2);
-  assert.match(swapped.stderr, /Archive does not match checkpoint manifest/);
+  assert.match(swapped.stderr, /Source archive SHA-256 does not match checkpoint manifest|Archive does not match checkpoint manifest/);
 });
