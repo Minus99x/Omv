@@ -34,7 +34,9 @@ export function createCardanoOgmiosEvaluationRequest({ transactionCborHex, addit
   const params = { transaction: { cbor: transactionCborHex.toLowerCase() } };
   if (additionalUtxoSet !== undefined) {
     if (!Array.isArray(additionalUtxoSet)) throw new TypeError('additionalUtxoSet must be an array.');
-    params.additionalUtxoSet = additionalUtxoSet;
+    // Ogmios v7 names the wire-level parameter "additionalUtxo".
+    // Keep the internal argument name for compatibility with OmegaVault's existing capture-plan API.
+    params.additionalUtxo = additionalUtxoSet;
   }
   return Object.freeze({
     request: Object.freeze({ jsonrpc: '2.0', method: 'evaluateTransaction', params, id }),
