@@ -12,11 +12,11 @@ async function exists(path) {
 }
 
 function parseReference(value, label) {
-  if (typeof value !== 'string') throw new TypeError(\`\${label} is required as <txid>#<index>.\`);
+  if (typeof value !== 'string') throw new TypeError(`${label} is required as <txid>#<index>.`);
   const match = /^([0-9a-fA-F]{64})#(\d+)$/.exec(value.trim());
-  if (!match) throw new TypeError(\`\${label} must be <64-hex-txid>#<non-negative-index>.\`);
+  if (!match) throw new TypeError(`${label} must be <64-hex-txid>#<non-negative-index>.`);
   const index = Number(match[2]);
-  if (!Number.isSafeInteger(index)) throw new TypeError(\`\${label} index exceeds the safe integer range.\`);
+  if (!Number.isSafeInteger(index)) throw new TypeError(`${label} index exceeds the safe integer range.`);
   return Object.freeze({
     transaction: Object.freeze({ id: match[1].toLowerCase() }),
     index
@@ -55,8 +55,8 @@ if (!action || !identityArg || !outputArg) {
       roles,
       appliedValidatorIdentity
     });
-    await writeFile(outputPath, \`\${JSON.stringify(plan, null, 2)}\n\`);
-    process.stdout.write(\`\${JSON.stringify({
+    await writeFile(outputPath, `${JSON.stringify(plan, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({
       schema: 'omegavault.cardano.preprod-real-utxo-plan-cli.v1',
       ok: true,
       action: plan.action,
@@ -68,9 +68,9 @@ if (!action || !identityArg || !outputArg) {
       transactionSubmissionAuthorized: false,
       supportClaimAuthorized: false,
       next: 'Capture these exact output references from Cardano Preprod at one stable Ogmios tip.'
-    }, null, 2)}\n\`);
+    }, null, 2)}\n`);
   } catch (error) {
-    process.stderr.write(\`Cardano real Preprod UTxO plan blocked: \${error.message}\n\`);
+    process.stderr.write(`Cardano real Preprod UTxO plan blocked: ${error.message}\n`);
     process.exitCode = 2;
   }
 }
