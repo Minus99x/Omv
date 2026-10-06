@@ -169,7 +169,7 @@ test('Cardano real UTxO evidence fails closed on tip drift, missing roles, non-A
       plan,
       tipBefore: tip,
       tipAfter: tip,
-      queriedUtxo: queriedUtxo.slice(0, 2)
+      queriedUtxo: queriedUtxo.slice(0, 1)
     }),
     /collateral/
   );
