@@ -26,11 +26,12 @@ test('workstation checkpoint source gate binds archive, dependency lock and extr
   assert.equal(lock.ok, true);
   const inventory = createSourceTreeInventory(source);
   const pkg = JSON.parse(packageJson);
-  const manifest = createCheckpointManifest({
+  const manifestCore = createCheckpointManifest({
     checkpoint: { ref: pkg.version, archive: path.basename(archive), archiveSha256: sha(fs.readFileSync(archive)) },
     dependencyLock: lock.binding,
     sourceInventory: inventory
   });
+  const manifest = { ...manifestCore, sourceInventory: inventory };
 
   const valid = verifyWorkstationCheckpointSource({ projectRoot: source, checkpointManifest: manifest, sourceArchivePath: archive });
   assert.equal(valid.ok, true, valid.errors.join('; '));
@@ -102,11 +103,12 @@ test('workstation checkpoint source gate rejects swapped source archive bytes', 
   const lock = verifyPackageLockIntegrity({ packageJsonText: packageJson, packageLockText: packageLock });
   const inventory = createSourceTreeInventory(source);
   const pkg = JSON.parse(packageJson);
-  const manifest = createCheckpointManifest({
+  const manifestCore = createCheckpointManifest({
     checkpoint: { ref: pkg.version, archive: path.basename(archive), archiveSha256: sha(fs.readFileSync(archive)) },
     dependencyLock: lock.binding,
     sourceInventory: inventory
   });
+  const manifest = { ...manifestCore, sourceInventory: inventory };
   fs.writeFileSync(archive, 'swapped');
 
   const result = verifyWorkstationCheckpointSource({ projectRoot: source, checkpointManifest: manifest, sourceArchivePath: archive });
