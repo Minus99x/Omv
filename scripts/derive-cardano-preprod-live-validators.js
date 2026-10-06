@@ -21,7 +21,7 @@ async function exists(path) {
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const cardanoDir = join(root, 'validators', 'cardano');
-const aiken = join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'aiken.exe' : 'aiken');
+const aikenRunner = join(root, 'node_modules', '@aiken-lang', 'aiken', 'run-aiken.js');
 const blueprintPath = join(cardanoDir, 'plutus.json');
 
 const seedTxId = String(arg('--seed-tx-id', '')).toLowerCase();
@@ -58,7 +58,7 @@ if (!/^[0-9a-f]{64}$/.test(seedTxId)) {
     const vaultStep = join(work, 'vault-step.json');
     const vaultApplied = join(work, 'vault-applied.json');
 
-    const run = args => execFileSync(aiken, args, {
+    const run = args => execFileSync(process.execPath, [aikenRunner, ...args], {
       cwd: cardanoDir,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe']
