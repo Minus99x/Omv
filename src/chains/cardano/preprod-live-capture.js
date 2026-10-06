@@ -317,6 +317,101 @@ export function createCardanoOgmiosHttpClient({
   });
 }
 
+function blockfrostAmountToOgmiosValue(amount, label) {
+  if (!Array.isArray(amount) || amount.length < 1) throw new TypeError(`${label} amount must be a non-empty array.`);
+  const value = {};
+  for (const [index, item] of amount.entries()) {
+    const unit = String(item?.unit ?? '').toLowerCase();
+    const quantity = String(item?.quantity ?? '');
+    if (!/^\d+$/.test(quantity)) throw new TypeError(`${label} amount[${index}].quantity must be an unsigned integer.`);
+    if (unit === 'lovelace') {
+      value.ada = Object.freeze({ lovelace: quantity });
+      continue;
+    }
+    if (!/^[0-9a-f]{56,120}$/.test(unit) || unit.length % 2 !== 0) {
+      throw new TypeError(`${label} amount[${index}].unit is not a Cardano asset unit.`);
+    }
+    const policyId = unit.slice(0, 56);
+    const assetName = unit.slice(56);
+    value[policyId] = Object.freeze({
+      ...(value[policyId] ?? {}),
+      [assetName]: quantity
+    });
+  }
+  if (!value.ada) throw new Error(`${label} does not contain lovelace.`);
+  return Object.freeze(value);
+}
+
+export async function fetchCardanoBlockfrostPreprodAddressUtxos({
+  projectId,
+  address,
+  fetchImpl = globalThis.fetch,
+  baseUrl = 'https://cardano-preprod.blockfrost.io/api/v0',
+  maxPages = 10
+}) {
+  if (typeof projectId !== 'string' || !projectId.trim()) throw new TypeError('A Blockfrost Preprod project_id is required.');
+  if (typeof address !== 'string' || !address.startsWith('addr_test1')) throw new TypeError('A Cardano testnet addr_test1 address is required.');
+  if (typeof fetchImpl !== 'function') throw new TypeError('A fetch implementation is required.');
+  if (!Number.isInteger(maxPages) || maxPages < 1 || maxPages > 100) throw new RangeError('maxPages must be 1-100.');
+
+  const result = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    const url = `${baseUrl}/addresses/${encodeURIComponent(address)}/utxos?count=100&page=${page}&order=asc`;
+    const response = await fetchImpl(url, { headers: { project_id: projectId.trim() } });
+    if (!response.ok) throw new Error(`Blockfrost HTTP ${response.status} while reading Preprod address UTxOs.`);
+    const rows = await response.json();
+    if (!Array.isArray(rows)) throw new TypeError('Blockfrost address UTxO response must be an array.');
+    for (const [index, row] of rows.entries()) {
+      const txId = String(row?.tx_hash ?? '').toLowerCase();
+      const outputIndex = Number(row?.output_index);
+      if (!HEX_32.test(txId)) throw new TypeError(`Blockfrost UTxO page ${page} row ${index} has an invalid transaction id.`);
+      if (!Number.isSafeInteger(outputIndex) || outputIndex < 0) throw new TypeError(`Blockfrost UTxO page ${page} row ${index} has an invalid output index.`);
+      result.push(Object.freeze({
+        transaction: Object.freeze({ id: txId }),
+        index: outputIndex,
+        address,
+        value: blockfrostAmountToOgmiosValue(row.amount, `Blockfrost UTxO page ${page} row ${index}`),
+        datumHash: row.data_hash == null ? null : String(row.data_hash).toLowerCase(),
+        inlineDatum: row.inline_datum ?? null,
+        referenceScriptHash: row.reference_script_hash == null ? null : String(row.reference_script_hash).toLowerCase()
+      }));
+    }
+    if (rows.length < 100) return Object.freeze(result);
+  }
+  throw new Error(`Blockfrost address UTxO listing exceeded ${maxPages * 100} outputs; narrow the wallet before OmegaVault automatic selection.`);
+}
+
+export function selectCardanoPreprodInitializeUtxos(utxos) {
+  if (!Array.isArray(utxos)) throw new TypeError('utxos must be an array.');
+  const plainAdaOnly = utxos.filter(item => {
+    const policies = Object.keys(item?.value ?? {}).filter(key => key !== 'ada');
+    const lovelace = String(item?.value?.ada?.lovelace ?? '');
+    return /^\d+$/.test(lovelace) &&
+      BigInt(lovelace) > 0n &&
+      policies.length === 0 &&
+      item?.datumHash == null &&
+      item?.inlineDatum == null &&
+      item?.referenceScriptHash == null;
+  });
+  plainAdaOnly.sort((left, right) => {
+    const amountOrder = BigInt(right.value.ada.lovelace) - BigInt(left.value.ada.lovelace);
+    if (amountOrder !== 0n) return amountOrder > 0n ? 1 : -1;
+    const leftKey = `${left.transaction.id}#${left.index}`;
+    const rightKey = `${right.transaction.id}#${right.index}`;
+    return leftKey.localeCompare(rightKey);
+  });
+  if (plainAdaOnly.length < 2) {
+    throw new Error('Cardano real initialize requires at least two distinct plain ADA-only wallet UTxOs: one seed/funding input and one collateral input.');
+  }
+  return Object.freeze({
+    seed: Object.freeze({ transaction: plainAdaOnly[0].transaction, index: plainAdaOnly[0].index }),
+    collateral: Object.freeze({ transaction: plainAdaOnly[1].transaction, index: plainAdaOnly[1].index }),
+    seedLovelace: plainAdaOnly[0].value.ada.lovelace,
+    collateralLovelace: plainAdaOnly[1].value.ada.lovelace,
+    candidateCount: plainAdaOnly.length
+  });
+}
+
 export async function fetchCardanoBlockfrostPreprodProtocolParameters({
   projectId,
   fetchImpl = globalThis.fetch,
