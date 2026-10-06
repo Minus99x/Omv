@@ -62,3 +62,27 @@ test('Cardano campaign CLI fails closed when one action manifest is replaced by 
   assert.equal(verified.status, 2);
   assert.match(verified.stderr, /approve.*digest|approve.*cross-wired/i);
 });
+
+
+test('Cardano campaign CLI threads one live Preprod evaluation slot into all four sessions', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'omegavault-cardano-campaign-live-slot-'));
+  const slot = 200000000;
+  const prepared = run([
+    'scripts/prepare-cardano-preprod-campaign.js',
+    '--output', dir,
+    '--evaluation-slot', String(slot)
+  ]);
+  assert.equal(prepared.status, 0, prepared.stderr);
+  const prep = JSON.parse(prepared.stdout);
+  assert.equal(prep.evaluationSlot, slot);
+
+  const campaign = JSON.parse(fs.readFileSync(path.join(dir, 'campaign-manifest.json'), 'utf8'));
+  for (const entry of campaign.sessions) {
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, entry.directory, 'capture-manifest.json'), 'utf8'));
+    const request = manifest.capturePlan.evaluationRequest;
+    assert.ok(Array.isArray(request.params.additionalUtxo));
+    assert.equal(Object.hasOwn(request.params, 'additionalUtxoSet'), false);
+  }
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
