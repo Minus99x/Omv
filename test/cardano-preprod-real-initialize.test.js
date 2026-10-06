@@ -139,6 +139,8 @@ test('Cardano real initialize live-budget candidate applies evaluated budget whi
   assert.equal(finalCandidate.evaluation.mode, 'live-budget-applied-unsigned-candidate');
   assert.equal(finalCandidate.evaluation.mintBudget.memory, '101167');
   assert.equal(finalCandidate.evaluation.requiresLiveEvaluation, false);
+  assert.equal(finalCandidate.evaluation.request, null);
+  assert.deepEqual(finalCandidate.evaluation.expectedValidators, ['mint:0']);
   assert.notEqual(finalCandidate.transaction.bodyHash, evaluationCandidate.transaction.bodyHash);
   assert.ok(BigInt(finalCandidate.transaction.feeLovelace) > BigInt(evaluationCandidate.transaction.feeLovelace));
   assert.equal(finalCandidate.transaction.keyWitnessCount, 0);
