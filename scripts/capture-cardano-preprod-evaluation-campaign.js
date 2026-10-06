@@ -88,7 +88,7 @@ if (!campaignArg) {
   process.stderr.write('Live Cardano Preprod evaluation capture requires --campaign pointing to a new campaign directory.\n');
   process.exitCode = 2;
 } else if (!ogmiosUrl) {
-  process.stderr.write('Set OMEGAVAULT_OGMIOS_URL (or --ogmios-url) to a Cardano Preprod Ogmios HTTP endpoint.\n');
+  process.stderr.write('Set OMEGAVAULT_OGMIOS_URL (or --ogmios-url) to a Cardano Preprod Ogmios endpoint (https or wss).\n');
   process.exitCode = 2;
 } else if (!blockfrostProjectId) {
   process.stderr.write('Set BLOCKFROST_PROJECT_ID (or --blockfrost-project-id) to a Cardano Preprod Blockfrost project key.\n');
