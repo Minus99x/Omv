@@ -177,15 +177,12 @@ function vaultDatumForInput(action) {
   });
 }
 
-function ogmiosReference(transactionId, index) {
-  return Object.freeze({
-    transaction: Object.freeze({ id: transactionId }),
-    output: Object.freeze({ index })
-  });
-}
-
 function ogmiosValue(lovelace, includeBeacon = false) {
-  const value = { lovelace: Number(lovelace) };
+  const quantity = Number(lovelace);
+  if (!Number.isSafeInteger(quantity) || quantity < 0) throw new TypeError('Ogmios lovelace quantity must be a non-negative safe integer.');
+  const value = {
+    ada: Object.freeze({ lovelace: quantity })
+  };
   if (includeBeacon) {
     value[CARDANO_APPLIED_FIXTURE.beaconPolicyId] = Object.freeze({
       [CARDANO_APPLIED_FIXTURE.assetNameHex]: 1
@@ -194,13 +191,16 @@ function ogmiosValue(lovelace, includeBeacon = false) {
   return Object.freeze(value);
 }
 
-function ogmiosOutput({ address, lovelace, includeBeacon = false, datum = null }) {
-  const output = {
+function ogmiosUtxo({ transactionId, index, address, lovelace, includeBeacon = false, datum = null }) {
+  if (!Number.isSafeInteger(index) || index < 0) throw new TypeError('Ogmios UTxO index must be a non-negative safe integer.');
+  const utxo = {
+    transaction: Object.freeze({ id: assertHex(transactionId, HEX_32, 'transactionId') }),
+    index,
     address,
     value: ogmiosValue(lovelace, includeBeacon)
   };
-  if (datum != null) output.datum = datum.to_hex();
-  return Object.freeze(output);
+  if (datum != null) utxo.datum = datum.to_hex();
+  return Object.freeze(utxo);
 }
 
 export function buildCardanoEvaluationAdditionalUtxoSet(action) {
@@ -209,30 +209,35 @@ export function buildCardanoEvaluationAdditionalUtxoSet(action) {
   const entries = [];
 
   if (action === 'initialize') {
-    entries.push(Object.freeze([
-      ogmiosReference(CARDANO_APPLIED_FIXTURE.seedTxId, CARDANO_APPLIED_FIXTURE.seedOutputIndex),
-      ogmiosOutput({ address: ownerAddress, lovelace: 10000000 })
-    ]));
+    entries.push(ogmiosUtxo({
+      transactionId: CARDANO_APPLIED_FIXTURE.seedTxId,
+      index: CARDANO_APPLIED_FIXTURE.seedOutputIndex,
+      address: ownerAddress,
+      lovelace: 10000000
+    }));
   } else {
-    entries.push(Object.freeze([
-      ogmiosReference('cd'.repeat(32), 0),
-      ogmiosOutput({
-        address: CARDANO_APPLIED_FIXTURE.recoveryValidatorAddress,
-        lovelace: 10000000,
-        includeBeacon: true,
-        datum: vaultDatumForInput(action)
-      })
-    ]));
+    entries.push(ogmiosUtxo({
+      transactionId: 'cd'.repeat(32),
+      index: 0,
+      address: CARDANO_APPLIED_FIXTURE.recoveryValidatorAddress,
+      lovelace: 10000000,
+      includeBeacon: true,
+      datum: vaultDatumForInput(action)
+    }));
   }
 
-  entries.push(Object.freeze([
-    ogmiosReference('ef'.repeat(32), 1),
-    ogmiosOutput({ address: ownerAddress, lovelace: 3000000 })
-  ]));
-  entries.push(Object.freeze([
-    ogmiosReference('12'.repeat(32), 0),
-    ogmiosOutput({ address: ownerAddress, lovelace: 5000000 })
-  ]));
+  entries.push(ogmiosUtxo({
+    transactionId: 'ef'.repeat(32),
+    index: 1,
+    address: ownerAddress,
+    lovelace: 3000000
+  }));
+  entries.push(ogmiosUtxo({
+    transactionId: '12'.repeat(32),
+    index: 0,
+    address: ownerAddress,
+    lovelace: 5000000
+  }));
 
   return Object.freeze(entries);
 }
