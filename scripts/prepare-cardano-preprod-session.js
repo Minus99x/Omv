@@ -24,6 +24,11 @@ try {
 }
 const action = arg('--action', 'execute');
 if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('--action must be initialize, heartbeat, approve, or execute.');
+const evaluationSlotArg = arg('--evaluation-slot');
+const evaluationSlot = evaluationSlotArg == null ? null : Number(evaluationSlotArg);
+if (evaluationSlot != null && (!Number.isSafeInteger(evaluationSlot) || evaluationSlot < 30)) {
+  throw new TypeError('--evaluation-slot must be a safe Cardano Preprod slot at least 30.');
+}
 
 const protocolPath = resolve(arg('--protocol-parameters', join(root, 'docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json')));
 const protocolEvidence = JSON.parse(await readFile(protocolPath, 'utf8'));
@@ -32,11 +37,17 @@ const beacon = JSON.parse(await readFile(join(root, 'validators/cardano/fixtures
 const vault = JSON.parse(await readFile(join(root, 'validators/cardano/fixtures/recovery-vault.applied.json'), 'utf8'));
 const beaconCode = beacon.validators.find(item => item.title === 'omegavault.state_beacon.mint').compiledCode;
 const recoveryCode = vault.validators.find(item => item.title === 'omegavault.recovery_vault.spend').compiledCode;
-const candidate = buildCardanoPublicPreprodOgmiosEvaluationFixture({ action, parameters, recoveryCompiledCode: recoveryCode, beaconCompiledCode: beaconCode });
+const candidate = buildCardanoPublicPreprodOgmiosEvaluationFixture({
+  action,
+  parameters,
+  recoveryCompiledCode: recoveryCode,
+  beaconCompiledCode: beaconCode,
+  evaluationSlot
+});
 const plan = createCardanoPreprodEvidenceCapturePlan({
   action,
   transactionCborHex: candidate.transactionCborHex,
-  additionalUtxoSet: buildCardanoEvaluationAdditionalUtxoSet(action),
+  additionalUtxoSet: buildCardanoEvaluationAdditionalUtxoSet(action, { evaluationSlot }),
   requestId: `omegavault-preprod-${action}-evaluate`,
   captureLabel: 'omegavault-cardano-preprod'
 });
@@ -88,6 +99,7 @@ const readme = [
   `Required lifecycle evidence: ${manifest.invariantProgram.requiredLifecycleActions.join(', ')}`,
   `Action: ${plan.action}`,
   `Transaction body hash: ${plan.transactionBodyHash}`,
+  `Live evaluation tip slot anchor: ${evaluationSlot ?? 'offline-fixture'}`,
   `Supplemental evaluation UTxO SHA-256: ${plan.evaluationContext.supplementalUtxoSha256}`,
   '',
   'Required external capture files:',
@@ -113,6 +125,7 @@ process.stdout.write(`${JSON.stringify({
   transactionBodyHash: plan.transactionBodyHash,
   supplementalUtxoSha256: plan.evaluationContext.supplementalUtxoSha256,
   requestId: plan.evaluationRequest.id,
+  evaluationSlot,
   externalCaptureFileCount: 3,
   fullPhaseOneValidated: false,
   networkRequestsPerformed: false,
