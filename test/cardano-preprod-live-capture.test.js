@@ -40,6 +40,50 @@ test('Ogmios HTTP client sends JSON-RPC plus configured authentication without e
   assert.equal(body.id, 'x');
 });
 
+test('Ogmios WebSocket client supports authenticated wss endpoint JSON-RPC', async () => {
+  class FakeWebSocket {
+    constructor(url) {
+      this.url = url;
+      this.listeners = new Map();
+      queueMicrotask(() => this.emit('open', {}));
+    }
+    addEventListener(name, fn) {
+      if (!this.listeners.has(name)) this.listeners.set(name, []);
+      this.listeners.get(name).push(fn);
+    }
+    emit(name, event) {
+      for (const fn of this.listeners.get(name) ?? []) fn(event);
+    }
+    send(payload) {
+      const request = JSON.parse(payload);
+      queueMicrotask(() => this.emit('message', {
+        data: JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { epoch: 400 } })
+      }));
+    }
+    close() {}
+  }
+
+  const client = createCardanoOgmiosHttpClient({
+    url: 'wss://authenticated.preprod.example.invalid',
+    WebSocketImpl: FakeWebSocket
+  });
+  const response = await client.rpc('queryLedgerState/epoch', undefined, 'ws-1');
+  assert.equal(response.result.epoch, 400);
+});
+
+test('Ogmios WebSocket client rejects header-key mode so credentials are never silently dropped', async () => {
+  class FakeWebSocket {}
+  const client = createCardanoOgmiosHttpClient({
+    url: 'wss://preprod.example.invalid',
+    apiKey: 'secret',
+    WebSocketImpl: FakeWebSocket
+  });
+  await assert.rejects(
+    () => client.rpc('queryLedgerState/epoch'),
+    /authenticated endpoint URL/
+  );
+});
+
 test('Blockfrost Preprod helper uses project_id and latest epoch parameter endpoint', async () => {
   const calls = [];
   const fakeFetch = async (url, options) => {
