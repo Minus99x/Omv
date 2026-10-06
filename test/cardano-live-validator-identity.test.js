@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import {
   createCardanoPreprodAppliedValidatorIdentity,
   encodeCardanoAssetNamePlutusData,
-  encodeCardanoOutputReferencePlutusData
+  encodeCardanoOutputReferencePlutusData,
+  verifyCardanoPreprodAppliedValidatorIdentity
 } from '../src/chains/cardano/live-validator-identity.js';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -65,6 +66,36 @@ test('Cardano applied identity independently matches packaged synthetic validato
   assert.equal(result.walletSigningAuthorized, false);
   assert.equal(result.transactionSubmissionAuthorized, false);
   assert.match(result.identitySha256, /^[0-9a-f]{64}$/);
+});
+
+test('Cardano applied identity verifier accepts provenance wrapper but rejects identity tampering', () => {
+  const identity = createCardanoPreprodAppliedValidatorIdentity({
+    seedReference: {
+      transaction: { id: evidence.parameters.seedTxId },
+      index: evidence.parameters.seedOutputIndex
+    },
+    assetNameHex: evidence.parameters.assetNameHex,
+    sourceBlueprintSha256: 'aa'.repeat(32),
+    beaconCompiledCode: beaconCode,
+    recoveryCompiledCode: recoveryCode,
+    aikenPolicyId: evidence.stateBeacon.policyId,
+    aikenRecoveryHash: evidence.recoveryVault.scriptHash,
+    aikenRecoveryAddress: evidence.recoveryVault.preprodAddress
+  });
+  assert.equal(verifyCardanoPreprodAppliedValidatorIdentity(identity).valid, true);
+  assert.equal(verifyCardanoPreprodAppliedValidatorIdentity({
+    ...identity,
+    provenance: { aikenVersion: 'fixture' }
+  }).valid, true);
+
+  const tampered = structuredClone(identity);
+  tampered.stateBeacon.policyId = 'ff'.repeat(28);
+  assert.equal(verifyCardanoPreprodAppliedValidatorIdentity(tampered).valid, false);
+
+  assert.equal(verifyCardanoPreprodAppliedValidatorIdentity({
+    ...identity,
+    unexpected: true
+  }).valid, false);
 });
 
 test('Cardano live validator derivation CLI reproduces synthetic Aiken policy/hash/address', () => {
