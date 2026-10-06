@@ -4,11 +4,24 @@ import {
   cardanoSameTip,
   createCardanoOgmiosHttpClient,
   fetchCardanoBlockfrostPreprodProtocolParameters,
+  normalizeCardanoOgmiosWebSocketUrl,
   parseCardanoOgmiosBlockHeightResponse,
   parseCardanoOgmiosEpochResponse,
   parseCardanoOgmiosProtocolParametersResponse,
   parseCardanoOgmiosTipResponse
 } from '../src/chains/cardano/preprod-live-capture.js';
+
+test('Ogmios endpoint normalization forces WebSocket transport without changing host/path/query', () => {
+  assert.equal(
+    normalizeCardanoOgmiosWebSocketUrl('https://example.invalid/ogmios?token=x'),
+    'wss://example.invalid/ogmios?token=x'
+  );
+  assert.equal(
+    normalizeCardanoOgmiosWebSocketUrl('wss://example.invalid/ogmios'),
+    'wss://example.invalid/ogmios'
+  );
+  assert.throws(() => normalizeCardanoOgmiosWebSocketUrl('ftp://example.invalid'), /WebSocket/);
+});
 
 test('Ogmios response parsers accept current JSON-RPC tip/epoch/height/parameter shapes', () => {
   const hash = 'ab'.repeat(32);
