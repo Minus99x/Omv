@@ -150,14 +150,14 @@ export function createCardanoSynchronizedEvaluationBundle({
   if (evaluationRequest?.params?.transaction?.cbor?.toLowerCase() !== transactionCborHex.toLowerCase()) {
     throw new Error('Cardano evaluation request CBOR does not match the bound candidate.');
   }
-  if (!Array.isArray(evaluationRequest?.params?.additionalUtxoSet) || evaluationRequest.params.additionalUtxoSet.length < 1) {
-    throw new Error('Cardano evaluation request must carry an explicit supplemental UTxO context for the offline fixture inputs.');
+  if (!Array.isArray(evaluationRequest?.params?.additionalUtxo) || evaluationRequest.params.additionalUtxo.length < 1) {
+    throw new Error('Cardano evaluation request must carry an explicit Ogmios v7 supplemental UTxO context for the offline fixture inputs.');
   }
 
   const componentDigests = Object.freeze({
     protocolParametersSha256: hashCardanoEvidence(protocolParameters),
     evaluationRequestSha256: hashCardanoEvidence(evaluationRequest),
-    supplementalUtxoSha256: hashCardanoEvidence(evaluationRequest.params.additionalUtxoSet),
+    supplementalUtxoSha256: hashCardanoEvidence(evaluationRequest.params.additionalUtxo),
     evaluationSha256: hashCardanoEvidence(evaluation)
   });
 
