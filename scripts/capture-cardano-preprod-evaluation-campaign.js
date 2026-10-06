@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createCardanoPreprodLiveProtocolSnapshot } from '../src/chains/cardano/live-protocol-parameters.js';
@@ -19,6 +19,10 @@ function arg(name, fallback = null) {
 
 function runNode(args, cwd) {
   return spawnSync(process.execPath, args, { cwd, encoding: 'utf8', windowsHide: true });
+}
+
+async function exists(path) {
+  try { await access(path); return true; } catch { return false; }
 }
 
 async function rpcTip(client) {
@@ -93,6 +97,9 @@ if (!campaignArg) {
 } else {
   try {
     const campaign = resolve(campaignArg);
+    if (await exists(campaign)) {
+      throw new Error('Live Cardano Preprod campaign destination already exists; choose a new directory so prior evidence is never overwritten or mixed.');
+    }
     const client = createCardanoOgmiosHttpClient({
       url: ogmiosUrl,
       apiKey: ogmiosApiKey,
