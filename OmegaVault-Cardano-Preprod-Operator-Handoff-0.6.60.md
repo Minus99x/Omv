@@ -140,16 +140,18 @@ It performs no Cardano network request and creates no stale campaign.
 After the Ogmios and Blockfrost environment variables are set:
 
 ```powershell
-npm.cmd run cardano:preprod:campaign:capture -- --campaign "<PATH-TO-NEW-LIVE-CAMPAIGN-DIR>"
+npm.cmd run cardano:preprod:campaign:capture -- --campaign "<PATH-TO-NEW-LIVE-CAMPAIGN-DIR>" --bundle-dir "<PATH-TO-SEALED-BUNDLE>" --sealed-source "<PATH-TO-SEALED-0.6.59-SOURCE>"
 ```
 
-That command:
+That command first re-runs the sealed-checkpoint workstation gate and writes its receipt into the new campaign directory. It will not make a network request if the sealed source/archive/review/dependency identity fails.
+
+Then it:
 
 1. reads a stable Ogmios Preprod tip;
 2. obtains the current epoch and current protocol parameters;
 3. independently confirms them with Blockfrost Preprod;
 4. fails closed on any parameter/cost-model disagreement;
-5. constructs the four lifecycle evaluation candidates using the **current** Plutus V3 cost model;
+5. constructs the four lifecycle evaluation candidates using the **current** Plutus V3 cost model and a validity interval anchored to the captured live Preprod tip slot;
 6. binds an explicit synthetic supplemental UTxO context for the deterministic offline fixture references using the current Ogmios v7 `additionalUtxo` request field and flat UTxO schema;
 7. for each action — `initialize`, `heartbeat`, `approve`, `execute`:
    - reads a tip immediately before evaluation;
