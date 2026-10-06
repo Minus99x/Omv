@@ -41,7 +41,6 @@ if (!action || !identityArg || !outputArg) {
     const roles = action === 'initialize'
       ? {
           seed: parseReference(arg('--seed'), '--seed'),
-          fee: parseReference(arg('--fee'), '--fee'),
           collateral: parseReference(arg('--collateral'), '--collateral')
         }
       : {
