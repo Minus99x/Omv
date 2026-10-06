@@ -8,7 +8,8 @@ import {
 import {
   createCardanoPreprodRealUtxoBindingEvidence,
   createCardanoPreprodRealUtxoBindingPlan,
-  verifyCardanoPreprodRealUtxoBindingEvidence
+  verifyCardanoPreprodRealUtxoBindingEvidence,
+  verifyCardanoPreprodRealUtxoBindingPlan
 } from '../src/chains/cardano/preprod-real-utxo-binding.js';
 
 function walletAddress(keyByte) {
@@ -62,6 +63,26 @@ test('Cardano real initialize UTxO plan binds distinct seed/fee/collateral refer
     }),
     /distinct/
   );
+});
+
+test('Cardano real UTxO plan verifier rejects query or authority tampering', () => {
+  const plan = createCardanoPreprodRealUtxoBindingPlan({
+    action: 'initialize',
+    roles: {
+      seed: ref('aa', 0),
+      fee: ref('bb', 1),
+      collateral: ref('cc', 2)
+    }
+  });
+  assert.equal(verifyCardanoPreprodRealUtxoBindingPlan(plan).valid, true);
+
+  const queryTampered = structuredClone(plan);
+  queryTampered.query.params.outputReferences[0].index = 99;
+  assert.equal(verifyCardanoPreprodRealUtxoBindingPlan(queryTampered).valid, false);
+
+  const authorityTampered = structuredClone(plan);
+  authorityTampered.walletSigningAuthorized = true;
+  assert.equal(verifyCardanoPreprodRealUtxoBindingPlan(authorityTampered).valid, false);
 });
 
 test('Cardano real initialize UTxO evidence accepts exact stable-tip ADA-only role set', () => {
