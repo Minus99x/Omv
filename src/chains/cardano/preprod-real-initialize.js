@@ -364,11 +364,15 @@ export function buildCardanoPreprodRealInitializeCandidate({
   if (transaction.witness_set().vkeys() != null) throw new Error('Real initialize candidate unexpectedly contains a key witness.');
 
   const bodyHash = hex(blake2b(transaction.body().to_bytes(), { dkLen: 32 }));
-  const evaluationRequest = createCardanoOgmiosEvaluationRequest({
-    transactionCborHex: hex(txBytes),
-    id: 'omegavault-cardano-preprod-real-initialize-evaluate'
-  });
-  if (evaluationRequest.expectedValidators.length !== 1 || evaluationRequest.expectedValidators[0] !== 'mint:0') {
+  const evaluationRequest = evaluationMode
+    ? createCardanoOgmiosEvaluationRequest({
+        transactionCborHex: hex(txBytes),
+        id: 'omegavault-cardano-preprod-real-initialize-evaluate'
+      })
+    : null;
+  const expectedValidators = Object.freeze(['mint:0']);
+  if (evaluationRequest &&
+      (evaluationRequest.expectedValidators.length !== 1 || evaluationRequest.expectedValidators[0] !== 'mint:0')) {
     throw new Error('Real initialize candidate must expose exactly the mint:0 redeemer pointer.');
   }
 
@@ -421,8 +425,8 @@ export function buildCardanoPreprodRealInitializeCandidate({
     evaluation: Object.freeze({
       mode: evaluationMode ? 'zero-budget-live-evaluation-candidate' : 'live-budget-applied-unsigned-candidate',
       mintBudget: Object.freeze({ memory: memory.toString(), steps: steps.toString() }),
-      request: evaluationRequest.request,
-      expectedValidators: evaluationRequest.expectedValidators,
+      request: evaluationRequest?.request ?? null,
+      expectedValidators,
       requiresLiveEvaluation: evaluationMode,
       evaluationSupplementalUtxoRequired: false
     }),
