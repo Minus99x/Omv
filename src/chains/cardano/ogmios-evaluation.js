@@ -46,6 +46,16 @@ export function createCardanoOgmiosEvaluationRequest({ transactionCborHex, addit
   });
 }
 
+function normalizeValidatorPointer(value, index) {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object') {
+    const purpose = typeof value.purpose === 'string' ? value.purpose : null;
+    const pointerIndex = Number.isInteger(value.index) ? value.index : Number(value.index);
+    if (purpose && Number.isInteger(pointerIndex) && pointerIndex >= 0) return `${purpose}:${pointerIndex}`;
+  }
+  throw new Error(`Unexpected Ogmios validator pointer at result ${index}.`);
+}
+
 export function normalizeCardanoOgmiosEvaluation({ response, requestId, expectedValidators, parameters, safetyMarginPercent = 10 }) {
   if (!response || response.jsonrpc !== '2.0' || response.method !== 'evaluateTransaction' || response.id !== requestId) throw new Error('Ogmios evaluation response does not match the request.');
   if (response.error) throw new Error(`Ogmios evaluation failed: ${response.error.message || response.error.code || 'unknown error'}`);
@@ -55,14 +65,15 @@ export function normalizeCardanoOgmiosEvaluation({ response, requestId, expected
 
   const seen = new Set();
   const budgets = response.result.map((item, index) => {
-    if (!item || typeof item.validator !== 'string' || !expectedValidators.includes(item.validator)) throw new Error(`Unexpected Ogmios validator pointer at result ${index}.`);
-    if (seen.has(item.validator)) throw new Error(`Duplicate Ogmios validator pointer: ${item.validator}.`);
-    seen.add(item.validator);
-    const memory = positiveInteger(item.budget?.memory, `${item.validator}.memory`);
-    const steps = positiveInteger(item.budget?.cpu, `${item.validator}.cpu`);
+    const validator = normalizeValidatorPointer(item?.validator, index);
+    if (!expectedValidators.includes(validator)) throw new Error(`Unexpected Ogmios validator pointer at result ${index}.`);
+    if (seen.has(validator)) throw new Error(`Duplicate Ogmios validator pointer: ${validator}.`);
+    seen.add(validator);
+    const memory = positiveInteger(item.budget?.memory, `${validator}.memory`);
+    const steps = positiveInteger(item.budget?.cpu, `${validator}.cpu`);
     const margin = BigInt(100 + safetyMarginPercent);
     return Object.freeze({
-      validator: item.validator,
+      validator,
       evaluated: Object.freeze({ memory: String(memory), steps: String(steps) }),
       budget: Object.freeze({
         memory: ((BigInt(memory) * margin + 99n) / 100n).toString(),
