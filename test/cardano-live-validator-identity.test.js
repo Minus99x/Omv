@@ -32,6 +32,16 @@ test('Cardano live validator parameter encoders reproduce canonical synthetic fi
   );
 });
 
+test('Cardano live validator parameter encoders use canonical CBOR beyond the tiny fixture case', () => {
+  const txId = 'cd'.repeat(32);
+  assert.equal(
+    encodeCardanoOutputReferencePlutusData({ transaction: { id: txId }, index: 24 }),
+    `d879825820${txId}1818`
+  );
+  const asset = 'ab'.repeat(24);
+  assert.equal(encodeCardanoAssetNamePlutusData(asset), `5818${asset}`);
+});
+
 test('Cardano applied identity independently matches packaged synthetic validator identities', () => {
   const result = createCardanoPreprodAppliedValidatorIdentity({
     seedReference: {
