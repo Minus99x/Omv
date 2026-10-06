@@ -73,3 +73,31 @@ for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
     }
   });
 }
+
+
+test('public Preprod evaluation validity window is anchored to the captured live tip slot', () => {
+  const tipSlot = 200000000;
+  const fixture = buildCardanoTransactionBodyFixture('execute', {
+    evaluationContext: true,
+    evaluationSlot: tipSlot
+  });
+  assert.equal(fixture.evaluationContext, true);
+  assert.equal(fixture.validity.liveTipSlot, tipSlot);
+  assert.equal(fixture.validity.lowerSlot, tipSlot - 30);
+  assert.equal(fixture.validity.upperSlot, tipSlot + 1800);
+  assert.equal(fixture.validity.priorHeartbeatMs, fixture.validity.lowerTimeMs - 60000);
+});
+
+test('public Preprod supplemental vault datum is rebound when the live evaluation tip changes', () => {
+  const first = buildCardanoEvaluationAdditionalUtxoSet('execute', { evaluationSlot: 200000000 });
+  const second = buildCardanoEvaluationAdditionalUtxoSet('execute', { evaluationSlot: 200000120 });
+  assert.notEqual(first[0].datum, second[0].datum);
+  assert.equal(first[0].transaction.id, second[0].transaction.id);
+});
+
+test('live evaluation slot cannot leak into the offline fixture transaction path', () => {
+  assert.throws(
+    () => buildCardanoTransactionBodyFixture('execute', { evaluationSlot: 200000000 }),
+    /only valid for a public Preprod evaluation context/
+  );
+});
