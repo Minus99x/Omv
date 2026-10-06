@@ -54,7 +54,6 @@ function walletUtxo(reference, lovelace, address = ownerAddress) {
 function initializePlan() {
   const roles = {
     seed: ref('aa', 0),
-    fee: ref('bb', 1),
     collateral: ref('cc', 2)
   };
   return createCardanoPreprodRealUtxoBindingPlan({
@@ -64,13 +63,13 @@ function initializePlan() {
   });
 }
 
-test('Cardano real initialize UTxO plan binds distinct seed/fee/collateral references to one validator identity', () => {
+test('Cardano real initialize UTxO plan binds distinct seed/collateral references to one validator identity', () => {
   const plan = initializePlan();
   assert.equal(plan.network, 'preprod');
   assert.equal(plan.networkId, 0);
-  assert.deepEqual(Object.keys(plan.roles), ['seed', 'fee', 'collateral']);
+  assert.deepEqual(Object.keys(plan.roles), ['seed', 'collateral']);
   assert.equal(plan.query.method, 'queryLedgerState/utxo');
-  assert.equal(plan.query.params.outputReferences.length, 3);
+  assert.equal(plan.query.params.outputReferences.length, 2);
   assert.equal(plan.validatorIdentity.seedReference.transaction.id, plan.roles.seed.transaction.id);
   assert.equal(plan.walletSigningAuthorized, false);
   assert.equal(plan.transactionSubmissionAuthorized, false);
@@ -81,8 +80,7 @@ test('Cardano real initialize UTxO plan binds distinct seed/fee/collateral refer
       action: 'initialize',
       roles: {
         seed: ref('aa', 0),
-        fee: ref('aa', 0),
-        collateral: ref('cc', 2)
+        collateral: ref('aa', 0)
       },
       appliedValidatorIdentity: appliedIdentity(ref('aa', 0))
     }),
@@ -94,7 +92,6 @@ test('Cardano real initialize UTxO plan binds distinct seed/fee/collateral refer
       action: 'initialize',
       roles: {
         seed: ref('aa', 0),
-        fee: ref('bb', 1),
         collateral: ref('cc', 2)
       },
       appliedValidatorIdentity: appliedIdentity(ref('ff', 0))
@@ -116,12 +113,11 @@ test('Cardano real UTxO plan verifier rejects query or authority tampering', () 
   assert.equal(verifyCardanoPreprodRealUtxoBindingPlan(authorityTampered).valid, false);
 });
 
-test('Cardano real initialize UTxO evidence accepts exact stable-tip ADA-only same-wallet role set', () => {
+test('Cardano real initialize UTxO evidence accepts exact stable-tip ADA-only seed/collateral set', () => {
   const plan = initializePlan();
   const tip = { hash: 'dd'.repeat(32), slot: 135700000 };
   const queriedUtxo = [
     walletUtxo(plan.roles.seed, 10000000),
-    walletUtxo(plan.roles.fee, 3000000),
     walletUtxo(plan.roles.collateral, 5000000)
   ];
   const evidence = createCardanoPreprodRealUtxoBindingEvidence({
@@ -155,7 +151,6 @@ test('Cardano real UTxO evidence fails closed on tip drift, missing roles, non-A
   const tip = { hash: 'dd'.repeat(32), slot: 135700000 };
   const queriedUtxo = [
     walletUtxo(plan.roles.seed, 10000000),
-    walletUtxo(plan.roles.fee, 3000000),
     walletUtxo(plan.roles.collateral, 5000000)
   ];
 
@@ -180,7 +175,7 @@ test('Cardano real UTxO evidence fails closed on tip drift, missing roles, non-A
   );
 
   const tokenCollateral = structuredClone(queriedUtxo);
-  tokenCollateral[2].value['ee'.repeat(28)] = { '4f56': '1' };
+  tokenCollateral[1].value['ee'.repeat(28)] = { '4f56': '1' };
   assert.throws(
     () => createCardanoPreprodRealUtxoBindingEvidence({
       plan,
