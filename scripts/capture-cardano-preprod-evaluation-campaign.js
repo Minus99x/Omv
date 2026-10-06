@@ -163,6 +163,24 @@ if (!campaignArg) {
           retries
         });
       } catch (error) {
+        const diagnosticDirectory = join(campaign, 'diagnostics');
+        await mkdir(diagnosticDirectory, { recursive: true });
+        const diagnostic = {
+          schema: 'omegavault.cardano.preprod-evaluation-failure.v1',
+          network: 'preprod',
+          action: entry.action,
+          requestId: request.id ?? null,
+          method: request.method ?? null,
+          ogmios: error?.ogmios ?? null,
+          message: error?.message ?? String(error),
+          walletSigningPerformed: false,
+          transactionSubmissionPerformed: false,
+          supportClaimAuthorized: false
+        };
+        await writeFile(
+          join(diagnosticDirectory, `${entry.action}-evaluation-failure.json`),
+          `${JSON.stringify(diagnostic, null, 2)}\n`
+        );
         throw new Error(`${entry.action} evaluation failed: ${error.message}`);
       }
 
