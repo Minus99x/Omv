@@ -7,7 +7,8 @@ import { createCardanoOgmiosEvaluationRequest } from '../src/chains/cardano/ogmi
 
 const root = new URL('../', import.meta.url);
 const protocolEvidence = JSON.parse(await readFile(new URL('docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', root), 'utf8'));
-const witnessEvidence = JSON.parse(await readFile(new URL('docs/evidence/CARDANO_WITNESS_FIXTURES_0.6.14.json', root), 'utf8'));
+const legacyWitnessEvidence = JSON.parse(await readFile(new URL('docs/evidence/CARDANO_WITNESS_FIXTURES_0.6.14.json', root), 'utf8'));
+const witnessEvidence = JSON.parse(await readFile(new URL('docs/evidence/CARDANO_WITNESS_FIXTURES_0.6.60.json', root), 'utf8'));
 const beaconBlueprint = JSON.parse(await readFile(new URL('validators/cardano/fixtures/state-beacon.applied.json', root), 'utf8'));
 const vaultBlueprint = JSON.parse(await readFile(new URL('validators/cardano/fixtures/recovery-vault.applied.json', root), 'utf8'));
 const parameters = normalizeCardanoProtocolParameterSnapshot(protocolEvidence);
@@ -19,30 +20,11 @@ const sha256Hex = value => createHash('sha256').update(Buffer.from(value, 'hex')
 assert.equal(gate.liveConstructionReady, false);
 assert.equal(witnessEvidence.liveConstructionReady, false);
 assert.equal(witnessEvidence.costModelSourceCount, 1);
-
-const correctedFixtures = {};
-for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
-  const actual = buildCardanoWitnessSetFixture({ action, parameters, recoveryCompiledCode: recoveryCode, beaconCompiledCode: beaconCode });
-  const evaluationFixture = buildCardanoOgmiosEvaluationFixture({ action, parameters, recoveryCompiledCode: recoveryCode, beaconCompiledCode: beaconCode });
-  const evaluationRequest = createCardanoOgmiosEvaluationRequest({ transactionCborHex: evaluationFixture.transactionCborHex, id: `evaluate-${action}` });
-  correctedFixtures[action] = {
-    scriptDataHash: actual.scriptDataHash,
-    witnessSetBytes: actual.witnessSetBytes,
-    witnessSetSha256: sha256Hex(actual.witnessSetCborHex),
-    transactionBytes: actual.transactionBytes,
-    transactionSha256: sha256Hex(actual.transactionCborHex),
-    minimumFee: actual.minimumFee,
-    memory: actual.memory,
-    steps: actual.steps,
-    keyWitnessCount: actual.keyWitnessCount,
-    feeConvergenceIterations: actual.feeConvergenceIterations,
-    minimumAda: actual.minimumAda,
-    collateral: actual.collateral,
-    evaluationTransactionBodyHash: evaluationRequest.transactionBodyHash,
-    evaluationValidators: evaluationRequest.expectedValidators
-  };
-}
-console.log(`CARDANO_WITNESS_CORRECTION_FIXTURES=${JSON.stringify(correctedFixtures)}`);
+assert.equal(witnessEvidence.schemaVersion, 3);
+assert.equal(witnessEvidence.correction.supersedes, 'CARDANO_WITNESS_FIXTURES_0.6.14.json');
+assert.equal(witnessEvidence.correction.priorEvidenceRetained, true);
+assert.equal(legacyWitnessEvidence.schemaVersion, 2);
+assert.equal(legacyWitnessEvidence.liveConstructionReady, false);
 
 for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
   const actual = buildCardanoWitnessSetFixture({ action, parameters, recoveryCompiledCode: recoveryCode, beaconCompiledCode: beaconCode });
@@ -65,4 +47,4 @@ for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
   assert.deepEqual(evaluationRequest.expectedValidators, expected.evaluationValidators);
 }
 
-console.log('Verified Cardano signed-size/fee/minimum-ADA/collateral evidence and zero-budget Ogmios evaluation requests; live construction remains blocked.');
+console.log('Verified corrected Cardano witness encoding, exact fixture evidence, fee/minimum-ADA/collateral evidence and zero-budget Ogmios evaluation requests; legacy evidence retained and live construction remains blocked.');
