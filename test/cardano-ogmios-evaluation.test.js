@@ -29,6 +29,23 @@ test('Cardano Ogmios request binds zero-budget CBOR, body hash and exact redeeme
   assert.equal(result.requiresSeparatePhaseOneValidation, true);
 });
 
+test('Cardano Ogmios v7 request uses additionalUtxo with the flat UTxO schema', () => {
+  const fixture = buildCardanoOgmiosEvaluationFixture({ action: 'execute', parameters, recoveryCompiledCode, beaconCompiledCode });
+  const supplemental = [{
+    transaction: { id: 'aa'.repeat(32) },
+    index: 0,
+    address: 'addr_test1vptest',
+    value: { ada: { lovelace: 10000000 } }
+  }];
+  const result = createCardanoOgmiosEvaluationRequest({
+    transactionCborHex: fixture.transactionCborHex,
+    additionalUtxoSet: supplemental,
+    id: 'evaluate-v7-shape'
+  });
+  assert.deepEqual(result.request.params.additionalUtxo, supplemental);
+  assert.equal(Object.hasOwn(result.request.params, 'additionalUtxoSet'), false);
+});
+
 test('Cardano Ogmios response applies a ceiling 10 percent budget margin', () => {
   const request = requestFor('execute');
   const evaluation = normalizeCardanoOgmiosEvaluation({
