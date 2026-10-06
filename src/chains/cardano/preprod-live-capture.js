@@ -124,15 +124,36 @@ export function createCardanoOgmiosHttpClient({
         }
       });
 
-      ws.addEventListener('error', () => {
-        const error = new Error('Ogmios WebSocket connection failed.');
+      const onSocketError = rawError => {
+        const detail = String(rawError?.message || rawError?.error?.message || '').trim();
+        const error = new Error(`Ogmios WebSocket connection failed${detail ? `: ${detail}` : ''}.`);
         if (!opened) {
           socketOpening = null;
           socket = null;
           reject(error);
         }
         rejectPending(error);
-      });
+      };
+
+      if (typeof ws.on === 'function') {
+        ws.on('error', onSocketError);
+        ws.on('unexpected-response', (_request, response) => {
+          const status = Number(response?.statusCode);
+          const message = Number.isInteger(status)
+            ? `Ogmios WebSocket handshake returned HTTP ${status}`
+            : 'Ogmios WebSocket handshake returned an unexpected HTTP response';
+          const error = new Error(message);
+          if (!opened) {
+            socketOpening = null;
+            socket = null;
+            reject(error);
+          }
+          rejectPending(error);
+          try { ws.terminate?.(); } catch {}
+        });
+      } else {
+        ws.addEventListener('error', onSocketError);
+      }
 
       ws.addEventListener('close', event => {
         socketOpen = false;
