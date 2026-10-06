@@ -44,7 +44,8 @@ if (!bundleDirArg) {
       'scripts/verify-external-review-index.js',
       '--index', reviewIndexPath,
       '--archive', archivePath,
-      '--checkpoint-manifest', manifestPath
+      '--checkpoint-manifest', manifestPath,
+      '--project-root', sealedSourceRoot
     ], projectRoot);
     if (review.status !== 0) throw new Error(`External review-index verification failed: ${review.stderr || review.stdout}`);
 
