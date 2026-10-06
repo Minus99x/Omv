@@ -60,6 +60,80 @@ export function parseCardanoOgmiosProtocolParametersResponse(response) {
   return object(rpcResult(response, 'Ogmios protocol-parameters query'), 'Ogmios protocol parameters');
 }
 
+function normalizeUtxoQuantity(value, label) {
+  const normalized = String(value);
+  if (!/^-?\d+$/.test(normalized)) throw new TypeError(`${label} must be an integer quantity.`);
+  return normalized;
+}
+
+function normalizeOgmiosValue(value, label) {
+  const source = object(value, label);
+  const ada = object(source.ada, `${label}.ada`);
+  const lovelace = normalizeUtxoQuantity(ada.lovelace, `${label}.ada.lovelace`);
+  if (BigInt(lovelace) < 0n) throw new TypeError(`${label}.ada.lovelace must be non-negative.`);
+  const normalized = { ada: Object.freeze({ lovelace }) };
+  for (const [policyId, assets] of Object.entries(source)) {
+    if (policyId === 'ada') continue;
+    if (!/^[0-9a-f]{56}$/i.test(policyId)) throw new TypeError(`${label} contains an invalid policy id.`);
+    const assetMap = object(assets, `${label}.${policyId}`);
+    normalized[policyId.toLowerCase()] = Object.freeze(Object.fromEntries(
+      Object.entries(assetMap).map(([assetName, quantity]) => {
+        if (!/^[0-9a-f]*$/i.test(assetName) || assetName.length % 2 !== 0 || assetName.length > 64) {
+          throw new TypeError(`${label} contains an invalid asset name.`);
+        }
+        return [assetName.toLowerCase(), normalizeUtxoQuantity(quantity, `${label}.${policyId}.${assetName}`)];
+      })
+    ));
+  }
+  return Object.freeze(normalized);
+}
+
+export function createCardanoOgmiosUtxoByOutputReferencesParams(outputReferences) {
+  if (!Array.isArray(outputReferences) || outputReferences.length < 1) {
+    throw new TypeError('At least one Cardano output reference is required.');
+  }
+  const seen = new Set();
+  const normalized = outputReferences.map((reference, index) => {
+    const txId = String(reference?.transaction?.id ?? '').toLowerCase();
+    const outputIndex = Number(reference?.index);
+    if (!HEX_32.test(txId)) throw new TypeError(`outputReferences[${index}].transaction.id must be 32-byte hex.`);
+    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0) throw new TypeError(`outputReferences[${index}].index must be a non-negative safe integer.`);
+    const key = `${txId}#${outputIndex}`;
+    if (seen.has(key)) throw new Error(`Duplicate Cardano output reference: ${key}.`);
+    seen.add(key);
+    return Object.freeze({ transaction: Object.freeze({ id: txId }), index: outputIndex });
+  });
+  return Object.freeze({ outputReferences: Object.freeze(normalized) });
+}
+
+export function parseCardanoOgmiosUtxoResponse(response) {
+  const result = rpcResult(response, 'Ogmios UTxO query');
+  if (!Array.isArray(result)) throw new TypeError('Ogmios UTxO query result must be an array.');
+  const seen = new Set();
+  const normalized = result.map((entry, index) => {
+    const txId = String(entry?.transaction?.id ?? '').toLowerCase();
+    const outputIndex = Number(entry?.index);
+    if (!HEX_32.test(txId)) throw new TypeError(`Ogmios UTxO result ${index} has an invalid transaction id.`);
+    if (!Number.isSafeInteger(outputIndex) || outputIndex < 0) throw new TypeError(`Ogmios UTxO result ${index} has an invalid output index.`);
+    const address = String(entry?.address ?? '');
+    if (!address) throw new TypeError(`Ogmios UTxO result ${index} is missing an address.`);
+    const key = `${txId}#${outputIndex}`;
+    if (seen.has(key)) throw new Error(`Ogmios UTxO query returned a duplicate output reference: ${key}.`);
+    seen.add(key);
+    const normalizedEntry = {
+      transaction: Object.freeze({ id: txId }),
+      index: outputIndex,
+      address,
+      value: normalizeOgmiosValue(entry.value, `Ogmios UTxO result ${index}.value`)
+    };
+    if (entry.datumHash != null) normalizedEntry.datumHash = String(entry.datumHash).toLowerCase();
+    if (entry.datum != null) normalizedEntry.datum = String(entry.datum).toLowerCase();
+    if (entry.script != null) normalizedEntry.script = entry.script;
+    return Object.freeze(normalizedEntry);
+  });
+  return Object.freeze(normalized);
+}
+
 export function cardanoSameTip(left, right) {
   return Boolean(left && right && left.hash === right.hash && left.slot === right.slot);
 }
