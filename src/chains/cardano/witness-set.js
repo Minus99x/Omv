@@ -29,6 +29,31 @@ function redeemer(tag, data, memory, steps) {
   return Cardano.Redeemer.new(tag, Cardano.BigNum.zero(), data, exUnits(memory, steps));
 }
 
+function positiveBudgetValue(value, label) {
+  const normalized = String(value);
+  if (!/^\d+$/.test(normalized) || BigInt(normalized) < 1n) {
+    throw new TypeError(`${label} must be a positive integer.`);
+  }
+  return normalized;
+}
+
+function resolvedBudget(budgetOverrides, pointer, fallbackMemory, fallbackSteps) {
+  if (budgetOverrides == null) {
+    return Object.freeze({ memory: String(fallbackMemory), steps: String(fallbackSteps) });
+  }
+  if (!budgetOverrides || typeof budgetOverrides !== 'object' || Array.isArray(budgetOverrides)) {
+    throw new TypeError('budgetOverrides must be an action-pointer keyed object.');
+  }
+  const entry = budgetOverrides[pointer];
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+    throw new Error(`Missing live evaluation budget for ${pointer}.`);
+  }
+  return Object.freeze({
+    memory: positiveBudgetValue(entry.memory, `${pointer}.memory`),
+    steps: positiveBudgetValue(entry.steps, `${pointer}.steps`)
+  });
+}
+
 function deterministicSigningKeys(action) {
   const keyBytes = action === 'approve' ? [1, 2] : [1];
   return keyBytes.map(value => Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => value)));
@@ -58,37 +83,47 @@ export function buildCardanoWitnessSetFixture({
   beaconCompiledCode,
   evaluationMode = false,
   publicPreprodEvaluation = false,
-  evaluationSlot = null
+  evaluationSlot = null,
+  budgetOverrides = null,
+  omitKeyWitnessesAfterSizing = false
 }) {
   if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('Unknown Cardano fixture action.');
+  if (evaluationMode && budgetOverrides != null) throw new Error('Evaluation candidates must keep zero budgets; live budget overrides belong only to post-evaluation construction.');
+  if (evaluationMode && omitKeyWitnessesAfterSizing) throw new Error('Evaluation candidates already omit key witnesses and do not use signed-size fee construction.');
   const redeemers = Cardano.Redeemers.new();
   const scripts = Cardano.PlutusScripts.new();
   let memory = 0n;
   let steps = 0n;
 
   if (action === 'initialize' || action === 'execute') {
-    redeemers.add(redeemer(Cardano.RedeemerTag.new_mint(), plutusConstr(0), evaluationMode ? 0 : 91970, evaluationMode ? 0 : 27959404));
+    const mintBudget = evaluationMode
+      ? Object.freeze({ memory: '0', steps: '0' })
+      : resolvedBudget(budgetOverrides, 'mint:0', 91970, 27959404);
+    redeemers.add(redeemer(Cardano.RedeemerTag.new_mint(), plutusConstr(0), mintBudget.memory, mintBudget.steps));
     const beaconScript = Cardano.PlutusScript.new_v3(Uint8Array.from(Buffer.from(beaconCompiledCode, 'hex')));
     if (beaconScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.beaconPolicyId) {
       throw new Error(`Cardano beacon witness script hash mismatch: witness=${beaconScript.hash().to_hex()} expected=${CARDANO_APPLIED_FIXTURE.beaconPolicyId}.`);
     }
     scripts.add(beaconScript);
     if (!evaluationMode) {
-      memory += 91970n;
-      steps += 27959404n;
+      memory += BigInt(mintBudget.memory);
+      steps += BigInt(mintBudget.steps);
     }
   }
   if (action !== 'initialize') {
-    const budget = action === 'heartbeat' ? [494618, 158755371] : action === 'approve' ? [566905, 179701350] : [423054, 133367503];
-    redeemers.add(redeemer(Cardano.RedeemerTag.new_spend(), actionData(action), evaluationMode ? 0 : budget[0], evaluationMode ? 0 : budget[1]));
+    const fallback = action === 'heartbeat' ? [494618, 158755371] : action === 'approve' ? [566905, 179701350] : [423054, 133367503];
+    const spendBudget = evaluationMode
+      ? Object.freeze({ memory: '0', steps: '0' })
+      : resolvedBudget(budgetOverrides, 'spend:0', fallback[0], fallback[1]);
+    redeemers.add(redeemer(Cardano.RedeemerTag.new_spend(), actionData(action), spendBudget.memory, spendBudget.steps));
     const recoveryScript = Cardano.PlutusScript.new_v3(Uint8Array.from(Buffer.from(recoveryCompiledCode, 'hex')));
     if (recoveryScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.recoveryValidatorHash) {
       throw new Error(`Cardano recovery witness script hash mismatch: witness=${recoveryScript.hash().to_hex()} expected=${CARDANO_APPLIED_FIXTURE.recoveryValidatorHash}.`);
     }
     scripts.add(recoveryScript);
     if (!evaluationMode) {
-      memory += BigInt(budget[0]);
-      steps += BigInt(budget[1]);
+      memory += BigInt(spendBudget.memory);
+      steps += BigInt(spendBudget.steps);
     }
   }
 
@@ -104,7 +139,8 @@ export function buildCardanoWitnessSetFixture({
   let fee = '200000';
   let transaction;
   let feeResult;
-  let keyWitnessCount = 0;
+  let feeSizingKeyWitnessCount = 0;
+  let feeSizingTransactionBytes = 0;
   let iterations = 0;
   for (let iteration = 0; iteration < 10; iteration += 1) {
     iterations = iteration + 1;
@@ -115,10 +151,19 @@ export function buildCardanoWitnessSetFixture({
       evaluationSlot
     });
     const body = Cardano.TransactionBody.from_hex(bodyFixture.cborHex);
-    keyWitnessCount = evaluationMode ? 0 : attachKeyWitnesses(witnessSet, body, action);
-    transaction = Cardano.Transaction.new(body, witnessSet);
-    const transactionBytes = transaction.to_bytes().length;
-    feeResult = calculateCardanoMinimumFee({ transactionBytes, memory, steps, parameters });
+    let sizingWitnessSet = witnessSet;
+    if (!evaluationMode) {
+      sizingWitnessSet = Cardano.TransactionWitnessSet.from_bytes(witnessSet.to_bytes());
+      feeSizingKeyWitnessCount = attachKeyWitnesses(sizingWitnessSet, body, action);
+    } else {
+      feeSizingKeyWitnessCount = 0;
+    }
+    const sizingTransaction = Cardano.Transaction.new(body, sizingWitnessSet);
+    feeSizingTransactionBytes = sizingTransaction.to_bytes().length;
+    feeResult = calculateCardanoMinimumFee({ transactionBytes: feeSizingTransactionBytes, memory, steps, parameters });
+    transaction = (!evaluationMode && omitKeyWitnessesAfterSizing)
+      ? Cardano.Transaction.new(body, witnessSet)
+      : sizingTransaction;
     if (feeResult.minimumFee === fee) break;
     fee = feeResult.minimumFee;
   }
@@ -169,4 +214,13 @@ export function buildCardanoOgmiosEvaluationFixture(options) {
 
 export function buildCardanoPublicPreprodOgmiosEvaluationFixture(options) {
   return buildCardanoWitnessSetFixture({ ...options, evaluationMode: true, publicPreprodEvaluation: true });
+}
+
+export function buildCardanoPreprodEvaluatedUnsignedFixture(options) {
+  return buildCardanoWitnessSetFixture({
+    ...options,
+    evaluationMode: false,
+    publicPreprodEvaluation: true,
+    omitKeyWitnessesAfterSizing: true
+  });
 }
