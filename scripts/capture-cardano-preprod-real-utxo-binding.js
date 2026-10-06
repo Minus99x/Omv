@@ -54,6 +54,7 @@ if (!planArg || !outputArg) {
     });
 
     let evidence = null;
+    let captureAttempt = null;
     for (let attempt = 1; attempt <= retries; attempt += 1) {
       const tipBefore = parseCardanoOgmiosTipResponse(await client.rpc('queryNetwork/tip'));
       const response = await client.rpc('queryLedgerState/utxo', plan.query.params);
@@ -67,7 +68,7 @@ if (!planArg || !outputArg) {
         tipAfter,
         queriedUtxo
       });
-      evidence = Object.freeze({ ...evidence, captureAttempt: attempt });
+      captureAttempt = attempt;
       break;
     }
 
@@ -83,6 +84,7 @@ if (!planArg || !outputArg) {
       action: evidence.action,
       output: outputPath,
       stableTip: evidence.stableTip,
+      captureAttempt,
       evidenceSha256: evidence.evidenceSha256,
       realUtxoReferencesExist: true,
       fullPhaseOneValidated: false,
