@@ -56,16 +56,16 @@ test('Cardano Preprod slot fixture maps to stable POSIX time for validator conte
 });
 
 for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
-  test(`Cardano ${action} evaluation context provides every synthetic input to Ogmios`, () => {
+  test(`Cardano ${action} evaluation context provides every synthetic input in Ogmios v7 UTxO shape`, () => {
     const utxo = buildCardanoEvaluationAdditionalUtxoSet(action);
     assert.equal(utxo.length, 3);
-    for (const [reference, output] of utxo) {
-      assert.match(reference.transaction.id, /^[0-9a-f]{64}$/);
-      assert.ok(Number.isInteger(reference.output.index));
-      assert.match(output.address, /^addr_test1/);
-      assert.ok(Number.isSafeInteger(output.value.lovelace));
+    for (const entry of utxo) {
+      assert.match(entry.transaction.id, /^[0-9a-f]{64}$/);
+      assert.ok(Number.isInteger(entry.index));
+      assert.match(entry.address, /^addr_test1/);
+      assert.ok(Number.isSafeInteger(entry.value.ada.lovelace));
     }
-    const scriptEntry = action === 'initialize' ? null : utxo[0][1];
+    const scriptEntry = action === 'initialize' ? null : utxo[0];
     if (scriptEntry) {
       assert.equal(scriptEntry.address, CARDANO_APPLIED_FIXTURE.recoveryValidatorAddress);
       assert.match(scriptEntry.datum, /^[0-9a-f]+$/i);
