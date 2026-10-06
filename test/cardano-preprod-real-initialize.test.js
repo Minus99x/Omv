@@ -12,7 +12,7 @@ import {
   createCardanoPreprodRealUtxoBindingEvidence,
   createCardanoPreprodRealUtxoBindingPlan
 } from '../src/chains/cardano/preprod-real-utxo-binding.js';
-import { buildCardanoPreprodRealInitializeCandidate } from '../src/chains/cardano/preprod-real-initialize.js';
+import { buildCardanoPreprodRealInitializeCandidate, verifyCardanoPreprodRealInitializeCandidate } from '../src/chains/cardano/preprod-real-initialize.js';
 
 const protocolSnapshot = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
 protocolSnapshot.source.independentSourceCount = 2;
@@ -145,6 +145,40 @@ test('Cardano real initialize live-budget candidate applies evaluated budget whi
   assert.equal(finalCandidate.checks.fullPhaseOneValidated, false);
   assert.equal(finalCandidate.liveActions.walletSigningAuthorized, false);
   assert.equal(finalCandidate.liveActions.transactionSubmissionAuthorized, false);
+});
+
+test('Cardano real initialize candidate verifier reproduces exact evidence and rejects tampering', () => {
+  const appliedIdentity = identity();
+  const utxoBindingEvidence = binding(appliedIdentity);
+  const candidate = buildCardanoPreprodRealInitializeCandidate({
+    appliedValidatorIdentity: appliedIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig,
+    evaluationMode: true
+  });
+  const verified = verifyCardanoPreprodRealInitializeCandidate({
+    candidate,
+    appliedValidatorIdentity: appliedIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig,
+    evaluationMode: true
+  });
+  assert.equal(verified.valid, true, verified.errors.join('; '));
+
+  const tampered = structuredClone(candidate);
+  tampered.transaction.feeLovelace = String(BigInt(tampered.transaction.feeLovelace) + 1n);
+  const rejected = verifyCardanoPreprodRealInitializeCandidate({
+    candidate: tampered,
+    appliedValidatorIdentity: appliedIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig,
+    evaluationMode: true
+  });
+  assert.equal(rejected.valid, false);
+  assert.ok(rejected.errors.some(error => /digest mismatch|does not reproduce/i.test(error)));
 });
 
 test('Cardano real initialize candidate fails closed on validator/binding identity mismatch', () => {
