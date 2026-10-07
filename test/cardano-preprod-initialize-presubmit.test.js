@@ -158,6 +158,7 @@ test('Cardano initialize pre-submit gate proves freshness without authorizing su
   assert.equal(evidence.checks.signedExecutionUnitsWithinCurrentMaximum, true);
   assert.equal(evidence.checks.signedFeeCoversCurrentMinimum, true);
   assert.equal(evidence.checks.outputValueSizesWithinCurrentMaximum, true);
+  assert.equal(evidence.checks.boundInputOutputShapeUnchanged, true);
   assert.match(evidence.currentProtocolParametersSha256, /^[0-9a-f]{64}$/);
   assert.equal(evidence.signedTransaction.bytes, Cardano.Transaction.from_hex(input.signedTransactionCborHex).to_bytes().length);
   assert.equal(evidence.signedTransaction.feeLovelace, input.unsignedCandidate.transaction.feeLovelace);
@@ -250,6 +251,40 @@ test('Cardano initialize pre-submit gate fails closed if seed is spent or validi
       }
     }),
     /expired/
+  );
+});
+
+test('Cardano initialize pre-submit gate fails closed on current input datum or reference-script shape drift', () => {
+  const input = fixture();
+  const currentTip = {
+    hash: 'de'.repeat(32),
+    slot: input.unsignedCandidate.validity.lowerSlot + 60
+  };
+
+  const datumDrift = structuredClone(input.currentQueriedUtxo);
+  datumDrift[0].datumHash = 'ab'.repeat(32);
+  assert.throws(
+    () => createCardanoPreprodInitializePreSubmitEvidence({
+      ...input,
+      currentParameters: parameters,
+      recoveryConfig,
+      currentTip,
+      currentQueriedUtxo: datumDrift
+    }),
+    /datum presence differs/
+  );
+
+  const scriptDrift = structuredClone(input.currentQueriedUtxo);
+  scriptDrift[1].script = { language: 'plutus:v3', cbor: '40' };
+  assert.throws(
+    () => createCardanoPreprodInitializePreSubmitEvidence({
+      ...input,
+      currentParameters: parameters,
+      recoveryConfig,
+      currentTip,
+      currentQueriedUtxo: scriptDrift
+    }),
+    /reference-script presence differs/
   );
 });
 

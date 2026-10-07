@@ -38,13 +38,26 @@ function verifyRoleStillUnspent(role, boundRole, current) {
   if (found.address !== boundRole.address) throw new Error(`Current ${role} UTxO address differs from the bound evidence.`);
   if (hashCardanoEvidence(found.value) !== boundRole.valueSha256) throw new Error(`Current ${role} UTxO value differs from the bound evidence.`);
   if (String(found.value?.ada?.lovelace ?? '') !== String(boundRole.lovelace)) throw new Error(`Current ${role} UTxO lovelace differs from the bound evidence.`);
+
+  const datumPresent = found.datum != null || found.datumHash != null;
+  const referenceScriptPresent = found.script != null;
+  if (datumPresent !== Boolean(boundRole.datumPresent)) {
+    throw new Error(`Current ${role} UTxO datum presence differs from the bound evidence.`);
+  }
+  if (referenceScriptPresent !== Boolean(boundRole.referenceScriptPresent)) {
+    throw new Error(`Current ${role} UTxO reference-script presence differs from the bound evidence.`);
+  }
+
   return Object.freeze({
     reference: boundRole.reference,
     address: found.address,
     lovelace: String(found.value.ada.lovelace),
     valueSha256: boundRole.valueSha256,
+    datumPresent,
+    referenceScriptPresent,
     stillUnspent: true,
-    exactValuePreserved: true
+    exactValuePreserved: true,
+    exactOutputShapePreserved: true
   });
 }
 
@@ -172,6 +185,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       seedStillUnspent: true,
       collateralStillUnspent: true,
       boundInputValuesUnchanged: true,
+      boundInputOutputShapeUnchanged: true,
       validityIntervalCurrent: true,
       preSubmitFreshnessGateComplete: true,
       completePhaseOneValidated: false
