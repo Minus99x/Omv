@@ -209,6 +209,72 @@ The derived candidates still use the campaign's synthetic supplemental UTxO cont
 
 The next live gate is therefore narrowed to **real Preprod UTxO binding plus complete phase-1 validation**. Wallet signing and submission remain later and separately authorized steps.
 
+## Real-UTxO initialize path — implemented, not yet executed
+
+The development branch now contains a separate real-Preprod initialize path. It does not reuse the synthetic `additionalUtxo` fixture context.
+
+The path now:
+
+1. discovers the wallet's Cardano Preprod UTxOs through Blockfrost;
+2. deterministically selects two distinct plain ADA-only outputs: one seed/funding input and one collateral input;
+3. derives the one-shot state-beacon policy and recovery-validator identity from that exact real seed output using the pinned Aiken toolchain;
+4. re-queries those exact outputs through Ogmios and binds them at one stable Preprod tip;
+5. obtains and independently reconciles current Ogmios + Blockfrost protocol parameters;
+6. constructs a balanced unsigned `initialize` candidate with exact state/change/collateral-return outputs, minimum-ADA checks, owner required-signer binding and a finite live validity interval;
+7. evaluates the exact real-input zero-budget candidate through Ogmios;
+8. applies the returned safety-margin execution budget to a new unsigned candidate;
+9. runs a separate unsigned phase-one preflight that rechecks body identity, fee, ADA conservation, collateral conservation, minimum ADA, required signer and exact real input references.
+
+That capture still reports `fullPhaseOneValidated: false`, `walletSigningAuthorized: false`, and `transactionSubmissionAuthorized: false`.
+
+### Prepare an immutable recovery configuration from Preprod addresses
+
+The recovery configuration can now be prepared from normal Preprod wallet addresses rather than manually extracting payment-key hashes:
+
+```powershell
+npm.cmd run cardano:preprod:recovery-config:prepare -- --rescue-address "<RESCUE-ADDR_TEST1>" --contact-addresses "<CONTACT-A-ADDR_TEST1>,<CONTACT-B-ADDR_TEST1>" --threshold 2 --inactivity-ms 60000 --output "<NEW-RECOVERY-CONFIG.JSON>"
+```
+
+The gate derives the payment verification-key hashes itself and fails closed if:
+
+- an address is not Cardano Preprod/testnet;
+- an address is script-controlled rather than key-controlled;
+- trusted-contact keys are duplicated;
+- the threshold is unreachable;
+- the rescue destination is also a trusted-contact approval key.
+
+This command performs no network request, signing or submission.
+
+### Capture the real unsigned initialize candidate
+
+Once the test-only Preprod wallet has at least two suitable plain ADA-only UTxOs and the recovery configuration exists:
+
+```powershell
+npm.cmd run cardano:preprod:real-initialize:capture -- --wallet-address "<OWNER-ADDR_TEST1>" --recovery-config "<RECOVERY-CONFIG.JSON>" --output "<NEW-REAL-INITIALIZE-CAPTURE-DIR>"
+```
+
+The existing Ogmios and Blockfrost environment credentials are used. The capture writes append-only identity, UTxO-binding, current-protocol, live-evaluation, final-unsigned-candidate and unsigned-preflight artifacts. It does **not** sign or submit the transaction.
+
+### Wallet witness verification — prepared for a later explicitly authorized signing step
+
+If and only if a later gate explicitly authorizes the human operator to sign the frozen initialize body in the test-only wallet, OmegaVault can verify the returned signed transaction offline:
+
+```powershell
+npm.cmd run cardano:preprod:initialize:witness:verify -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --signed-tx "<SIGNED-TRANSACTION-FILE>" --output "<NEW-WITNESS-EVIDENCE.JSON>"
+```
+
+The verifier rejects body substitution, auxiliary-data changes, non-wallet-witness changes, extra/missing VKey witnesses, a wrong payment key, and an invalid signature. It never creates a wallet signature and does not authorize submission.
+
+### Pre-submit freshness gate — prepared, still no submission
+
+After witness verification, a separate live gate can recheck the frozen signed intent against the current Preprod state:
+
+```powershell
+npm.cmd run cardano:preprod:initialize:presubmit -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --witness-evidence "<WITNESS-EVIDENCE.JSON>" --output "<NEW-PRESUBMIT-EVIDENCE.JSON>"
+```
+
+It requires a stable current Ogmios tip, independently confirmed current protocol parameters, an unexpired validity interval, and proof that the exact seed and collateral UTxOs remain unspent with unchanged values. It still reports complete phase-1 validation and transaction-submission authorization as false.
+
 ## Wallet and faucet — prepare now only if convenient
 
 The current evaluation gate consumes **zero test ADA** and needs no wallet.
@@ -264,14 +330,17 @@ After the campaign verifier reports synchronized public-Preprod evaluation succe
 
 **STOP.**
 
-The next separately designed/tested gate must cover:
+The implementation now covers evaluated-budget application, real-UTxO initialize construction, an unsigned structural/fee/collateral preflight, strict wallet-witness verification, and a pre-submit freshness gate. None of those is permitted to silently promote itself into a stronger claim.
 
-1. evaluated-budget application to final transaction bodies;
-2. complete phase-1 validation;
-3. wallet witness/signing policy;
-4. submission;
-5. inclusion/finality;
-6. public-network recovery proof;
-7. only then any Cardano support-promotion decision.
+The remaining externally gated sequence is:
 
-No 0.6.60 evaluation operation authorizes those steps.
+1. execute the real-UTxO initialize capture on public Preprod;
+2. independently complete the remaining signed/current-ledger phase-1 validation;
+3. explicitly authorize the human wallet-signing step when its prerequisites are proven;
+4. separately and explicitly authorize submission;
+5. prove inclusion/finality;
+6. exercise heartbeat/approve/execute against the actual initialized state;
+7. prove public-network recovery;
+8. only then consider Cardano support promotion.
+
+No 0.6.60 operation currently authorizes transaction submission or a Cardano support claim.
