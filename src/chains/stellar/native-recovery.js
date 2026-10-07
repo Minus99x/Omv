@@ -35,6 +35,7 @@ export function createHeartbeatPlan({ vaultAccount, currentSequence }) {
   const current = asSequence(currentSequence, 'currentSequence');
   if (current + 2n > MAX_INT64) throw new Error('Sequence number is too high for a heartbeat bump.');
   return Object.freeze({
+    networkRef: 'stellar:testnet',
     sourceAccount: vaultAccount,
     transactionSequence: (current + 1n).toString(),
     operations: Object.freeze([{ type: 'bumpSequence', bumpTo: (current + 2n).toString() }]),
@@ -96,6 +97,7 @@ export function createRecoveryEnvelopePlan({
   if (contacts.includes(vaultAccount) || contacts.includes(rescueDestination)) throw new TypeError('contacts must differ from the vault and rescue accounts.');
   if (!Number.isInteger(threshold) || threshold !== contacts.length) throw new TypeError('Exact native Stellar recovery currently supports N-of-N contact approval only; M-of-N requires the Soroban fallback.');
   if (!Number.isInteger(inactivitySeconds) || inactivitySeconds < 1) throw new TypeError('inactivitySeconds must be positive.');
+  if (networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Exact native Stellar recovery is currently testnet-only; networkPassphrase must match Stellar Testnet.');
   const baseFee = BigInt(baseFeeStroops);
   if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
   const sequence = chooseRecoverySequence({ currentSequence });
@@ -156,6 +158,7 @@ export function createRecoveryEnvelopePlan({
 
 export function buildRecoveryEnvelopeArtifact(plan) {
   if (!plan || plan.strategy !== 'preauth-min-sequence-age') throw new TypeError('A Stellar pre-authorized recovery plan is required.');
+  if (plan.networkRef !== 'stellar:testnet' || plan.networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Stellar recovery artifact construction is currently restricted to the configured Stellar Testnet identity.');
   if (!Array.isArray(plan.operations) || plan.operations.length === 0) throw new Error('Recovery envelope cannot be built until every protected asset has an exact payment operation.');
   assertAccount(plan.sourceAccount, 'sourceAccount');
   assertAccount(plan.rescueDestination, 'rescueDestination');
@@ -213,6 +216,8 @@ export function verifyRecoveryEnvelopeArtifact({ plan, artifact }) {
   if (!artifact?.transactionXdr || !artifact?.transactionHashHex) throw new TypeError('Recovery envelope artifact is incomplete.');
   const transaction = TransactionBuilder.fromXdr(artifact.transactionXdr, plan.networkPassphrase);
   const errors = [];
+  if (plan.networkRef !== 'stellar:testnet' || plan.networkPassphrase !== TESTNET_PASSPHRASE) errors.push('Recovery plan is not bound to the configured Stellar Testnet identity.');
+  if (artifact.networkPassphrase !== plan.networkPassphrase) errors.push('Recovery artifact network passphrase does not match plan.');
   if (toHex(transaction.hash()) !== artifact.transactionHashHex) errors.push('Transaction hash does not match XDR.');
   if (transaction.source !== plan.sourceAccount) errors.push('Source account does not match plan.');
   if (transaction.sequence !== plan.sequence.recoverySequence) errors.push('Transaction sequence does not match plan.');
@@ -427,5 +432,339 @@ export function verifySignedRecoveryEnvelopeArtifact({ plan, artifact, signedTra
     signatureCount:signatures.length,
     exactSignatureSet:errors.length === 0 && verified.length === plan.signerPolicy.requiredExtraSigners.length,
     errors:Object.freeze(errors)
+  });
+}
+
+
+export function buildHeartbeatEnvelopeArtifact({
+  vaultAccount,
+  currentSequence,
+  baseFeeStroops = '100',
+  networkPassphrase = TESTNET_PASSPHRASE
+}) {
+  const plan = createHeartbeatPlan({ vaultAccount, currentSequence });
+  if (networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Stellar heartbeat proof is currently testnet-only; networkPassphrase must match Stellar Testnet.');
+  const baseFee = BigInt(baseFeeStroops);
+  if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
+  const source = new Account(plan.sourceAccount, String(currentSequence));
+  const transaction = new TransactionBuilder(source, {
+    fee: baseFee.toString(),
+    networkPassphrase
+  })
+    .addOperation(Operation.bumpSequence({ bumpTo: plan.operations[0].bumpTo }))
+    .setTimeout(0)
+    .build();
+
+  const transactionXdr = transaction.toXdr();
+  const transactionHashHex = toHex(transaction.hash());
+  const decoded = TransactionBuilder.fromXdr(transactionXdr, networkPassphrase);
+  const operation = decoded.operations[0];
+  if (decoded.toXdr() !== transactionXdr || toHex(decoded.hash()) !== transactionHashHex) {
+    throw new Error('Stellar heartbeat XDR round-trip verification failed.');
+  }
+  if (decoded.source !== plan.sourceAccount || decoded.sequence !== plan.transactionSequence) {
+    throw new Error('Stellar heartbeat envelope does not match its source/sequence plan.');
+  }
+  if (decoded.operations.length !== 1 || operation?.type !== 'bumpSequence' || String(operation.bumpTo) !== plan.operations[0].bumpTo) {
+    throw new Error('Stellar heartbeat envelope does not contain the exact planned bumpSequence operation.');
+  }
+
+  return Object.freeze({
+    format: 'stellar-heartbeat-envelope-xdr',
+    sdk: Object.freeze({ package: '@stellar/stellar-sdk', version: STELLAR_SDK_VERSION }),
+    networkPassphrase,
+    sourceAccount: plan.sourceAccount,
+    transactionSequence: plan.transactionSequence,
+    bumpTo: plan.operations[0].bumpTo,
+    baseFeeStroops: baseFee.toString(),
+    totalFeeStroops: transaction.fee,
+    transactionXdr,
+    transactionHashHex,
+    ownerAuthorizationRequired: true,
+    roundTripVerified: true,
+    livenessEffect: plan.livenessEffect
+  });
+}
+
+export function verifyHeartbeatEnvelopeArtifact({ plan, artifact }) {
+  if (!plan || !artifact?.transactionXdr || !artifact?.transactionHashHex) {
+    throw new TypeError('Heartbeat plan and artifact are required.');
+  }
+  const errors = [];
+  if (artifact.networkPassphrase !== TESTNET_PASSPHRASE) errors.push('Heartbeat artifact must use the Stellar Testnet network passphrase.');
+  let transaction;
+  try {
+    transaction = TransactionBuilder.fromXdr(artifact.transactionXdr, artifact.networkPassphrase ?? TESTNET_PASSPHRASE);
+  } catch (error) {
+    return Object.freeze({ valid: false, errors: Object.freeze([`Heartbeat XDR could not be decoded: ${error.message}`]) });
+  }
+  const operation = transaction.operations[0];
+  const recomputedHashHex = toHex(transaction.hash());
+  if (recomputedHashHex !== artifact.transactionHashHex) errors.push('Heartbeat transaction hash does not match XDR.');
+  if (transaction.source !== plan.sourceAccount) errors.push('Heartbeat source account does not match plan.');
+  if (transaction.sequence !== plan.transactionSequence) errors.push('Heartbeat transaction sequence does not match plan.');
+  if (transaction.operations.length !== 1 || operation?.type !== 'bumpSequence') errors.push('Heartbeat must contain exactly one bumpSequence operation.');
+  else if (String(operation.bumpTo) !== plan.operations[0].bumpTo) errors.push('Heartbeat bump target does not match plan.');
+  if (artifact.sourceAccount !== plan.sourceAccount || artifact.transactionSequence !== plan.transactionSequence || artifact.bumpTo !== plan.operations[0].bumpTo) {
+    errors.push('Heartbeat artifact metadata does not match plan.');
+  }
+  return Object.freeze({ valid: errors.length === 0, errors: Object.freeze(errors), recomputedHashHex });
+}
+
+export function verifySignedHeartbeatEnvelopeArtifact({ plan, artifact, signedTransactionXdr }) {
+  const base = verifyHeartbeatEnvelopeArtifact({ plan, artifact });
+  const errors = base.valid ? [] : base.errors.map(error => `Unsigned heartbeat artifact: ${error}`);
+  if (typeof signedTransactionXdr !== 'string' || !signedTransactionXdr.trim()) {
+    throw new TypeError('signedTransactionXdr is required.');
+  }
+
+  let transaction;
+  try {
+    transaction = TransactionBuilder.fromXdr(signedTransactionXdr, artifact.networkPassphrase ?? TESTNET_PASSPHRASE);
+  } catch (error) {
+    return Object.freeze({
+      valid: false,
+      transactionHashHex: null,
+      ownerSignatureVerified: false,
+      signatureCount: 0,
+      errors: Object.freeze([...errors, `Signed heartbeat envelope could not be decoded: ${error.message}`])
+    });
+  }
+
+  const transactionHashHex = toHex(transaction.hash());
+  if (transactionHashHex !== artifact.transactionHashHex) errors.push('Signed heartbeat hash does not match the heartbeat artifact.');
+  const signatures = Array.isArray(transaction.signatures) ? transaction.signatures : [];
+  let ownerSignatureVerified = false;
+  if (signatures.length === 1) {
+    try {
+      ownerSignatureVerified = Keypair.fromPublicKey(plan.sourceAccount).verify(transaction.hash(), decoratedSignatureValue(signatures[0]));
+    } catch {
+      ownerSignatureVerified = false;
+    }
+  }
+  if (!ownerSignatureVerified) errors.push('Heartbeat is not signed exactly once by the vault owner/master key.');
+  if (signatures.length !== 1) errors.push(`Heartbeat must contain exactly one owner signature; found ${signatures.length}.`);
+
+  return Object.freeze({
+    valid: errors.length === 0,
+    transactionHashHex,
+    ownerSignatureVerified,
+    signatureCount: signatures.length,
+    errors: Object.freeze(errors)
+  });
+}
+
+
+export function buildFeeBumpEnvelopeArtifact({
+  recoveryPlan,
+  recoveryArtifact,
+  signedRecoveryTransactionXdr,
+  feeBumpPlan,
+  baseFeeStroops
+}) {
+  if (!recoveryPlan || recoveryPlan.networkRef !== 'stellar:testnet' || recoveryPlan.networkPassphrase !== TESTNET_PASSPHRASE) {
+    throw new TypeError('Fee-bump recovery construction requires the configured Stellar Testnet recovery plan.');
+  }
+  if (!recoveryArtifact?.transactionHashHex) throw new TypeError('Recovery artifact is required.');
+  if (!feeBumpPlan || feeBumpPlan.mode !== 'fee-bump') throw new TypeError('A Stellar fee-bump sponsor plan is required.');
+  if (feeBumpPlan.innerEnvelopeHash !== recoveryArtifact.transactionHashHex) {
+    throw new Error('Fee-bump sponsor plan is not bound to the recovery transaction hash.');
+  }
+  assertAccount(feeBumpPlan.feeAccount, 'feeAccount');
+  const baseFee = BigInt(baseFeeStroops);
+  if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
+  const maxFee = BigInt(feeBumpPlan.maxFeeStroops);
+  if (maxFee <= 0n) throw new TypeError('feeBumpPlan.maxFeeStroops must be positive.');
+
+  const signedRecovery = verifySignedRecoveryEnvelopeArtifact({
+    plan: recoveryPlan,
+    artifact: recoveryArtifact,
+    signedTransactionXdr: signedRecoveryTransactionXdr
+  });
+  if (!signedRecovery.valid) throw new Error(`Signed recovery envelope is not eligible for fee-bump wrapping: ${signedRecovery.errors.join('; ')}`);
+
+  const innerTransaction = TransactionBuilder.fromXdr(signedRecoveryTransactionXdr, TESTNET_PASSPHRASE);
+  if (innerTransaction?.innerTransaction) throw new Error('Fee-bump wrapping requires a normal signed recovery transaction, not an already wrapped fee-bump envelope.');
+
+  const feeBump = TransactionBuilder.buildFeeBumpTransaction(
+    feeBumpPlan.feeAccount,
+    baseFee.toString(),
+    innerTransaction,
+    TESTNET_PASSPHRASE
+  );
+  const totalFee = BigInt(feeBump.fee);
+  if (totalFee > maxFee) {
+    throw new Error(`Fee-bump total fee ${totalFee} stroops exceeds configured maximum ${maxFee} stroops.`);
+  }
+
+  const innerXdr = feeBump.innerTransaction.toXdr();
+  if (innerXdr !== signedRecoveryTransactionXdr) {
+    throw new Error('Fee-bump construction changed the signed inner recovery envelope.');
+  }
+  const innerHashHex = toHex(feeBump.innerTransaction.hash());
+  if (innerHashHex !== recoveryArtifact.transactionHashHex) {
+    throw new Error('Fee-bump construction changed the inner recovery transaction hash.');
+  }
+
+  const feeBumpXdr = feeBump.toXdr();
+  const feeBumpHashHex = toHex(feeBump.hash());
+  const decoded = TransactionBuilder.fromXdr(feeBumpXdr, TESTNET_PASSPHRASE);
+  if (!decoded?.innerTransaction || decoded.toXdr() !== feeBumpXdr || toHex(decoded.hash()) !== feeBumpHashHex) {
+    throw new Error('Stellar fee-bump XDR round-trip verification failed.');
+  }
+  if (decoded.innerTransaction.toXdr() !== signedRecoveryTransactionXdr) {
+    throw new Error('Fee-bump round-trip changed the signed inner recovery envelope.');
+  }
+
+  return Object.freeze({
+    format: 'stellar-fee-bump-envelope-xdr',
+    sdk: Object.freeze({ package: '@stellar/stellar-sdk', version: STELLAR_SDK_VERSION }),
+    networkRef: 'stellar:testnet',
+    networkPassphrase: TESTNET_PASSPHRASE,
+    feeSource: feeBump.feeSource,
+    baseFeeStroops: baseFee.toString(),
+    totalFeeStroops: totalFee.toString(),
+    maxFeeStroops: maxFee.toString(),
+    innerTransactionHashHex: innerHashHex,
+    innerSignedTransactionXdr: signedRecoveryTransactionXdr,
+    feeBumpTransactionXdr: feeBumpXdr,
+    feeBumpTransactionHashHex: feeBumpHashHex,
+    outerSignatureCount: feeBump.signatures.length,
+    feePayerAuthorizationRequired: true,
+    innerRecoverySignaturesPreserved: true,
+    roundTripVerified: true
+  });
+}
+
+export function verifyFeeBumpEnvelopeArtifact({
+  recoveryPlan,
+  recoveryArtifact,
+  feeBumpPlan,
+  artifact
+}) {
+  if (!recoveryPlan || !recoveryArtifact || !feeBumpPlan || !artifact?.feeBumpTransactionXdr) {
+    throw new TypeError('Recovery plan, recovery artifact, fee-bump plan and fee-bump artifact are required.');
+  }
+  const errors = [];
+  if (recoveryPlan.networkRef !== 'stellar:testnet' || recoveryPlan.networkPassphrase !== TESTNET_PASSPHRASE) {
+    errors.push('Recovery plan is not bound to the configured Stellar Testnet identity.');
+  }
+  if (artifact.networkRef !== 'stellar:testnet' || artifact.networkPassphrase !== TESTNET_PASSPHRASE) {
+    errors.push('Fee-bump artifact is not bound to the configured Stellar Testnet identity.');
+  }
+  if (feeBumpPlan.mode !== 'fee-bump') errors.push('Fee-bump sponsor plan mode is invalid.');
+  if (feeBumpPlan.innerEnvelopeHash !== recoveryArtifact.transactionHashHex) errors.push('Fee-bump sponsor plan recovery hash does not match recovery artifact.');
+
+  let feeBump;
+  try {
+    feeBump = TransactionBuilder.fromXdr(artifact.feeBumpTransactionXdr, TESTNET_PASSPHRASE);
+  } catch (error) {
+    return Object.freeze({ valid: false, errors: Object.freeze([...errors, `Fee-bump XDR could not be decoded: ${error.message}`]) });
+  }
+  if (!feeBump?.innerTransaction) {
+    errors.push('Artifact XDR is not a Stellar fee-bump transaction.');
+    return Object.freeze({ valid: false, errors: Object.freeze(errors) });
+  }
+
+  const outerHashHex = toHex(feeBump.hash());
+  const innerXdr = feeBump.innerTransaction.toXdr();
+  const innerHashHex = toHex(feeBump.innerTransaction.hash());
+  if (outerHashHex !== artifact.feeBumpTransactionHashHex) errors.push('Fee-bump transaction hash does not match XDR.');
+  if (innerHashHex !== recoveryArtifact.transactionHashHex || innerHashHex !== artifact.innerTransactionHashHex) errors.push('Fee-bump inner transaction hash does not match recovery artifact.');
+  if (innerXdr !== artifact.innerSignedTransactionXdr) errors.push('Fee-bump inner signed XDR does not match artifact binding.');
+  if (feeBump.feeSource !== feeBumpPlan.feeAccount || artifact.feeSource !== feeBumpPlan.feeAccount) errors.push('Fee-bump fee source does not match sponsor plan.');
+  if (String(feeBump.fee) !== String(artifact.totalFeeStroops)) errors.push('Fee-bump total fee metadata does not match XDR.');
+  if (BigInt(feeBump.fee) > BigInt(feeBumpPlan.maxFeeStroops) || BigInt(artifact.totalFeeStroops) > BigInt(artifact.maxFeeStroops)) {
+    errors.push('Fee-bump total fee exceeds configured maximum.');
+  }
+  if (artifact.maxFeeStroops !== feeBumpPlan.maxFeeStroops) errors.push('Fee-bump maximum fee metadata does not match sponsor plan.');
+  if (feeBump.signatures.length !== 0 || artifact.outerSignatureCount !== 0) errors.push('Unsigned fee-bump artifact unexpectedly contains outer signatures.');
+
+  const signedRecovery = verifySignedRecoveryEnvelopeArtifact({
+    plan: recoveryPlan,
+    artifact: recoveryArtifact,
+    signedTransactionXdr: innerXdr
+  });
+  if (!signedRecovery.valid) errors.push(...signedRecovery.errors.map(error => `Inner recovery: ${error}`));
+
+  return Object.freeze({
+    valid: errors.length === 0,
+    errors: Object.freeze(errors),
+    feeBumpTransactionHashHex: outerHashHex,
+    innerTransactionHashHex: innerHashHex,
+    feeSource: feeBump.feeSource,
+    totalFeeStroops: String(feeBump.fee)
+  });
+}
+
+export function verifySignedFeeBumpEnvelopeArtifact({
+  recoveryPlan,
+  recoveryArtifact,
+  feeBumpPlan,
+  artifact,
+  signedFeeBumpTransactionXdr
+}) {
+  const base = verifyFeeBumpEnvelopeArtifact({ recoveryPlan, recoveryArtifact, feeBumpPlan, artifact });
+  const errors = base.valid ? [] : base.errors.map(error => `Unsigned fee-bump artifact: ${error}`);
+  if (typeof signedFeeBumpTransactionXdr !== 'string' || !signedFeeBumpTransactionXdr.trim()) {
+    throw new TypeError('signedFeeBumpTransactionXdr is required.');
+  }
+
+  let feeBump;
+  try {
+    feeBump = TransactionBuilder.fromXdr(signedFeeBumpTransactionXdr, TESTNET_PASSPHRASE);
+  } catch (error) {
+    return Object.freeze({
+      valid: false,
+      feePayerSignatureVerified: false,
+      outerSignatureCount: 0,
+      feeBumpTransactionHashHex: null,
+      errors: Object.freeze([...errors, `Signed fee-bump XDR could not be decoded: ${error.message}`])
+    });
+  }
+  if (!feeBump?.innerTransaction) {
+    errors.push('Signed envelope is not a Stellar fee-bump transaction.');
+    return Object.freeze({
+      valid: false,
+      feePayerSignatureVerified: false,
+      outerSignatureCount: feeBump?.signatures?.length ?? 0,
+      feeBumpTransactionHashHex: null,
+      errors: Object.freeze(errors)
+    });
+  }
+
+  const outerHashHex = toHex(feeBump.hash());
+  if (outerHashHex !== artifact.feeBumpTransactionHashHex) errors.push('Signed fee-bump hash does not match unsigned artifact.');
+  if (feeBump.feeSource !== feeBumpPlan.feeAccount) errors.push('Signed fee-bump fee source does not match sponsor plan.');
+  if (feeBump.innerTransaction.toXdr() !== artifact.innerSignedTransactionXdr) errors.push('Signed fee-bump changed the signed inner recovery envelope.');
+  if (toHex(feeBump.innerTransaction.hash()) !== recoveryArtifact.transactionHashHex) errors.push('Signed fee-bump changed the inner recovery transaction hash.');
+  if (String(feeBump.fee) !== artifact.totalFeeStroops) errors.push('Signed fee-bump changed the total fee.');
+
+  const signatures = Array.isArray(feeBump.signatures) ? feeBump.signatures : [];
+  let feePayerSignatureVerified = false;
+  if (signatures.length === 1) {
+    try {
+      feePayerSignatureVerified = Keypair.fromPublicKey(feeBumpPlan.feeAccount).verify(feeBump.hash(), decoratedSignatureValue(signatures[0]));
+    } catch {
+      feePayerSignatureVerified = false;
+    }
+  }
+  if (!feePayerSignatureVerified) errors.push('Fee-bump envelope is not signed exactly once by the configured fee payer.');
+  if (signatures.length !== 1) errors.push(`Fee-bump envelope must contain exactly one fee-payer signature; found ${signatures.length}.`);
+
+  const signedRecovery = verifySignedRecoveryEnvelopeArtifact({
+    plan: recoveryPlan,
+    artifact: recoveryArtifact,
+    signedTransactionXdr: feeBump.innerTransaction.toXdr()
+  });
+  if (!signedRecovery.valid) errors.push(...signedRecovery.errors.map(error => `Inner recovery: ${error}`));
+
+  return Object.freeze({
+    valid: errors.length === 0,
+    feePayerSignatureVerified,
+    outerSignatureCount: signatures.length,
+    feeBumpTransactionHashHex: outerHashHex,
+    innerTransactionHashHex: toHex(feeBump.innerTransaction.hash()),
+    errors: Object.freeze(errors)
   });
 }

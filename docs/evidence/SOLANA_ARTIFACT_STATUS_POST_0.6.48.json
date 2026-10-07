@@ -1,0 +1,27 @@
+{
+  "schema": "omegavault.solana.artifact-status.v1",
+  "networkRef": "solana:devnet",
+  "historicalBuildEvidence": "docs/evidence/SOLANA_PROGRAM_BUILD_0.6.17.json",
+  "artifactPath": "artifacts/solana/omegavault_solana_recovery.so",
+  "status": "stale-untrusted",
+  "historicalClaimedSha256": "e140b5235505df36f727051adf880f78b8ff7168b4e0269fc2071d4d7f24804e",
+  "observedRepositorySha256": "99ec272746b35162efc8ba28ab8acd1fad7edf8d65edfdf7825a8c6ae559c405",
+  "observedBytes": 90059,
+  "sourceEvidenceStillRequired": true,
+  "artifactTrusted": false,
+  "sbfExecutionEvidenceCurrent": false,
+  "liveSubmissionReady": false,
+  "requiredRemediation": [
+    "Restore a pinned Rust/Agave/cargo-build-sbf toolchain.",
+    "Rebuild the Solana program from the currently bound source.",
+    "Run the SBF program-test suite against the rebuilt artifact.",
+    "Regenerate the build evidence from the rebuilt artifact and exact source set."
+  ],
+  "authority": {
+    "chainPromotion": false,
+    "deploymentAuthority": false,
+    "walletAuthority": false,
+    "liveProof": false
+  },
+  "note": "The repository artifact bytes and byte length do not match the historical build-evidence artifact. The mismatch is recorded instead of relabeling the current binary as verified."
+}

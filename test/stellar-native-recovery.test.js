@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { Keypair, TransactionBuilder } from '@stellar/stellar-sdk';
 import {
   assessRecoverySubmissionResult,
+  buildFeeBumpEnvelopeArtifact,
+  buildHeartbeatEnvelopeArtifact,
   buildRecoveryEnvelopeArtifact,
   chooseRecoverySequence,
   coordinateRecoverySigners,
@@ -13,7 +15,11 @@ import {
   createSignerSetupPlan,
   estimateReserveImpact,
   validateRecoveryAccountSnapshot,
+  verifyFeeBumpEnvelopeArtifact,
+  verifyHeartbeatEnvelopeArtifact,
   verifyRecoveryEnvelopeArtifact,
+  verifySignedFeeBumpEnvelopeArtifact,
+  verifySignedHeartbeatEnvelopeArtifact,
   verifySignedRecoveryEnvelopeArtifact
 } from '../src/chains/stellar/native-recovery.js';
 
@@ -222,4 +228,228 @@ test('Stellar signed recovery verification rejects a correctly signed substitute
   });
   assert.equal(result.valid, false);
   assert.ok(result.errors.some(error => /hash does not match/i.test(error)));
+});
+
+
+test('Stellar heartbeat artifact round-trips the exact sequence bump', () => {
+  const plan = createHeartbeatPlan({ vaultAccount:G(1), currentSequence:'1000' });
+  const artifact = buildHeartbeatEnvelopeArtifact({ vaultAccount:G(1), currentSequence:'1000' });
+  assert.equal(artifact.sourceAccount, G(1));
+  assert.equal(artifact.transactionSequence, '1001');
+  assert.equal(artifact.bumpTo, '1002');
+  assert.equal(artifact.totalFeeStroops, '100');
+  assert.equal(artifact.roundTripVerified, true);
+  assert.match(artifact.transactionHashHex, /^[a-f0-9]{64}$/);
+  const verified = verifyHeartbeatEnvelopeArtifact({ plan, artifact });
+  assert.equal(verified.valid, true, verified.errors.join('; '));
+});
+
+test('Stellar signed heartbeat requires exactly the vault owner signature', () => {
+  const plan = createHeartbeatPlan({ vaultAccount:G(1), currentSequence:'1000' });
+  const artifact = buildHeartbeatEnvelopeArtifact({ vaultAccount:G(1), currentSequence:'1000' });
+  const signed = TransactionBuilder.fromXdr(artifact.transactionXdr, artifact.networkPassphrase);
+  signed.sign(KP(1));
+  const result = verifySignedHeartbeatEnvelopeArtifact({ plan, artifact, signedTransactionXdr:signed.toXdr() });
+  assert.equal(result.valid, true, result.errors.join('; '));
+  assert.equal(result.ownerSignatureVerified, true);
+  assert.equal(result.signatureCount, 1);
+});
+
+test('Stellar signed heartbeat rejects a wrong owner signature', () => {
+  const plan = createHeartbeatPlan({ vaultAccount:G(1), currentSequence:'1000' });
+  const artifact = buildHeartbeatEnvelopeArtifact({ vaultAccount:G(1), currentSequence:'1000' });
+  const signed = TransactionBuilder.fromXdr(artifact.transactionXdr, artifact.networkPassphrase);
+  signed.sign(KP(2));
+  const result = verifySignedHeartbeatEnvelopeArtifact({ plan, artifact, signedTransactionXdr:signed.toXdr() });
+  assert.equal(result.valid, false);
+  assert.equal(result.ownerSignatureVerified, false);
+  assert.ok(result.errors.some(error => /vault owner/i.test(error)));
+});
+
+test('Stellar signed heartbeat rejects extra signatures', () => {
+  const plan = createHeartbeatPlan({ vaultAccount:G(1), currentSequence:'1000' });
+  const artifact = buildHeartbeatEnvelopeArtifact({ vaultAccount:G(1), currentSequence:'1000' });
+  const signed = TransactionBuilder.fromXdr(artifact.transactionXdr, artifact.networkPassphrase);
+  signed.sign(KP(1), KP(2));
+  const result = verifySignedHeartbeatEnvelopeArtifact({ plan, artifact, signedTransactionXdr:signed.toXdr() });
+  assert.equal(result.valid, false);
+  assert.equal(result.signatureCount, 2);
+  assert.ok(result.errors.some(error => /exactly one owner signature/i.test(error)));
+});
+
+
+test('Stellar native recovery refuses network-passphrase drift away from Testnet', () => {
+  const mainnetPassphrase = 'Public Global Stellar Network ; September 2015';
+  assert.throws(() => createRecoveryEnvelopePlan({
+    vaultAccount:G(1), rescueDestination:G(2), currentSequence:'1000', inactivitySeconds:60,
+    contacts:[G(3), G(4)], threshold:2, amounts:{ native:'1' },
+    networkPassphrase:mainnetPassphrase
+  }), /testnet-only/i);
+
+  assert.throws(() => buildHeartbeatEnvelopeArtifact({
+    vaultAccount:G(1), currentSequence:'1000', networkPassphrase:mainnetPassphrase
+  }), /testnet-only/i);
+
+  const plan = recoveryPlan();
+  const driftedPlan = structuredClone(plan);
+  driftedPlan.networkPassphrase = mainnetPassphrase;
+  assert.throws(() => buildRecoveryEnvelopeArtifact(driftedPlan), /restricted to the configured Stellar Testnet identity/i);
+
+  const artifact = buildRecoveryEnvelopeArtifact(plan);
+  const driftedArtifact = { ...artifact, networkPassphrase:mainnetPassphrase };
+  const verified = verifyRecoveryEnvelopeArtifact({ plan, artifact:driftedArtifact });
+  assert.equal(verified.valid, false);
+  assert.ok(verified.errors.some(error => /network passphrase does not match/i.test(error)));
+});
+
+
+function signedRecoveryFixture() {
+  const plan = recoveryPlan();
+  const artifact = buildRecoveryEnvelopeArtifact(plan);
+  const signed = TransactionBuilder.fromXdr(artifact.transactionXdr, plan.networkPassphrase);
+  signed.sign(KP(3), KP(4));
+  return { plan, artifact, signedRecoveryTransactionXdr:signed.toXdr() };
+}
+
+test('Stellar fee bump wraps the exact signed recovery envelope under a total-fee cap', () => {
+  const recovery = signedRecoveryFixture();
+  const feeBumpPlan = createFeeBumpSponsorPlan({
+    feeAccount:G(7),
+    innerEnvelopeHash:recovery.artifact.transactionHashHex,
+    maxFeeStroops:'1000'
+  });
+  const artifact = buildFeeBumpEnvelopeArtifact({
+    recoveryPlan:recovery.plan,
+    recoveryArtifact:recovery.artifact,
+    signedRecoveryTransactionXdr:recovery.signedRecoveryTransactionXdr,
+    feeBumpPlan,
+    baseFeeStroops:'200'
+  });
+  assert.equal(artifact.feeSource, G(7));
+  assert.equal(artifact.innerTransactionHashHex, recovery.artifact.transactionHashHex);
+  assert.equal(artifact.innerSignedTransactionXdr, recovery.signedRecoveryTransactionXdr);
+  assert.equal(artifact.baseFeeStroops, '200');
+  assert.equal(artifact.totalFeeStroops, '600');
+  assert.equal(artifact.maxFeeStroops, '1000');
+  assert.equal(artifact.outerSignatureCount, 0);
+  assert.equal(artifact.innerRecoverySignaturesPreserved, true);
+  const verified = verifyFeeBumpEnvelopeArtifact({
+    recoveryPlan:recovery.plan,
+    recoveryArtifact:recovery.artifact,
+    feeBumpPlan,
+    artifact
+  });
+  assert.equal(verified.valid, true, verified.errors.join('; '));
+});
+
+test('Stellar signed fee bump requires exactly the configured fee-payer signature', () => {
+  const recovery = signedRecoveryFixture();
+  const feeBumpPlan = createFeeBumpSponsorPlan({
+    feeAccount:G(7),
+    innerEnvelopeHash:recovery.artifact.transactionHashHex,
+    maxFeeStroops:'1000'
+  });
+  const artifact = buildFeeBumpEnvelopeArtifact({
+    recoveryPlan:recovery.plan,
+    recoveryArtifact:recovery.artifact,
+    signedRecoveryTransactionXdr:recovery.signedRecoveryTransactionXdr,
+    feeBumpPlan,
+    baseFeeStroops:'200'
+  });
+  const signed = TransactionBuilder.fromXdr(artifact.feeBumpTransactionXdr, artifact.networkPassphrase);
+  signed.sign(KP(7));
+  const result = verifySignedFeeBumpEnvelopeArtifact({
+    recoveryPlan:recovery.plan,
+    recoveryArtifact:recovery.artifact,
+    feeBumpPlan,
+    artifact,
+    signedFeeBumpTransactionXdr:signed.toXdr()
+  });
+  assert.equal(result.valid, true, result.errors.join('; '));
+  assert.equal(result.feePayerSignatureVerified, true);
+  assert.equal(result.outerSignatureCount, 1);
+  assert.equal(result.innerTransactionHashHex, recovery.artifact.transactionHashHex);
+});
+
+test('Stellar fee bump rejects wrong or extra outer signatures', () => {
+  const recovery = signedRecoveryFixture();
+  const feeBumpPlan = createFeeBumpSponsorPlan({
+    feeAccount:G(7),
+    innerEnvelopeHash:recovery.artifact.transactionHashHex,
+    maxFeeStroops:'1000'
+  });
+  const artifact = buildFeeBumpEnvelopeArtifact({
+    recoveryPlan:recovery.plan,
+    recoveryArtifact:recovery.artifact,
+    signedRecoveryTransactionXdr:recovery.signedRecoveryTransactionXdr,
+    feeBumpPlan,
+    baseFeeStroops:'200'
+  });
+
+  const wrong = TransactionBuilder.fromXdr(artifact.feeBumpTransactionXdr, artifact.networkPassphrase);
+  wrong.sign(KP(8));
+  const wrongResult = verifySignedFeeBumpEnvelopeArtifact({
+    recoveryPlan:recovery.plan,
+    recoveryArtifact:recovery.artifact,
+    feeBumpPlan,
+    artifact,
+    signedFeeBumpTransactionXdr:wrong.toXdr()
+  });
+  assert.equal(wrongResult.valid, false);
+  assert.equal(wrongResult.feePayerSignatureVerified, false);
+
+  const extra = TransactionBuilder.fromXdr(artifact.feeBumpTransactionXdr, artifact.networkPassphrase);
+  extra.sign(KP(7), KP(8));
+  const extraResult = verifySignedFeeBumpEnvelopeArtifact({
+    recoveryPlan:recovery.plan,
+    recoveryArtifact:recovery.artifact,
+    feeBumpPlan,
+    artifact,
+    signedFeeBumpTransactionXdr:extra.toXdr()
+  });
+  assert.equal(extraResult.valid, false);
+  assert.equal(extraResult.outerSignatureCount, 2);
+  assert.ok(extraResult.errors.some(error => /exactly one fee-payer signature/i.test(error)));
+});
+
+test('Stellar fee bump fails closed when total fee exceeds sponsor cap', () => {
+  const recovery = signedRecoveryFixture();
+  const feeBumpPlan = createFeeBumpSponsorPlan({
+    feeAccount:G(7),
+    innerEnvelopeHash:recovery.artifact.transactionHashHex,
+    maxFeeStroops:'500'
+  });
+  assert.throws(() => buildFeeBumpEnvelopeArtifact({
+    recoveryPlan:recovery.plan,
+    recoveryArtifact:recovery.artifact,
+    signedRecoveryTransactionXdr:recovery.signedRecoveryTransactionXdr,
+    feeBumpPlan,
+    baseFeeStroops:'200'
+  }), /exceeds configured maximum/i);
+});
+
+test('Stellar fee bump refuses a substituted contact-signed inner recovery transaction', () => {
+  const original = signedRecoveryFixture();
+  const substitutedPlan = createRecoveryEnvelopePlan({
+    vaultAccount:G(1), rescueDestination:G(2), currentSequence:'1000', inactivitySeconds:2592000,
+    contacts:[G(3), G(4)], threshold:2,
+    assets:['native', { code:'USDC', issuer:G(6) }],
+    amounts:{ native:'11', [`USDC:${G(6)}`]:'20.5' }
+  });
+  const substitutedArtifact = buildRecoveryEnvelopeArtifact(substitutedPlan);
+  const substituted = TransactionBuilder.fromXdr(substitutedArtifact.transactionXdr, substitutedPlan.networkPassphrase);
+  substituted.sign(KP(3), KP(4));
+
+  const feeBumpPlan = createFeeBumpSponsorPlan({
+    feeAccount:G(7),
+    innerEnvelopeHash:original.artifact.transactionHashHex,
+    maxFeeStroops:'1000'
+  });
+  assert.throws(() => buildFeeBumpEnvelopeArtifact({
+    recoveryPlan:original.plan,
+    recoveryArtifact:original.artifact,
+    signedRecoveryTransactionXdr:substituted.toXdr(),
+    feeBumpPlan,
+    baseFeeStroops:'200'
+  }), /not eligible for fee-bump wrapping/i);
 });

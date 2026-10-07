@@ -45,6 +45,33 @@ The deterministic test fixture currently binds hash `32bf2e38816f6f50b5f765593f3
 - CAP-15 fee-bump transactions: <https://github.com/stellar/stellar-protocol/blob/master/core/cap-0015.md>
 - SDK releases: <https://github.com/stellar/js-stellar-sdk/releases>
 
+## Current maturity
+
+The dependency-restoration gate is cleared. The pinned `@stellar/stellar-sdk` 17.1.0 stack executes in clean CI and was also exercised on Windows.
+
+The offline execution-evidence pipeline now covers:
+
+- deterministic recovery XDR construction and round-trip verification;
+- exact contact-signature set verification;
+- owner heartbeat XDR and owner-signature verification;
+- fee-bump inner/outer envelope binding;
+- exact `txTOO_EARLY` and success result-code requirements;
+- Testnet network-identity fail-closed checks;
+- digest-bound success evidence for initial too-early rejection, heartbeat reset, post-heartbeat too-early rejection, eligible N-of-N recovery, rescue-balance movement and finality;
+- digest-bound failed-applied evidence proving that an applied failed recovery consumes the matching one-time `preAuthTx` signer and forbids retry of the same envelope;
+- execution-input manifest binding;
+- driver-injected recovery orchestration;
+- fail-closed Horizon response normalization and HTTP transport;
+- end-to-end Horizon-driver integration coverage.
+
+The connector remains `offline-verified`, not `live-proof`.
+
 ## Remaining promotion gate
 
-This connector remains `scaffold`, not `live-proof`. The remaining gate is a complete Stellar Testnet run with too-early rejection, heartbeat reset, eligible N-of-N execution, fee-bump submission, rescue-balance verification, failed-operation handling and exported digest-bound evidence.
+An actual Stellar Testnet execution is still required. The public-network evidence must populate the already-hardened pipeline with real Horizon observations for the too-early/heartbeat/recovery/finality sequence and the failed-applied case.
+
+Injected drivers, fixtures and clean CI prove the implementation and evidence contracts; they do not establish public-Testnet execution proof or chain promotion.
+
+## Authority boundary
+
+No Stellar code or evidence in this development block authorizes mainnet deployment, live-value transactions, wallet signing, secret handling, chain promotion, deployment authority or wallet authority.
