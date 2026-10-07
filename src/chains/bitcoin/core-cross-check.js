@@ -12,16 +12,63 @@ function digest(value) {
   return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 }
 
+function sha256(value) {
+  return createHash('sha256').update(value).digest();
+}
+
+function hash256(value) {
+  return sha256(sha256(value));
+}
+
+function transactionId(bytes) {
+  return Buffer.from(hash256(bytes)).reverse().toString('hex');
+}
+
 function exactInteger(value, label) {
   if (!Number.isSafeInteger(value) || value < 0) throw new TypeError(`${label} must be a non-negative safe integer.`);
   return value;
 }
 
+function positiveInteger(value, label) {
+  const normalized = exactInteger(value, label);
+  if (normalized < 1) throw new TypeError(`${label} must be a positive safe integer.`);
+  return normalized;
+}
+
+function sha256Hex(value, label) {
+  const text = String(value ?? '').toLowerCase();
+  if (!/^[0-9a-f]{64}$/.test(text)) throw new TypeError(`${label} must be 32-byte hexadecimal.`);
+  return text;
+}
+
+function iso(value, label) {
+  const text = String(value ?? '').trim();
+  if (!text || !Number.isFinite(Date.parse(text))) throw new TypeError(`${label} must be an ISO-compatible timestamp.`);
+  return text;
+}
+
 function btcToSats(value, label) {
-  const text = String(value);
+  let text;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value < 0) throw new TypeError(`${label} must be a non-negative BTC amount.`);
+    text = value.toFixed(8);
+  } else {
+    text = String(value);
+  }
   if (!/^\d+(?:\.\d{1,8})?$/.test(text)) throw new TypeError(`${label} must be a non-negative BTC decimal with at most 8 places.`);
   const [whole, fraction = ''] = text.split('.');
   return (BigInt(whole) * SATOSHIS + BigInt(fraction.padEnd(8, '0'))).toString();
+}
+
+function normalizeObservationContext(context) {
+  if (context == null) return null;
+  if (!context || typeof context !== 'object' || Array.isArray(context)) throw new TypeError('observationContext must be an object.');
+  const sequence = positiveInteger(context.sequence, 'observationContext.sequence');
+  const observedAt = iso(context.observedAt, 'observationContext.observedAt');
+  const previousEvidenceSha256 = context.previousEvidenceSha256 == null
+    ? null
+    : sha256Hex(context.previousEvidenceSha256, 'observationContext.previousEvidenceSha256');
+  return Object.freeze({ sequence, observedAt, previousEvidenceSha256 });
 }
 
 function requireTransaction(transaction) {
@@ -29,6 +76,22 @@ function requireTransaction(transaction) {
   if (transaction.networkRef !== 'bitcoin:signet' || transaction.broadcastAuthorized !== false) throw new Error('Bitcoin Core cross-check transaction authority boundary is invalid.');
   const raw = Buffer.from(transaction.rawHex ?? '', 'hex');
   if (!raw.length || raw.toString('hex') !== transaction.rawHex) throw new TypeError('Final transaction rawHex must be canonical non-empty hex.');
+  const stripped = Buffer.from(transaction.strippedHex ?? '', 'hex');
+  if (!stripped.length || stripped.toString('hex') !== transaction.strippedHex) throw new TypeError('Final transaction strippedHex must be canonical non-empty hex.');
+  if (transactionId(raw) !== transaction.wtxid) throw new Error('Final transaction wtxid does not match rawHex.');
+  if (transactionId(stripped) !== transaction.txid) throw new Error('Final transaction txid does not match strippedHex.');
+  if (exactInteger(transaction.bytes, 'transaction.bytes') !== raw.length) throw new Error('Final transaction byte size does not match rawHex.');
+  if (exactInteger(transaction.strippedBytes, 'transaction.strippedBytes') !== stripped.length) throw new Error('Final transaction stripped byte size does not match strippedHex.');
+  const weight = stripped.length * 3 + raw.length;
+  if (exactInteger(transaction.weight, 'transaction.weight') !== weight) throw new Error('Final transaction weight does not match serialized bytes.');
+  if (exactInteger(transaction.virtualBytes, 'transaction.virtualBytes') !== Math.ceil(weight / 4)) throw new Error('Final transaction virtual size does not match serialized bytes.');
+  if (!transaction.finalizerEvidence || transaction.finalizerEvidence.schema !== 'omegavault.bitcoin.finalizer-evidence.v1') {
+    throw new TypeError('Final transaction must retain bound finalizer evidence.');
+  }
+  const { sha256:finalizerSha256, ...finalizerCore } = transaction.finalizerEvidence;
+  if (sha256Hex(finalizerSha256, 'transaction.finalizerEvidence.sha256') !== digest(finalizerCore)) {
+    throw new Error('Final transaction finalizer evidence digest is invalid.');
+  }
   return raw;
 }
 
@@ -72,10 +135,52 @@ function validateDecoded(transaction, decoded) {
 function normalizeMempool(transaction, result) {
   if (result?.txid !== transaction.txid || result?.wtxid !== transaction.wtxid) throw new Error('Bitcoin Core mempool result is bound to another transaction.');
   if (typeof result?.allowed !== 'boolean') throw new TypeError('Bitcoin Core mempool result requires allowed boolean.');
-  if (result.vsize !== undefined && exactInteger(result.vsize, 'mempool.vsize') !== transaction.virtualBytes) throw new Error('Bitcoin Core mempool vsize does not match extraction.');
-  const rejectReason = result.allowed ? null : String(result['reject-reason'] ?? '').trim();
-  if (!result.allowed && !rejectReason) throw new Error('Rejected Bitcoin Core mempool result requires reject-reason.');
-  return Object.freeze({ txid:result.txid, wtxid:result.wtxid, allowed:result.allowed, vsize:result.vsize ?? transaction.virtualBytes, rejectReason });
+  if (result['package-error'] !== undefined) throw new Error('Single-transaction Bitcoin Core mempool result must not contain package-error.');
+
+  if (!result.allowed) {
+    const rejectReason = String(result['reject-reason'] ?? '').trim();
+    if (!rejectReason) throw new Error('Rejected Bitcoin Core mempool result requires reject-reason.');
+    if (result.vsize !== undefined || result.fees !== undefined) {
+      throw new Error('Rejected Bitcoin Core mempool result must not carry successful fee/vsize diagnostics.');
+    }
+    return Object.freeze({
+      txid:result.txid,
+      wtxid:result.wtxid,
+      allowed:false,
+      vsize:null,
+      feeSats:null,
+      baseFeeBtc:null,
+      effectiveFeeRateSatsPerKvB:null,
+      effectiveIncludes:Object.freeze([]),
+      feeDiagnosticsBound:false,
+      rejectReason
+    });
+  }
+
+  if (String(result['reject-reason'] ?? '').trim()) throw new Error('Allowed Bitcoin Core mempool result must not contain reject-reason.');
+  const vsize = exactInteger(result.vsize, 'mempool.vsize');
+  if (vsize !== transaction.virtualBytes) throw new Error('Bitcoin Core mempool vsize does not match deterministic extraction.');
+  if (!result.fees || typeof result.fees !== 'object' || Array.isArray(result.fees)) throw new TypeError('Allowed Bitcoin Core mempool result requires fee diagnostics.');
+  const feeSats = btcToSats(result.fees.base, 'mempool.fees.base');
+  if (feeSats !== transaction.finalizerEvidence.feeSats) throw new Error('Bitcoin Core mempool base fee does not match deterministic extracted transaction fee.');
+  const effectiveFeeRateSatsPerKvB = btcToSats(result.fees['effective-feerate'], 'mempool.fees.effective-feerate');
+  if (!Array.isArray(result.fees['effective-includes'])) throw new TypeError('Bitcoin Core mempool fee diagnostics require effective-includes.');
+  const effectiveIncludes = result.fees['effective-includes'].map((value, index) => sha256Hex(value, `mempool.fees.effective-includes[${index}]`));
+  if (effectiveIncludes.length !== 1 || effectiveIncludes[0] !== transaction.wtxid) {
+    throw new Error('Bitcoin Core mempool effective fee diagnostics are not bound exclusively to the extracted transaction.');
+  }
+  return Object.freeze({
+    txid:result.txid,
+    wtxid:result.wtxid,
+    allowed:true,
+    vsize,
+    feeSats,
+    baseFeeBtc:String(result.fees.base),
+    effectiveFeeRateSatsPerKvB,
+    effectiveIncludes:Object.freeze(effectiveIncludes),
+    feeDiagnosticsBound:true,
+    rejectReason:null
+  });
 }
 
 export function createBitcoinCoreCrossCheckEvidence({
@@ -84,18 +189,21 @@ export function createBitcoinCoreCrossCheckEvidence({
   decodedTransaction,
   mempoolResult,
   expectedNodeVersion = 310100,
-  observationSource = 'offline-fixture'
+  observationSource = 'offline-fixture',
+  observationContext = null
 }) {
   const raw = requireTransaction(transaction);
   const normalizedNode = normalizeNode(node, expectedNodeVersion);
   validateDecoded(transaction, decodedTransaction);
   const mempool = normalizeMempool(transaction, mempoolResult);
   if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(observationSource)) throw new TypeError('Unsupported Bitcoin Core observationSource.');
+  const normalizedObservationContext = normalizeObservationContext(observationContext);
   const core = Object.freeze({
-    schema:'omegavault.bitcoin.core-cross-check-evidence.v1',
+    schema:'omegavault.bitcoin.core-cross-check-evidence.v2',
     chainId:'bitcoin',
     networkRef:'bitcoin:signet',
     observationSource,
+    observationContext:normalizedObservationContext,
     node:normalizedNode,
     rawTransactionSha256:createHash('sha256').update(raw).digest('hex'),
     finalTransactionEvidenceSha256:transaction.finalizerEvidence.sha256,
@@ -104,14 +212,16 @@ export function createBitcoinCoreCrossCheckEvidence({
     bytes:transaction.bytes,
     weight:transaction.weight,
     virtualBytes:transaction.virtualBytes,
+    extractedFeeSats:transaction.finalizerEvidence.feeSats,
     decodedTransactionMatches:true,
     mempool,
-    bitcoinCoreCrossCheckProven:observationSource === 'bitcoin-core-rpc' && mempool.allowed,
+    feeDiagnosticsBound:mempool.feeDiagnosticsBound,
+    bitcoinCoreCrossCheckProven:observationSource === 'bitcoin-core-rpc' && mempool.allowed && mempool.feeDiagnosticsBound,
     signetExecutionProven:false,
     broadcastPerformed:false,
     broadcastAuthorized:false,
     chainPromotionAuthority:false,
-    authorityBoundary:'This evidence binds read-only Bitcoin Core decoding and testmempoolaccept observations to one deterministic Signet transaction. It never broadcasts, handles keys, proves inclusion/finality, or establishes immutable-rescue semantics.'
+    authorityBoundary:'This evidence binds read-only Bitcoin Core decoding and testmempoolaccept fee/vsize diagnostics to one deterministic Signet transaction. It never broadcasts, handles keys, proves inclusion/finality, or establishes immutable-rescue semantics.'
   });
   return Object.freeze({ ...core, sha256:digest(core) });
 }
@@ -126,16 +236,71 @@ export function verifyBitcoinCoreCrossCheckEvidence({ evidence, ...inputs }) {
   }
 }
 
+export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null, maxAgeMs = null } = {}) {
+  const errors = [];
+  if (!Array.isArray(evidences) || !evidences.length) return Object.freeze({ ok:false, errors:Object.freeze(['Bitcoin Core evidence chain must be a non-empty array.']) });
+  const seen = new Set();
+  let previous = null;
+  evidences.forEach((evidence, index) => {
+    if (!evidence || evidence.schema !== 'omegavault.bitcoin.core-cross-check-evidence.v2') {
+      errors.push(`Evidence ${index} has an unsupported schema.`);
+      return;
+    }
+    const { sha256:evidenceSha256, ...core } = evidence;
+    let normalizedSha;
+    try { normalizedSha = sha256Hex(evidenceSha256, `evidence[${index}].sha256`); }
+    catch (error) { errors.push(String(error.message || error)); return; }
+    if (normalizedSha !== digest(core)) errors.push(`Evidence ${index} digest is invalid.`);
+    if (seen.has(normalizedSha)) errors.push(`Evidence ${index} replays a previously observed receipt.`);
+    seen.add(normalizedSha);
+    const context = evidence.observationContext;
+    if (!context) {
+      errors.push(`Evidence ${index} lacks observationContext.`);
+      return;
+    }
+    if (previous) {
+      if (context.sequence !== previous.observationContext.sequence + 1) errors.push(`Evidence ${index} observation sequence is reordered or non-contiguous.`);
+      if (context.previousEvidenceSha256 !== previous.sha256) errors.push(`Evidence ${index} previousEvidenceSha256 does not bind the preceding receipt.`);
+      if (Date.parse(context.observedAt) <= Date.parse(previous.observationContext.observedAt)) errors.push(`Evidence ${index} observation timestamp is stale or reordered.`);
+    } else if (context.previousEvidenceSha256 !== null) {
+      errors.push('First Bitcoin Core evidence receipt must not claim a predecessor.');
+    }
+    previous = evidence;
+  });
+  if (now != null || maxAgeMs != null) {
+    if (now == null || !Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0) errors.push('now and non-negative maxAgeMs must be supplied together for freshness enforcement.');
+    else if (previous?.observationContext) {
+      const nowMs = Date.parse(iso(now, 'now'));
+      const observedMs = Date.parse(previous.observationContext.observedAt);
+      if (observedMs > nowMs) errors.push('Latest Bitcoin Core observation is from the future.');
+      else if (nowMs - observedMs > maxAgeMs) errors.push('Latest Bitcoin Core observation is stale.');
+    }
+  }
+  return Object.freeze({ ok:errors.length === 0, errors:Object.freeze(errors) });
+}
+
 function requireMethod(driver, name) {
   if (typeof driver?.[name] !== 'function') throw new TypeError(`Bitcoin Core cross-check driver requires ${name}().`);
 }
 
-export async function runBitcoinCoreCrossCheck({ driver, transaction, expectedNodeVersion = 310100 }) {
+export async function runBitcoinCoreCrossCheck({
+  driver,
+  transaction,
+  expectedNodeVersion = 310100,
+  observationSequence = 1,
+  previousEvidenceSha256 = null,
+  now = () => new Date().toISOString()
+}) {
   for (const method of ['getNetworkInfo', 'getBlockchainInfo', 'decodeRawTransaction', 'testMempoolAccept']) requireMethod(driver, method);
   const [network, blockchain] = await Promise.all([driver.getNetworkInfo(), driver.getBlockchainInfo()]);
   const node = { version:network?.version, subversion:network?.subversion, protocolVersion:network?.protocolversion, chain:blockchain?.chain };
   const decodedTransaction = await driver.decodeRawTransaction({ rawHex:transaction.rawHex, networkRef:'bitcoin:signet' });
   const results = await driver.testMempoolAccept({ rawTransactions:[transaction.rawHex], maxFeeRate:0, networkRef:'bitcoin:signet' });
   if (!Array.isArray(results) || results.length !== 1) throw new Error('Bitcoin Core testmempoolaccept must return exactly one result.');
-  return createBitcoinCoreCrossCheckEvidence({ transaction, node, decodedTransaction, mempoolResult:results[0], expectedNodeVersion, observationSource:'bitcoin-core-rpc' });
+  const observationContext = {
+    sequence:observationSequence,
+    observedAt:now(),
+    previousEvidenceSha256
+  };
+  return createBitcoinCoreCrossCheckEvidence({ transaction, node, decodedTransaction, mempoolResult:results[0], expectedNodeVersion, observationSource:'bitcoin-core-rpc', observationContext });
 }
