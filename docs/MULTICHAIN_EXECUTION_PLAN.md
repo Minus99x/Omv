@@ -128,6 +128,7 @@ Targets: XDC Apothem, Base Sepolia, Arbitrum Sepolia, OP Sepolia, Polygon Amoy, 
 - [x] Freeze inputs/outputs before signature collection and verify strict-DER, low-S, SIGHASH_ALL contact signatures against the exact BIP 143 digest and threshold.
 - [x] Deterministically extract the canonical delayed-recovery SegWit transaction from frozen PSBTv2 fields, order CHECKMULTISIG signatures by script key order, and bind raw bytes, txid, wtxid, weight and vsize without broadcast authority.
 - [x] Add a read-only pinned-version Bitcoin Core cross-check contract that binds the exact extracted raw transaction to `decoderawtransaction` and one non-broadcast `testmempoolaccept` result, with adversarial substitution coverage and no signing/broadcast authority.
+- [x] Add a deterministic JSON import/verification CLI that cannot elevate imported observations to authenticated RPC evidence, rejects secret-bearing arguments, and refuses output overwrite.
 - [ ] Execute that cross-check against an actual pinned Bitcoin Core runtime and retain the node/version/result evidence; offline injected-driver fixtures do not satisfy this gate.
 - [ ] Signet live proof only after rescue semantics are explicitly scoped.
 

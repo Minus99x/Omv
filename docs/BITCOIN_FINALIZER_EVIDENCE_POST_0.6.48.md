@@ -67,6 +67,8 @@ The runner cannot construct, sign, finalize, or broadcast Bitcoin transactions.
 
 Offline fixtures keep `bitcoinCoreCrossCheckProven: false`. The read-only runner can set it only from a driver identified as Bitcoin Core RPC and only when the pinned node accepts the exact transaction. This flag is still not a Signet inclusion/finality proof. The runner exposes no signing or broadcast capability, and the evidence keeps `signetExecutionProven`, `broadcastPerformed`, `broadcastAuthorized` and `chainPromotionAuthority` false.
 
+`scripts/verify-bitcoin-core-cross-check.js` is the non-secret import boundary for externally captured JSON. It requires the exact observation schema and forces `observationSource: imported-json`, so a file cannot self-assert that it came from authenticated RPC. Imported evidence therefore keeps `bitcoinCoreCrossCheckProven: false`. The CLI preflights output overwrite, rejects authority-bearing extra fields and refuses private-key, seed, wallet, RPC-password, RPC-cookie and key-output arguments.
+
 ## Adversarial coverage
 
 Focused tests reject:

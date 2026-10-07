@@ -19,6 +19,8 @@
 - Added `src/chains/bitcoin/core-cross-check.js`, a read-only Bitcoin Core adapter that binds the extracted raw-transaction SHA, txid/wtxid, size/weight/vsize, complete inputs/witnesses/outputs, pinned node identity and one exact `testmempoolaccept` result.
 - Added a driver contract exposing only `getnetworkinfo`, `getblockchaininfo`, `decoderawtransaction` and `testmempoolaccept`-equivalent reads. It has no signing, wallet, broadcast or chain-promotion capability.
 - Added fail-closed coverage for wrong network/version, txid substitution, witness substitution, output-value drift, rejected-mempool ambiguity and evidence tampering.
+- Added `scripts/verify-bitcoin-core-cross-check.js` plus package wiring as a deterministic, non-secret observation import boundary. Imported JSON cannot claim authenticated RPC provenance and always leaves `bitcoinCoreCrossCheckProven: false`.
+- The CLI rejects observation authority injection, substituted transactions, existing output targets, private-key/seed/wallet/RPC credential arguments and all broadcast/promotion authority.
 
 ## Verification
 
@@ -26,7 +28,8 @@
 - Live-parent full suite: **499/499 passed**.
 - Bitcoin focused suite after extraction: **32/32 passed**.
 - Bitcoin focused suite after the Core adapter: **38/38 passed**.
-- Post-change full dependency-backed suite: **511/511 passed**.
+- Bitcoin focused suite after the import CLI: **41/41 passed**.
+- Post-change full dependency-backed suite: **514/514 passed**.
 - Offline-resume verification: **ok: true** (Stellar **26/26**, Bitcoin **5/5**).
 - Global multichain checks: **passed**, including Aiken **7/7** and Solana artifact status `stale-untrusted`.
 - These are exact offline working-tree results; do not infer public-network proof from offline fixtures.
@@ -39,4 +42,4 @@
 
 ## Exact next objective
 
-Add a non-secret CLI/import boundary for capturing and verifying the exact JSON returned by the read-only Bitcoin Core cross-check, including an explicit node identity snapshot and deterministic evidence export. Keep offline fixtures distinguishable from actual RPC observations. When a pinned Bitcoin Core/Signet runtime becomes available, run the adapter without broadcasting and retain that evidence; public Signet inclusion/finality remains a separate user-authorized gate.
+When a pinned Bitcoin Core/Signet runtime becomes available, run the read-only adapter without broadcasting and retain its exact node/version/decode/mempool evidence. Until then, harden the finality layer by binding a successful Signet observation to the exact deterministic final-transaction evidence (not merely the earlier PSBT finalizer digest), rejecting stale/replayed block observations and preserving the explicit no-broadcast boundary. Public Signet submission remains a separate user-authorized gate.

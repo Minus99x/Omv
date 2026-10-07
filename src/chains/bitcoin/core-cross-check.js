@@ -90,7 +90,7 @@ export function createBitcoinCoreCrossCheckEvidence({
   const normalizedNode = normalizeNode(node, expectedNodeVersion);
   validateDecoded(transaction, decodedTransaction);
   const mempool = normalizeMempool(transaction, mempoolResult);
-  if (!['offline-fixture', 'bitcoin-core-rpc'].includes(observationSource)) throw new TypeError('Unsupported Bitcoin Core observationSource.');
+  if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(observationSource)) throw new TypeError('Unsupported Bitcoin Core observationSource.');
   const core = Object.freeze({
     schema:'omegavault.bitcoin.core-cross-check-evidence.v1',
     chainId:'bitcoin',
