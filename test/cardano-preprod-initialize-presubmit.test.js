@@ -22,10 +22,8 @@ import {
 const snapshot = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
 snapshot.source.independentSourceCount = 2;
 snapshot.promotion.independentlyConfirmed = true;
-const parameters = Object.freeze({
-  ...normalizeCardanoProtocolParameterSnapshot(snapshot),
-  maxValueSize: 5000
-});
+snapshot.parameters.maxValueSize = 5000;
+const parameters = normalizeCardanoProtocolParameterSnapshot(snapshot);
 const fixtureEvidence = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_APPLIED_FIXTURE_0.6.12.json', import.meta.url), 'utf8'));
 const beaconBlueprint = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/state-beacon.applied.json', import.meta.url), 'utf8'));
 const vaultBlueprint = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/recovery-vault.applied.json', import.meta.url), 'utf8'));
@@ -133,6 +131,7 @@ function fixture() {
     unsignedPreflight,
     signedTransactionCborHex,
     witnessEvidence,
+    currentProtocolSnapshot: snapshot,
     currentQueriedUtxo: queriedUtxo
   };
 }
@@ -153,7 +152,10 @@ test('Cardano initialize pre-submit gate proves freshness without authorizing su
   assert.equal(evidence.checks.collateralStillUnspent, true);
   assert.equal(evidence.checks.validityIntervalCurrent, true);
   assert.equal(evidence.checks.walletWitnessEvidenceVerified, true);
+  assert.equal(evidence.checks.currentProtocolSnapshotBoundAndReproducible, true);
   assert.equal(evidence.checks.currentProtocolParametersBoundByDigest, true);
+  assert.match(evidence.currentProtocolSnapshotSha256, /^[0-9a-f]{64}$/);
+  assert.equal(evidence.currentProtocolSnapshot.parameters.maxValueSize, 5000);
   assert.equal(evidence.checks.signedTransactionSizeWithinCurrentMaximum, true);
   assert.equal(evidence.checks.signedExecutionUnitsWithinCurrentMaximum, true);
   assert.equal(evidence.checks.signedFeeCoversCurrentMinimum, true);
@@ -191,12 +193,12 @@ test('Cardano initialize pre-submit evidence binds the exact current protocol-pa
     recoveryConfig,
     currentTip
   });
-  const changedButCompatibleParameters = Object.freeze({
-    ...parameters,
-    maxTxSize: parameters.maxTxSize + 1
-  });
+  const changedButCompatibleSnapshot = structuredClone(snapshot);
+  changedButCompatibleSnapshot.parameters.maxTxSize += 1;
+  const changedButCompatibleParameters = normalizeCardanoProtocolParameterSnapshot(changedButCompatibleSnapshot);
   const rebound = createCardanoPreprodInitializePreSubmitEvidence({
     ...input,
+    currentProtocolSnapshot: changedButCompatibleSnapshot,
     currentParameters: changedButCompatibleParameters,
     recoveryConfig,
     currentTip
@@ -205,6 +207,22 @@ test('Cardano initialize pre-submit evidence binds the exact current protocol-pa
   assert.notEqual(rebound.preSubmitSha256, baseline.preSubmitSha256);
   assert.equal(rebound.checks.signedFeeCoversCurrentMinimum, true);
   assert.equal(rebound.checks.completePhaseOneValidated, false);
+});
+
+test('Cardano initialize pre-submit gate fails closed if normalized parameters do not reproduce from the persisted snapshot', () => {
+  const input = fixture();
+  assert.throws(
+    () => createCardanoPreprodInitializePreSubmitEvidence({
+      ...input,
+      currentParameters: Object.freeze({ ...parameters, maxTxSize: parameters.maxTxSize + 1 }),
+      recoveryConfig,
+      currentTip: {
+        hash: 'af'.repeat(32),
+        slot: input.unsignedCandidate.validity.lowerSlot + 60
+      }
+    }),
+    /do not reproduce from the bound live protocol snapshot/
+  );
 });
 
 test('Cardano initialize pre-submit gate fails closed without current maxValueSize evidence', () => {

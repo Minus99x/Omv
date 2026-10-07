@@ -1,6 +1,6 @@
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { hashCardanoEvidence } from './evidence-binding.js';
-import { calculateCardanoMinimumFee } from './protocol-parameters.js';
+import { calculateCardanoMinimumFee, normalizeCardanoProtocolParameterSnapshot } from './protocol-parameters.js';
 import { verifyCardanoPreprodInitializeWalletWitnessEvidence } from './preprod-initialize-wallet-witness.js';
 import { createCardanoPreprodUnsignedInitializePreflight } from './preprod-unsigned-initialize-preflight.js';
 
@@ -72,6 +72,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
   unsignedPreflight,
   appliedValidatorIdentity,
   utxoBindingEvidence,
+  currentProtocolSnapshot,
   currentParameters,
   recoveryConfig,
   currentTip,
@@ -83,6 +84,13 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
   if (!Number.isSafeInteger(currentParameters.maxValueSize) || currentParameters.maxValueSize < 1) {
     throw new Error('Pre-submit gate requires the current Cardano maxValueSize protocol parameter.');
   }
+
+  const normalizedSnapshotParameters = normalizeCardanoProtocolParameterSnapshot(currentProtocolSnapshot);
+  const currentProtocolParametersSha256 = hashCardanoEvidence(currentParameters);
+  if (hashCardanoEvidence(normalizedSnapshotParameters) !== currentProtocolParametersSha256) {
+    throw new Error('Current normalized protocol parameters do not reproduce from the bound live protocol snapshot.');
+  }
+  const currentProtocolSnapshotSha256 = hashCardanoEvidence(currentProtocolSnapshot);
 
   const witnessCheck = verifyCardanoPreprodInitializeWalletWitnessEvidence({
     evidence: witnessEvidence,
@@ -147,10 +155,8 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
   if (BigInt(signedFeeLovelace) < BigInt(signedFeeCheck.minimumFee)) {
     throw new Error('Signed initialize transaction fee is below the current minimum for its actual serialized size and execution units.');
   }
-  const currentProtocolParametersSha256 = hashCardanoEvidence(currentParameters);
-
   const core = Object.freeze({
-    schema: 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v1',
+    schema: 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v2',
     network: 'preprod',
     action: 'initialize',
     witnessEvidenceSha256: witnessEvidence.witnessEvidenceSha256,
@@ -158,7 +164,9 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
     unsignedPreflightSha256: unsignedPreflight.preflightSha256,
     validatorIdentitySha256: appliedValidatorIdentity.identitySha256,
     utxoBindingEvidenceSha256: utxoBindingEvidence.evidenceSha256,
+    currentProtocolSnapshotSha256,
     currentProtocolParametersSha256,
+    currentProtocolSnapshot,
     currentTip: tip,
     signedTransaction: Object.freeze({
       sha256: witnessEvidence.signedTransactionSha256,
@@ -177,6 +185,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       frozenUnsignedPreflightStillReproduces: true,
       walletWitnessEvidenceVerified: true,
       exactSignedBodyPreserved: true,
+      currentProtocolSnapshotBoundAndReproducible: true,
       currentProtocolParametersBoundByDigest: true,
       signedTransactionSizeWithinCurrentMaximum: signedTransactionBytes <= currentParameters.maxTxSize,
       signedExecutionUnitsWithinCurrentMaximum: true,
@@ -199,7 +208,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       supportClaimAuthorized: false
     }),
     nextGate: 'independent-complete-phase-one-ledger-validation-and-explicit-human-submission-authorization',
-    authorityBoundary: 'This gate proves the signed initialize body/witness remains bound to two still-unspent real Preprod inputs under an exact digest-bound set of current independently confirmed protocol parameters, verifies the actual signed transaction size/execution-unit fee floor and each output value against current maxValueSize, and requires an unexpired validity interval. It intentionally does not claim complete node phase-1 validation and does not authorize submission.'
+    authorityBoundary: 'This gate proves the signed initialize body/witness remains bound to two still-unspent real Preprod inputs under a persisted, digest-bound and reproducible current protocol-parameter snapshot, verifies the actual signed transaction size/execution-unit fee floor and each output value against current maxValueSize, and requires an unexpired validity interval. It intentionally does not claim complete node phase-1 validation and does not authorize submission.'
   });
   return Object.freeze({ ...core, preSubmitSha256: hashCardanoEvidence(core) });
 }
