@@ -37,8 +37,14 @@ jobs:
       - name: Focused Stellar recovery suite
         run: npm run test:stellar-recovery
 
+      - name: Focused Stellar native suite
+        run: npm run test:stellar-native
+
       - name: Focused Bitcoin recovery suite
         run: npm run test:bitcoin-recovery
+
+      - name: Focused Bitcoin native suite
+        run: npm run test:bitcoin-native
 
       - name: Focused maturity/provenance suite
         run: npm run test:maturity-reconciliation
