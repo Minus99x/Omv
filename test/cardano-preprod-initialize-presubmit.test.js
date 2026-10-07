@@ -150,6 +150,14 @@ test('Cardano initialize pre-submit gate proves freshness without authorizing su
   assert.equal(evidence.checks.collateralStillUnspent, true);
   assert.equal(evidence.checks.validityIntervalCurrent, true);
   assert.equal(evidence.checks.walletWitnessEvidenceVerified, true);
+  assert.equal(evidence.checks.currentProtocolParametersBoundByDigest, true);
+  assert.equal(evidence.checks.signedTransactionSizeWithinCurrentMaximum, true);
+  assert.equal(evidence.checks.signedExecutionUnitsWithinCurrentMaximum, true);
+  assert.equal(evidence.checks.signedFeeCoversCurrentMinimum, true);
+  assert.match(evidence.currentProtocolParametersSha256, /^[0-9a-f]{64}$/);
+  assert.equal(evidence.signedTransaction.bytes, Cardano.Transaction.from_hex(input.signedTransactionCborHex).to_bytes().length);
+  assert.equal(evidence.signedTransaction.feeLovelace, input.unsignedCandidate.transaction.feeLovelace);
+  assert.equal(evidence.signedTransaction.currentMinimumFeeLovelace, input.unsignedCandidate.transaction.feeLovelace);
   assert.equal(evidence.checks.preSubmitFreshnessGateComplete, true);
   assert.equal(evidence.checks.completePhaseOneValidated, false);
   assert.equal(evidence.liveActions.transactionSubmissionPerformed, false);
@@ -164,6 +172,34 @@ test('Cardano initialize pre-submit gate proves freshness without authorizing su
     currentTip
   });
   assert.equal(verified.valid, true, verified.errors.join('; '));
+});
+
+test('Cardano initialize pre-submit evidence binds the exact current protocol-parameter set even when the transaction remains valid', () => {
+  const input = fixture();
+  const currentTip = {
+    hash: 'be'.repeat(32),
+    slot: input.unsignedCandidate.validity.lowerSlot + 60
+  };
+  const baseline = createCardanoPreprodInitializePreSubmitEvidence({
+    ...input,
+    currentParameters: parameters,
+    recoveryConfig,
+    currentTip
+  });
+  const changedButCompatibleParameters = Object.freeze({
+    ...parameters,
+    maxTxSize: parameters.maxTxSize + 1
+  });
+  const rebound = createCardanoPreprodInitializePreSubmitEvidence({
+    ...input,
+    currentParameters: changedButCompatibleParameters,
+    recoveryConfig,
+    currentTip
+  });
+  assert.notEqual(rebound.currentProtocolParametersSha256, baseline.currentProtocolParametersSha256);
+  assert.notEqual(rebound.preSubmitSha256, baseline.preSubmitSha256);
+  assert.equal(rebound.checks.signedFeeCoversCurrentMinimum, true);
+  assert.equal(rebound.checks.completePhaseOneValidated, false);
 });
 
 test('Cardano initialize pre-submit gate fails closed if seed is spent or validity has expired', () => {

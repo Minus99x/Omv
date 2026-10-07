@@ -1,5 +1,6 @@
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { hashCardanoEvidence } from './evidence-binding.js';
+import { calculateCardanoMinimumFee } from './protocol-parameters.js';
 import { verifyCardanoPreprodInitializeWalletWitnessEvidence } from './preprod-initialize-wallet-witness.js';
 import { createCardanoPreprodUnsignedInitializePreflight } from './preprod-unsigned-initialize-preflight.js';
 
@@ -110,6 +111,20 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
     throw new Error('Signed transaction body no longer matches the frozen unsigned initialize candidate.');
   }
 
+  const signedTransactionBytes = signedTx.to_bytes().length;
+  const mintBudget = unsignedCandidate.evaluation?.mintBudget;
+  const signedFeeCheck = calculateCardanoMinimumFee({
+    transactionBytes: signedTransactionBytes,
+    memory: mintBudget?.memory,
+    steps: mintBudget?.steps,
+    parameters: currentParameters
+  });
+  const signedFeeLovelace = signedTx.body().fee().to_str();
+  if (BigInt(signedFeeLovelace) < BigInt(signedFeeCheck.minimumFee)) {
+    throw new Error('Signed initialize transaction fee is below the current minimum for its actual serialized size and execution units.');
+  }
+  const currentProtocolParametersSha256 = hashCardanoEvidence(currentParameters);
+
   const core = Object.freeze({
     schema: 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v1',
     network: 'preprod',
@@ -119,7 +134,14 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
     unsignedPreflightSha256: unsignedPreflight.preflightSha256,
     validatorIdentitySha256: appliedValidatorIdentity.identitySha256,
     utxoBindingEvidenceSha256: utxoBindingEvidence.evidenceSha256,
+    currentProtocolParametersSha256,
     currentTip: tip,
+    signedTransaction: Object.freeze({
+      sha256: witnessEvidence.signedTransactionSha256,
+      bytes: signedTransactionBytes,
+      feeLovelace: signedFeeLovelace,
+      currentMinimumFeeLovelace: signedFeeCheck.minimumFee
+    }),
     validity: Object.freeze({
       lowerSlot: unsignedCandidate.validity.lowerSlot,
       upperSlot: unsignedCandidate.validity.upperSlot,
@@ -131,6 +153,10 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       frozenUnsignedPreflightStillReproduces: true,
       walletWitnessEvidenceVerified: true,
       exactSignedBodyPreserved: true,
+      currentProtocolParametersBoundByDigest: true,
+      signedTransactionSizeWithinCurrentMaximum: signedTransactionBytes <= currentParameters.maxTxSize,
+      signedExecutionUnitsWithinCurrentMaximum: true,
+      signedFeeCoversCurrentMinimum: true,
       seedStillUnspent: true,
       collateralStillUnspent: true,
       boundInputValuesUnchanged: true,
@@ -147,7 +173,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       supportClaimAuthorized: false
     }),
     nextGate: 'independent-complete-phase-one-ledger-validation-and-explicit-human-submission-authorization',
-    authorityBoundary: 'This gate proves the signed initialize body/witness remains bound to two still-unspent real Preprod inputs under current independently confirmed protocol parameters and an unexpired validity interval. It intentionally does not claim complete node phase-1 validation and does not authorize submission.'
+    authorityBoundary: 'This gate proves the signed initialize body/witness remains bound to two still-unspent real Preprod inputs under an exact digest-bound set of current independently confirmed protocol parameters, verifies the actual signed transaction size/execution-unit fee floor, and requires an unexpired validity interval. It intentionally does not claim complete node phase-1 validation and does not authorize submission.'
   });
   return Object.freeze({ ...core, preSubmitSha256: hashCardanoEvidence(core) });
 }
