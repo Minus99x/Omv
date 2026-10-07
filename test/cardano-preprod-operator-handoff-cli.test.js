@@ -12,6 +12,7 @@ test('Cardano operator handoff reports the sealed checkpoint, fastest infrastruc
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.ok, true);
+  assert.equal(report.schema, 'omegavault.cardano.preprod-operator-handoff.v2');
   assert.equal(report.sealedCheckpoint.ref, '0.6.59-dev');
   assert.equal(report.sealedCheckpoint.commit, '1353fe9fd94fcbdd787fd594c85937e934b60571');
   assert.equal(report.network.name, 'Cardano Preprod');
@@ -19,11 +20,18 @@ test('Cardano operator handoff reports the sealed checkpoint, fastest infrastruc
   assert.equal(report.fastestInfrastructurePath.localCardanoNodeRequired, false);
   assert.equal(report.fastestInfrastructurePath.fullChainSyncRequired, false);
   assert.equal(report.fastestInfrastructurePath.independentProtocolParameterSourcesRequired, 2);
+  assert.equal(report.currentMilestone.name, 'first-real-preprod-initialize-capture');
+  assert.match(report.currentMilestone.primaryCommand, /real-initialize:guided/);
+  assert.equal(report.currentMilestone.requiredPlainAdaOnlyUtxos, 2);
   assert.equal(report.faucet.requiredForCurrentSynchronizedEvaluationOnlyGate, false);
+  assert.equal(report.faucet.requiredForCurrentRealInitializeGate, true);
+  assert.equal(report.faucet.preprodTestAdaRequired, true);
   assert.equal(report.faucet.requiredBeforeAnyLaterSignedPublicNetworkTransactionGate, true);
   assert.equal(report.operatorBoundary.walletSigningAuthorized, false);
   assert.equal(report.operatorBoundary.transactionSubmissionAuthorized, false);
   assert.equal(report.operatorBoundary.supportClaimAuthorized, false);
+  assert.equal(report.currentEvidenceScope.priorSyntheticCampaignComplete, true);
+  assert.equal(report.currentEvidenceScope.realInitializeEndsUnsigned, true);
   assert.equal(report.currentEvidenceScope.fullPhaseOneValidationRemainsSeparateLaterGate, true);
   assert.equal(report.networkRequestsPerformed, false);
 });

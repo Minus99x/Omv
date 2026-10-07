@@ -101,7 +101,7 @@ const tools = Object.freeze({
 });
 
 const report = Object.freeze({
-  schema: 'omegavault.cardano.preprod-operator-handoff.v1',
+  schema: 'omegavault.cardano.preprod-operator-handoff.v2',
   ok: true,
   projectVersion: packageJson.version,
   sealedCheckpoint: SEALED_CHECKPOINT,
@@ -128,11 +128,22 @@ const report = Object.freeze({
     fullChainSyncRequired: true,
     ogmiosPort: 1337
   }),
+  currentMilestone: Object.freeze({
+    name: 'first-real-preprod-initialize-capture',
+    primaryCommand: 'npm.cmd run cardano:preprod:real-initialize:guided',
+    actualWalletUtxosRequired: true,
+    requiredPlainAdaOnlyUtxos: 2,
+    networkWritesPerformedByMilestone: false,
+    walletSigningAuthorized: false,
+    transactionSubmissionAuthorized: false
+  }),
   faucet: Object.freeze({
     network: 'preprod',
     requiredForCurrentSynchronizedEvaluationOnlyGate: false,
+    requiredForCurrentRealInitializeGate: true,
     recommendedToPrepareDedicatedTestWalletNow: true,
     requiredBeforeAnyLaterSignedPublicNetworkTransactionGate: true,
+    preprodTestAdaRequired: true,
     realAdaRequired: false,
     mainnetWalletOrSeedShouldBeUsed: false
   }),
@@ -148,15 +159,19 @@ const report = Object.freeze({
     supportClaimAuthorized: false
   }),
   currentEvidenceScope: Object.freeze({
-    campaignPurpose: 'stable-tip public-Preprod Ogmios evaluation evidence only',
+    campaignPurpose: 'first real Preprod initialize read/evaluation capture from actual wallet UTxOs',
+    priorSyntheticCampaignComplete: true,
     fixtureCandidatesAreNotPublicNetworkRecoveryProof: true,
+    realInitializeEndsUnsigned: true,
     fullPhaseOneValidationRemainsSeparateLaterGate: true,
     signingAndSubmissionRemainSeparateLaterGates: true
   }),
   nextCommands: Object.freeze({
-    strictLaunch: 'npm run cardano:preprod:campaign:launch -- --bundle-dir "<sealed-0.6.59-bundle-dir>" --campaign "<campaign-dir>"',
-    inspectHandoff: 'npm run cardano:preprod:operator:handoff -- --bundle-dir "<sealed-0.6.59-bundle-dir>" --campaign "<campaign-dir>"',
-    verifyCampaign: 'npm run cardano:preprod:campaign:verify -- --campaign "<campaign-dir>"'
+    guidedRealInitialize: 'npm.cmd run cardano:preprod:real-initialize:guided',
+    directRealInitialize: 'npm.cmd run cardano:preprod:real-initialize:capture -- --wallet-address "<OWNER-ADDR_TEST1>" --recovery-config "<RECOVERY-CONFIG.JSON>" --output "<NEW-REAL-INITIALIZE-CAPTURE-DIR>"',
+    inspectHandoff: 'npm.cmd run cardano:preprod:operator:handoff',
+    legacyEvaluationCampaignLaunch: 'npm.cmd run cardano:preprod:campaign:launch -- --bundle-dir "<sealed-0.6.59-bundle-dir>" --campaign "<campaign-dir>"',
+    legacyVerifyCampaign: 'npm.cmd run cardano:preprod:campaign:verify -- --campaign "<campaign-dir>"'
   }),
   networkRequestsPerformed: false
 });
