@@ -30,12 +30,33 @@ const FORBIDDEN = Object.freeze([
   '--ogmios-api-key'
 ]);
 
+const EXPECTED_BRANCH = 'dev/0.6.60-reconcile-overnight-bitcoin';
 const PLACEHOLDER = /^(?:PASTE-|<|YOUR-|REPLACE-)/i;
 const ENDPOINT = /^(?:https?|wss?):\/\//i;
 
 function arg(name, fallback = null) {
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : fallback;
+}
+
+function git(args) {
+  const result = spawnSync('git', args, { encoding:'utf8', windowsHide:true });
+  if (result.status !== 0) throw new Error(`Git preflight failed: ${String(result.stderr || result.stdout).trim() || args.join(' ')}`);
+  return String(result.stdout ?? '').trim();
+}
+
+function requireWorkstationSourceIdentity() {
+  const activeBranch = git(['rev-parse', '--abbrev-ref', 'HEAD']);
+  if (activeBranch !== EXPECTED_BRANCH) {
+    throw new Error(`Wrong OmegaVault branch. Expected ${EXPECTED_BRANCH}; current branch is ${activeBranch}. Switch/update the reconciliation branch before capture.`);
+  }
+  const trackedChanges = git(['status', '--porcelain', '--untracked-files=no']);
+  if (trackedChanges) {
+    throw new Error('Tracked OmegaVault files are modified. Commit/stash/revert them before generating Cardano evidence.');
+  }
+  const head = git(['rev-parse', 'HEAD']);
+  if (!/^[0-9a-f]{40}$/.test(head)) throw new Error('Could not resolve the exact OmegaVault source commit.');
+  return Object.freeze({ branch:activeBranch, head });
 }
 
 function help() {
@@ -143,6 +164,8 @@ const forbidden = FORBIDDEN.find(flag => process.argv.includes(flag));
 if (forbidden) {
   throw new Error(`${forbidden} is forbidden in the guided real-initialize flow. Secrets/signing/submission authority are never accepted on the command line.`);
 }
+
+const sourceIdentity = requireWorkstationSourceIdentity();
 
 const retries = Number(arg('--stable-tip-retries', '8'));
 const inactivityMs = Number(arg('--inactivity-ms', '60000'));
@@ -255,6 +278,8 @@ try {
   const sessionPlan = Object.freeze({
     schema:'omegavault.cardano.preprod-guided-real-initialize-session.v1',
     network:'preprod',
+    sourceBranch:sourceIdentity.branch,
+    sourceHead:sourceIdentity.head,
     recoveryConfigurationSha256:recoveryConfig.configurationSha256,
     recoveryConfigPath,
     captureOutput,
