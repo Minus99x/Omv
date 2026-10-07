@@ -41,13 +41,22 @@ function iso(value, label) {
   return text;
 }
 
+function normalizeObservationSource(value) {
+  const source = textValue(value, 'observationSource');
+  if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(source)) {
+    throw new TypeError('Unsupported Bitcoin Signet observationSource.');
+  }
+  return source;
+}
+
 export function createBitcoinSignetObservationEvidence({
   finalizerEvidence,
   finalTransactionEvidence,
   transaction,
   chainTip,
   rescueUtxo,
-  minimumConfirmations = 6
+  minimumConfirmations = 6,
+  observationSource = 'offline-fixture'
 }) {
   if (!finalizerEvidence || finalizerEvidence.schema !== 'omegavault.bitcoin.finalizer-evidence.v1') {
     throw new TypeError('Bitcoin Signet evidence requires a finalizer evidence artifact.');
@@ -77,6 +86,7 @@ export function createBitcoinSignetObservationEvidence({
     throw new Error('Bitcoin final transaction rescue output does not match finalizer evidence.');
   }
   if (!Number.isInteger(minimumConfirmations) || minimumConfirmations < 1) throw new TypeError('minimumConfirmations must be positive.');
+  const normalizedObservationSource = normalizeObservationSource(observationSource);
 
   const transactionId = txid(transaction?.transactionId, 'transaction.transactionId');
   if (transactionId !== txid(finalTransactionEvidence.txid, 'finalTransactionEvidence.txid')) {
@@ -110,9 +120,10 @@ export function createBitcoinSignetObservationEvidence({
   if (rescueUtxo?.unspent !== true) throw new Error('Observed Bitcoin rescue output is not currently unspent.');
 
   const core = Object.freeze({
-    schema:'omegavault.bitcoin.signet-observation-evidence.v1',
+    schema:'omegavault.bitcoin.signet-observation-evidence.v2',
     chainId:'bitcoin',
     networkRef:'bitcoin:signet',
+    observationSource:normalizedObservationSource,
     finalizerEvidenceSha256:sha256Hex(finalizerEvidence.sha256, 'finalizerEvidence.sha256'),
     finalTransactionEvidenceSha256:sha256Hex(finalTransactionEvidence.sha256, 'finalTransactionEvidence.sha256'),
     rawTransactionSha256:sha256Hex(finalTransactionEvidence.rawTransactionSha256, 'finalTransactionEvidence.rawTransactionSha256'),
@@ -136,9 +147,10 @@ export function createBitcoinSignetObservationEvidence({
       unspent:true
     }),
     signetObservationComplete:true,
+    publicSignetObservationProven:normalizedObservationSource === 'bitcoin-core-rpc',
     immutableRescueOnChain:false,
     chainPromotionAuthority:false,
-    authorityBoundary:'This bundle records read-only Bitcoin Signet inclusion/confirmation and rescue-output observations bound to an offline finalizer artifact. It does not authorize broadcasts, wallets, mainnet activity, or promotion past the known immutable-rescue semantic limitation.'
+    authorityBoundary:'This bundle records read-only Bitcoin Signet inclusion/confirmation and rescue-output observations with explicit fixture/imported/live-RPC provenance. Only bitcoin-core-rpc provenance may establish public Signet observation; no source authorizes broadcasts, wallets, mainnet activity, or promotion past the known immutable-rescue semantic limitation.'
   });
   return Object.freeze({ ...core, sha256:digest(core) });
 }
@@ -150,7 +162,8 @@ export function verifyBitcoinSignetObservationEvidence({
   transaction,
   chainTip,
   rescueUtxo,
-  minimumConfirmations = 6
+  minimumConfirmations = 6,
+  observationSource = 'offline-fixture'
 }) {
   let expected;
   try {
@@ -160,7 +173,8 @@ export function verifyBitcoinSignetObservationEvidence({
       transaction,
       chainTip,
       rescueUtxo,
-      minimumConfirmations
+      minimumConfirmations,
+      observationSource
     });
   } catch (error) {
     return Object.freeze({ ok:false, errors:Object.freeze([String(error?.message || error)]) });
@@ -177,9 +191,14 @@ export async function runBitcoinSignetObservationProof({
   driver,
   finalizerEvidence,
   finalTransactionEvidence,
-  minimumConfirmations = 6
+  minimumConfirmations = 6,
+  observationSource = 'offline-fixture'
 }) {
   for (const method of ['readTransaction','readChainTip','readTxOut']) requireMethod(driver, method);
+  const normalizedObservationSource = normalizeObservationSource(observationSource);
+  if (normalizedObservationSource === 'bitcoin-core-rpc' && driver?.provenance !== 'bitcoin-core-rpc') {
+    throw new Error('Live Bitcoin Signet observation requires a driver with bitcoin-core-rpc provenance.');
+  }
   const requestedTxid = txid(finalTransactionEvidence?.txid, 'finalTransactionEvidence.txid');
   const transaction = await driver.readTransaction({ transactionId:requestedTxid, networkRef:'bitcoin:signet' });
   if (txid(transaction?.transactionId, 'transaction.transactionId') !== requestedTxid) {
@@ -199,7 +218,8 @@ export async function runBitcoinSignetObservationProof({
     transaction,
     chainTip,
     rescueUtxo,
-    minimumConfirmations
+    minimumConfirmations,
+    observationSource:normalizedObservationSource
   });
   return Object.freeze({
     kind:'bitcoin-signet-observation-proof',
