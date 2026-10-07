@@ -153,6 +153,68 @@ test('Cardano initialize wallet witness verifier accepts exactly one valid owner
   assert.equal(verified.valid, true, verified.errors.join('; '));
 });
 
+test('Cardano initialize wallet witness verifier rejects a missing owner VKey witness', () => {
+  const input = fixture();
+  assert.throws(
+    () => createCardanoPreprodInitializeWalletWitnessEvidence({
+      signedTransactionCborHex: input.unsignedCandidate.transaction.cborHex,
+      ...input,
+      parameters,
+      recoveryConfig
+    }),
+    /exactly one VKey witness/
+  );
+});
+
+test('Cardano initialize wallet witness verifier rejects extra VKey witnesses even when the owner witness is valid', () => {
+  const input = fixture();
+  const unsignedTx = Cardano.Transaction.from_hex(input.unsignedCandidate.transaction.cborHex);
+  const bodyHash = Cardano.TransactionHash.from_bytes(blake2b(unsignedTx.body().to_bytes(), { dkLen: 32 }));
+  const witnessSet = Cardano.TransactionWitnessSet.from_bytes(unsignedTx.witness_set().to_bytes());
+  const vkeys = Cardano.Vkeywitnesses.new();
+  const extraKey = Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => 8));
+  vkeys.add(Cardano.make_vkey_witness(bodyHash, ownerPrivateKey));
+  vkeys.add(Cardano.make_vkey_witness(bodyHash, extraKey));
+  witnessSet.set_vkeys(vkeys);
+  const signedWithExtraWitness = Cardano.Transaction.new(
+    unsignedTx.body(),
+    witnessSet,
+    unsignedTx.auxiliary_data()
+  ).to_hex();
+
+  assert.throws(
+    () => createCardanoPreprodInitializeWalletWitnessEvidence({
+      signedTransactionCborHex: signedWithExtraWitness,
+      ...input,
+      parameters,
+      recoveryConfig
+    }),
+    /exactly one VKey witness/
+  );
+});
+
+test('Cardano initialize wallet witness verifier rejects altered non-wallet witness material', () => {
+  const input = fixture();
+  const signedTx = Cardano.Transaction.from_hex(signCandidate(input.unsignedCandidate));
+  const witnessSet = Cardano.TransactionWitnessSet.from_bytes(signedTx.witness_set().to_bytes());
+  witnessSet.set_redeemers(Cardano.Redeemers.new());
+  const mutated = Cardano.Transaction.new(
+    signedTx.body(),
+    witnessSet,
+    signedTx.auxiliary_data()
+  ).to_hex();
+
+  assert.throws(
+    () => createCardanoPreprodInitializeWalletWitnessEvidence({
+      signedTransactionCborHex: mutated,
+      ...input,
+      parameters,
+      recoveryConfig
+    }),
+    /changed non-wallet witness material/
+  );
+});
+
 test('Cardano initialize wallet witness verifier rejects a witness from the wrong payment key', () => {
   const input = fixture();
   const wrongKey = Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => 8));
