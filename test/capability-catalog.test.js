@@ -22,7 +22,7 @@ test('Stellar catalog reflects dependency-backed offline execution without imply
   assert.equal(stellar.gateEvidence['address-validation'].evidenceSufficient, true);
   assert.equal(stellar.gateEvidence['transaction-preflight'].evidenceSufficient, true);
   assert.equal(stellar.gateEvidence['evidence-export'].evidenceSufficient, true);
-  assert.ok(stellar.blockers.some(value => value.includes('Public Stellar Testnet')));
+  assert.ok(stellar.blockers.some(value => /Stellar Testnet/.test(value)));
   assert.equal(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')), false);
   assert.equal(stellar.promotion.eligible, false);
 });

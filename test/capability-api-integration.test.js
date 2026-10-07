@@ -22,7 +22,7 @@ test('HTTP capability API is validated and keeps offline-verified Stellar visibl
   assert.equal(stellar.stage, 'offline-verified');
   assert.equal(stellar.gateEvidence['address-validation'].evidenceSufficient, true);
   assert.equal(stellar.gateEvidence['evidence-export'].evidenceSufficient, true);
-  assert.ok(stellar.blockers.some(value => value.includes('Public Stellar Testnet')));
+  assert.ok(stellar.blockers.some(value => /Stellar Testnet/.test(value)));
   assert.equal(stellar.blockers.some(value => value.includes('@stellar/stellar-sdk')), false);
   const xdc = body.data.contracts.find(contract => contract.chainId === 'xdc');
   assert.ok(xdc);

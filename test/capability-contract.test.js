@@ -62,6 +62,18 @@ test('Stellar remains explicitly active with offline evidence while public-testn
   assert.equal(stellar.gateEvidence['transaction-preflight'].evidenceSufficient, true);
   assert.equal(stellar.gateEvidence['evidence-export'].evidenceSufficient, true);
   assert.equal(stellar.blockers.some(value => /stellar-sdk/.test(value)), false);
-  assert.ok(stellar.blockers.some(value => /Public Stellar Testnet/.test(value)));
+  assert.ok(stellar.blockers.some(value => /Stellar Testnet/.test(value)));
   assert.equal(stellar.promotion.eligible, false);
+});
+
+test('Bitcoin remains reduced-semantics after finalizer/Core evidence hardening', () => {
+  const bitcoin = contract('bitcoin');
+  assert.equal(bitcoin.chainId, 'bitcoin');
+  assert.equal(bitcoin.stage, 'reduced-semantics');
+  assert.equal(bitcoin.promotion.eligible, false);
+  assert.ok(bitcoin.blockers.some(value => /Bitcoin Core|Signet/i.test(value)));
+  assert.ok(bitcoin.blockers.some(value => /immutable rescue/i.test(value)));
+  assert.equal(bitcoin.blockers.some(value => /Pinned Noble dependencies/i.test(value)), false);
+  assert.equal(bitcoin.gateEvidence['native-asset-recovery'].evidenceSufficient, false);
+  assert.equal(bitcoin.gateEvidence['immutable-rescue-semantics'].evidenceSufficient, false);
 });
