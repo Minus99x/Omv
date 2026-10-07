@@ -93,7 +93,8 @@ if (!walletAddress || !recoveryConfigArg || !outputArg) {
       protocolSnapshot: 'current-preprod-protocol-parameters.json',
       evaluationCandidate: 'initialize-evaluation-candidate.json',
       evaluationEvidence: 'initialize-evaluation-evidence.json',
-      finalUnsignedCandidate: 'initialize-final-unsigned-candidate.json'
+      finalUnsignedCandidate: 'initialize-final-unsigned-candidate.json',
+      unsignedPhaseOnePreflight: 'initialize-unsigned-phase-one-preflight.json'
     });
 
     const manifestCore = Object.freeze({
@@ -108,7 +109,8 @@ if (!walletAddress || !recoveryConfigArg || !outputArg) {
         utxoBindingEvidenceSha256: capture.utxoBindingEvidence.evidenceSha256,
         evaluationCandidateSha256: capture.evaluationCandidate.candidateSha256,
         evaluationEvidenceSha256: capture.evaluationEvidence.evidenceSha256,
-        finalUnsignedCandidateSha256: capture.finalUnsignedCandidate.candidateSha256
+        finalUnsignedCandidateSha256: capture.finalUnsignedCandidate.candidateSha256,
+        unsignedPhaseOnePreflightSha256: capture.unsignedPhaseOnePreflight.preflightSha256
       }),
       selected: capture.selected,
       synchronizedRealInitializeEvaluationComplete: true,
@@ -137,6 +139,7 @@ if (!walletAddress || !recoveryConfigArg || !outputArg) {
       [artifactMap.evaluationCandidate, capture.evaluationCandidate],
       [artifactMap.evaluationEvidence, capture.evaluationEvidence],
       [artifactMap.finalUnsignedCandidate, capture.finalUnsignedCandidate],
+      [artifactMap.unsignedPhaseOnePreflight, capture.unsignedPhaseOnePreflight],
       ['capture-manifest.json', manifest]
     ];
     for (const [name, value] of writes) {
@@ -152,6 +155,7 @@ if (!walletAddress || !recoveryConfigArg || !outputArg) {
       validatorIdentitySha256: capture.appliedValidatorIdentity.identitySha256,
       evaluationEvidenceSha256: capture.evaluationEvidence.evidenceSha256,
       finalUnsignedCandidateSha256: capture.finalUnsignedCandidate.candidateSha256,
+      unsignedPhaseOnePreflightSha256: capture.unsignedPhaseOnePreflight.preflightSha256,
       manifestSha256: manifest.manifestSha256,
       synchronizedRealInitializeEvaluationComplete: true,
       fullPhaseOneValidated: false,
