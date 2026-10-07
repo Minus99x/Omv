@@ -94,6 +94,7 @@ OmegaVault cross-checks Ogmios and Blockfrost for:
 - protocol version;
 - fee coefficients;
 - max transaction size;
+- max serialized output-value size (`maxValueSize`);
 - coins per UTxO byte;
 - script execution prices;
 - max transaction execution units;
@@ -223,7 +224,7 @@ The path now:
 6. constructs a balanced unsigned `initialize` candidate with exact state/change/collateral-return outputs, minimum-ADA checks, owner required-signer binding and a finite live validity interval;
 7. evaluates the exact real-input zero-budget candidate through Ogmios;
 8. applies the returned safety-margin execution budget to a new unsigned candidate;
-9. runs a separate unsigned phase-one preflight that rechecks body identity, fee, ADA conservation, collateral conservation, minimum ADA, required signer and exact real input references.
+9. runs a separate unsigned phase-one preflight that rechecks body identity, fee, ADA conservation, collateral conservation, minimum ADA, current maximum serialized output-value size, required signer and exact real input references.
 
 That capture still reports `fullPhaseOneValidated: false`, `walletSigningAuthorized: false`, and `transactionSubmissionAuthorized: false`.
 
@@ -263,7 +264,7 @@ If and only if a later gate explicitly authorizes the human operator to sign the
 npm.cmd run cardano:preprod:initialize:witness:verify -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --signed-tx "<SIGNED-TRANSACTION-FILE>" --output "<NEW-WITNESS-EVIDENCE.JSON>"
 ```
 
-The verifier rejects body substitution, auxiliary-data changes, non-wallet-witness changes, extra/missing VKey witnesses, a wrong payment key, and an invalid signature. It never creates a wallet signature and does not authorize submission.
+The verifier preserves and hashes the exact wallet-produced signed transaction bytes (normalizing only hex letter case), requires a canonical CBOR round-trip without byte substitution, and rejects body substitution, auxiliary-data changes, non-wallet-witness changes, extra/missing VKey witnesses, a wrong payment key, and an invalid signature. It never creates a wallet signature and does not authorize submission.
 
 ### Pre-submit freshness gate — prepared, still no submission
 
@@ -273,7 +274,7 @@ After witness verification, a separate live gate can recheck the frozen signed i
 npm.cmd run cardano:preprod:initialize:presubmit -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --witness-evidence "<WITNESS-EVIDENCE.JSON>" --output "<NEW-PRESUBMIT-EVIDENCE.JSON>"
 ```
 
-It requires a stable current Ogmios tip, independently confirmed current protocol parameters, an unexpired validity interval, and proof that the exact seed and collateral UTxOs remain unspent with unchanged values. It still reports complete phase-1 validation and transaction-submission authorization as false.
+It requires a stable current Ogmios tip and a fresh Ogmios + Blockfrost protocol snapshot, persists and digest-binds that snapshot, proves the normalized parameters reproduce from it, enforces current `maxValueSize`, checks the fee against the actual serialized signed-transaction size and execution units, requires an unexpired validity interval, and proves that the exact seed and collateral UTxOs remain unspent with unchanged address/value/datum/reference-script shape. It still reports complete phase-1 validation and transaction-submission authorization as false.
 
 ## Wallet and faucet — prepare now only if convenient
 
@@ -330,17 +331,19 @@ After the campaign verifier reports synchronized public-Preprod evaluation succe
 
 **STOP.**
 
-The implementation now covers evaluated-budget application, real-UTxO initialize construction, an unsigned structural/fee/collateral preflight, strict wallet-witness verification, and a pre-submit freshness gate. None of those is permitted to silently promote itself into a stronger claim.
+The implementation now covers evaluated-budget application, real-UTxO initialize construction, an unsigned structural/fee/collateral/value-size preflight, exact-byte strict wallet-witness verification, and a pre-submit freshness gate with persisted current protocol-snapshot evidence and fail-closed current-input shape checks. None of those is permitted to silently promote itself into a stronger claim.
 
 The remaining externally gated sequence is:
 
 1. execute the real-UTxO initialize capture on public Preprod;
-2. independently complete the remaining signed/current-ledger phase-1 validation;
-3. explicitly authorize the human wallet-signing step when its prerequisites are proven;
-4. separately and explicitly authorize submission;
-5. prove inclusion/finality;
-6. exercise heartbeat/approve/execute against the actual initialized state;
-7. prove public-network recovery;
-8. only then consider Cardano support promotion.
+2. review the frozen unsigned candidate and explicitly authorize the human wallet-signing step only when its unsigned gates are proven;
+3. verify the returned wallet witness offline against the exact frozen body and exact wallet-produced signed bytes;
+4. run the live pre-submit freshness gate against a stable current tip and persisted current protocol snapshot;
+5. independently complete the remaining signed/current-ledger phase-1 validation;
+6. separately and explicitly authorize submission;
+7. prove inclusion/finality;
+8. exercise heartbeat/approve/execute against the actual initialized state;
+9. prove public-network recovery;
+10. only then consider Cardano support promotion.
 
 No 0.6.60 operation currently authorizes transaction submission or a Cardano support claim.
