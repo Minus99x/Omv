@@ -1,4 +1,5 @@
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
+import { createHash } from 'node:crypto';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from './evidence-binding.js';
 import { verifyCardanoPreprodUnsignedInitializePreflight } from './preprod-unsigned-initialize-preflight.js';
@@ -114,7 +115,7 @@ export function createCardanoPreprodInitializeWalletWitnessEvidence({
     utxoBindingEvidenceSha256: utxoBindingEvidence.evidenceSha256,
     transactionBodyHash: bodyHashHex,
     signedTransactionCborHex: signedTx.to_hex(),
-    signedTransactionSha256: hashCardanoEvidence({ cborHex: signedTx.to_hex() }),
+    signedTransactionSha256: createHash('sha256').update(Buffer.from(signedTx.to_hex(), 'hex')).digest('hex'),
     ownerPaymentKeyHash: keyHash,
     witnessCount: 1,
     checks: Object.freeze({
