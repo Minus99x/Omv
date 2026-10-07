@@ -68,7 +68,7 @@ function binding(appliedIdentity) {
   const plan = createCardanoPreprodRealUtxoBindingPlan({
     action: 'initialize',
     roles,
-    appliedValidatorIdentity
+    appliedValidatorIdentity: appliedIdentity
   });
   const tip = { hash: 'aa'.repeat(32), slot: 135700000 };
   return createCardanoPreprodRealUtxoBindingEvidence({
