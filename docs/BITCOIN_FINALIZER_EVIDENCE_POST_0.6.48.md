@@ -26,6 +26,18 @@ The artifact explicitly records:
 
 This is intentionally not a transaction broadcaster or wallet.
 
+## Deterministic final transaction extraction
+
+`src/chains/bitcoin/transaction-finalizer.js` now converts the frozen, threshold-signed PSBTv2 into the exact SegWit transaction bytes required by BIP 370's extractor role. It:
+
+- rebuilds and compares the canonical recovery descriptor before witness construction;
+- orders valid contact signatures by the public-key order committed in the witness script;
+- constructs the CHECKMULTISIG dummy element, delayed-recovery branch selector and witness script;
+- binds raw/stripped bytes, txid, wtxid, weight and virtual size;
+- emits `omegavault.bitcoin.final-transaction-evidence.v1` without broadcasting or handling private keys.
+
+The deterministic fixture freezes txid `0b01a21c7889debcbfb405d4bca27c1c3c3eb11979bbb516567ae0c99f517961`, wtxid `48dc875636a696ba86926bc62a5fd27ed28c94902f9784f9f0adf0a4b2eb836b`, weight 593 and virtual size 149 for regression detection. Those values are offline test evidence, not Signet observations.
+
 ## Read-only Signet observation evidence
 
 `src/chains/bitcoin/signet-evidence.js` adds a read-only observation layer. A caller-supplied transaction ID can be checked through an injected driver that exposes only transaction and UTXO reads.
@@ -57,6 +69,9 @@ Focused tests reject:
 - rescue outpoint substitution;
 - rescue amount or script drift;
 - driver transaction substitution.
+- non-canonical descriptor/contact ordering;
+- descriptor, CSV and rescue-output substitution during final extraction;
+- final-transaction evidence tampering.
 
 ## Remaining Bitcoin gates
 
@@ -65,7 +80,7 @@ Bitcoin remains `reduced-semantics`.
 The remaining evidence/semantic boundaries are:
 
 1. actual public Signet execution/observation;
-2. a Bitcoin Core extraction/finalizer cross-check for the final signed transaction path;
+2. an independent Bitcoin Core decode/finalizer/acceptance cross-check for the now-deterministic final signed transaction path;
 3. production fee/finality policy evidence;
 4. the known immutable-rescue limitation: standard key + CSV script does not cryptographically force all future threshold spends to one rescue destination.
 

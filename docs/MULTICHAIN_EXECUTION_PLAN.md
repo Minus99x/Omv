@@ -126,6 +126,8 @@ Targets: XDC Apothem, Base Sepolia, Arbitrum Sepolia, OP Sepolia, Polygon Amoy, 
 - [x] Import into a descriptor wallet with private keys disabled; verify solvability and exact script/address, then verify backup/unload/restore preserves the descriptor.
 - [x] Encode/decode canonical BIP 370 PSBTv2 with required outpoint, sequence, witness UTXO, witness script, amount and output fields.
 - [x] Freeze inputs/outputs before signature collection and verify strict-DER, low-S, SIGHASH_ALL contact signatures against the exact BIP 143 digest and threshold.
+- [x] Deterministically extract the canonical delayed-recovery SegWit transaction from frozen PSBTv2 fields, order CHECKMULTISIG signatures by script key order, and bind raw bytes, txid, wtxid, weight and vsize without broadcast authority.
+- [ ] Cross-check the exact extracted transaction with a pinned Bitcoin Core runtime (`decoderawtransaction`, finalizer/extractor agreement and non-broadcast acceptance diagnostics) and bind the node/version/result evidence.
 - [ ] Signet live proof only after rescue semantics are explicitly scoped.
 
 ## Phase 7 — Cardano [SIGNED-SIZE/EVALUATION GATE COMPLETE; INDEPENDENT NODE EVALUATION PENDING]
