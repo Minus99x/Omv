@@ -165,14 +165,14 @@ if (forbidden) {
   throw new Error(`${forbidden} is forbidden in the guided real-initialize flow. Secrets/signing/submission authority are never accepted on the command line.`);
 }
 
-const sourceIdentity = requireWorkstationSourceIdentity();
-
 const retries = Number(arg('--stable-tip-retries', '8'));
 const inactivityMs = Number(arg('--inactivity-ms', '60000'));
 const stateLovelace = arg('--state-lovelace', '10000000');
 if (!Number.isInteger(retries) || retries < 1 || retries > 30) throw new TypeError('--stable-tip-retries must be an integer from 1 through 30.');
 if (!Number.isSafeInteger(inactivityMs) || inactivityMs < 1) throw new TypeError('--inactivity-ms must be a positive safe integer.');
 if (!/^\d+$/.test(String(stateLovelace)) || BigInt(stateLovelace) < 1n) throw new TypeError('--state-lovelace must be a positive integer.');
+
+const sourceIdentity = requireWorkstationSourceIdentity();
 
 const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
 const sessionRoot = resolve(arg('--session-root', resolve('..', `omegavault-cardano-preprod-real-initialize-${timestamp}`)));
