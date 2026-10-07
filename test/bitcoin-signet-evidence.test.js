@@ -80,6 +80,8 @@ test('Bitcoin Signet observation evidence binds confirmation depth and exact res
   const { transaction, chainTip, rescueUtxo } = observations(finalizer);
   const evidence = createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, transaction, chainTip, rescueUtxo });
   assert.equal(evidence.signetObservationComplete, true);
+  assert.equal(evidence.observationSource, 'offline-fixture');
+  assert.equal(evidence.publicSignetObservationProven, false);
   assert.equal(evidence.transaction.confirmations, '6');
   assert.equal(evidence.rescueUtxo.amountSats, '99000');
   assert.equal(evidence.immutableRescueOnChain, false);
@@ -187,6 +189,49 @@ test('Bitcoin Signet observation runner is read-only and binds driver results', 
   assert.equal(calls.length, 3);
   assert.deepEqual(calls.map(call => call[0]), ['readTransaction','readChainTip','readTxOut']);
   assert.equal(result.evidence.rescueUtxo.txid, transaction.transactionId);
+});
+
+test('Bitcoin Signet provenance separates fixture, imported and live RPC observations', async () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const { transaction, chainTip, rescueUtxo } = observations(finalizer);
+
+  const imported = createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer,
+    finalTransactionEvidence:finalTransaction,
+    transaction,
+    chainTip,
+    rescueUtxo,
+    observationSource:'imported-json'
+  });
+  assert.equal(imported.observationSource, 'imported-json');
+  assert.equal(imported.publicSignetObservationProven, false);
+  assert.equal(imported.chainPromotionAuthority, false);
+
+  const driver = {
+    async readTransaction() { return transaction; },
+    async readChainTip() { return chainTip; },
+    async readTxOut() { return rescueUtxo; }
+  };
+  await assert.rejects(
+    () => runBitcoinSignetObservationProof({
+      driver,
+      finalizerEvidence:finalizer,
+      finalTransactionEvidence:finalTransaction,
+      observationSource:'bitcoin-core-rpc'
+    }),
+    /requires a driver with bitcoin-core-rpc provenance/i
+  );
+
+  const live = await runBitcoinSignetObservationProof({
+    driver:{ ...driver, provenance:'bitcoin-core-rpc' },
+    finalizerEvidence:finalizer,
+    finalTransactionEvidence:finalTransaction,
+    observationSource:'bitcoin-core-rpc'
+  });
+  assert.equal(live.evidence.observationSource, 'bitcoin-core-rpc');
+  assert.equal(live.evidence.publicSignetObservationProven, true);
+  assert.equal(live.evidence.chainPromotionAuthority, false);
+  assert.equal(live.evidence.immutableRescueOnChain, false);
 });
 
 test('Bitcoin Signet observation runner rejects driver transaction substitution', async () => {
