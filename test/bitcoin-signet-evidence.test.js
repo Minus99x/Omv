@@ -4,6 +4,7 @@ import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { createBitcoinRecoveryDescriptor } from '../src/chains/bitcoin/descriptor.js';
 import { createBitcoinWitnessV0Sighash, encodePsbtV2 } from '../src/chains/bitcoin/psbt-v2.js';
 import { createBitcoinFinalizerEvidence } from '../src/chains/bitcoin/finalizer-evidence.js';
+import { createBitcoinFinalTransactionEvidence } from '../src/chains/bitcoin/transaction-finalizer.js';
 import {
   createBitcoinSignetObservationEvidence,
   runBitcoinSignetObservationProof,
@@ -18,7 +19,7 @@ const descriptor = createBitcoinRecoveryDescriptor({
   ownerKey:pub(owner), contactKeys:[pub(a), pub(b)], threshold:2, csvBlocks:144, network:'signet'
 });
 
-function finalizerEvidence() {
+function finalizerArtifacts() {
   const base = {
     txVersion:2,
     fallbackLocktime:0,
@@ -39,11 +40,13 @@ function finalizerEvidence() {
     ...base,
     inputs:[{ ...base.inputs[0], partialSignatures }]
   });
-  return createBitcoinFinalizerEvidence({ psbt:signed, descriptor, rescueScriptPubKey });
+  const finalizer = createBitcoinFinalizerEvidence({ psbt:signed, descriptor, rescueScriptPubKey });
+  const finalTransaction = createBitcoinFinalTransactionEvidence({ psbt:signed, descriptor, rescueScriptPubKey });
+  return { finalizer, finalTransaction };
 }
 
 function observations(evidence, overrides = {}) {
-  const transactionId = 'cd'.repeat(32);
+  const transactionId = '0b01a21c7889debcbfb405d4bca27c1c3c3eb11979bbb516567ae0c99f517961';
   return {
     transaction:{
       transactionId,
@@ -53,6 +56,13 @@ function observations(evidence, overrides = {}) {
       blockHeight:'300000',
       observedAt:'2026-10-04T00:00:00Z',
       ...(overrides.transaction ?? {})
+    },
+    chainTip:{
+      networkRef:'bitcoin:signet',
+      blockHash:'12'.repeat(32),
+      blockHeight:'300005',
+      observedAt:'2026-10-04T00:01:00Z',
+      ...(overrides.chainTip ?? {})
     },
     rescueUtxo:{
       txid:transactionId,
@@ -66,9 +76,9 @@ function observations(evidence, overrides = {}) {
 }
 
 test('Bitcoin Signet observation evidence binds confirmation depth and exact rescue UTXO', () => {
-  const finalizer = finalizerEvidence();
-  const { transaction, rescueUtxo } = observations(finalizer);
-  const evidence = createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, transaction, rescueUtxo });
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const { transaction, chainTip, rescueUtxo } = observations(finalizer);
+  const evidence = createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, transaction, chainTip, rescueUtxo });
   assert.equal(evidence.signetObservationComplete, true);
   assert.equal(evidence.transaction.confirmations, '6');
   assert.equal(evidence.rescueUtxo.amountSats, '99000');
@@ -76,50 +86,91 @@ test('Bitcoin Signet observation evidence binds confirmation depth and exact res
   assert.equal(evidence.chainPromotionAuthority, false);
   assert.match(evidence.sha256, /^[0-9a-f]{64}$/);
   assert.deepEqual(verifyBitcoinSignetObservationEvidence({
-    evidence, finalizerEvidence:finalizer, transaction, rescueUtxo
+    evidence, finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, transaction, chainTip, rescueUtxo
   }), { ok:true, errors:[] });
 });
 
 test('Bitcoin Signet observation evidence rejects insufficient confirmations', () => {
-  const finalizer = finalizerEvidence();
-  const { transaction, rescueUtxo } = observations(finalizer, { transaction:{ confirmations:'5' } });
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const { transaction, chainTip, rescueUtxo } = observations(finalizer, { transaction:{ confirmations:'5' } });
   assert.throws(
-    () => createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, transaction, rescueUtxo }),
+    () => createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, transaction, chainTip, rescueUtxo }),
     /required confirmation depth/i
   );
 });
 
 test('Bitcoin Signet observation evidence rejects rescue outpoint substitution', () => {
-  const finalizer = finalizerEvidence();
-  const { transaction, rescueUtxo } = observations(finalizer, { rescueUtxo:{ txid:'aa'.repeat(32) } });
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const { transaction, chainTip, rescueUtxo } = observations(finalizer, { rescueUtxo:{ txid:'aa'.repeat(32) } });
   assert.throws(
-    () => createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, transaction, rescueUtxo }),
+    () => createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, transaction, chainTip, rescueUtxo }),
     /another transaction/i
   );
 });
 
 test('Bitcoin Signet observation evidence rejects rescue amount or script drift', () => {
-  const finalizer = finalizerEvidence();
+  const { finalizer, finalTransaction } = finalizerArtifacts();
   const amountDrift = observations(finalizer, { rescueUtxo:{ amountSats:'98999' } });
   assert.throws(
-    () => createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, ...amountDrift }),
+    () => createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, ...amountDrift }),
     /amount does not match/i
   );
   const scriptDrift = observations(finalizer, { rescueUtxo:{ scriptPubKey:`0014${'22'.repeat(20)}` } });
   assert.throws(
-    () => createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, ...scriptDrift }),
+    () => createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, ...scriptDrift }),
     /script does not match/i
   );
 });
 
+test('Bitcoin Signet evidence rejects final-transaction substitution and stale chain-tip observations', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const observation = observations(finalizer);
+  assert.throws(
+    () => createBitcoinSignetObservationEvidence({
+      finalizerEvidence:finalizer,
+      finalTransactionEvidence:{ ...finalTransaction, wtxid:'aa'.repeat(32) },
+      ...observation
+    }),
+    /digest is invalid/i
+  );
+  assert.throws(
+    () => createBitcoinSignetObservationEvidence({
+      finalizerEvidence:finalizer,
+      finalTransactionEvidence:{ ...finalTransaction, txid:'aa'.repeat(32) },
+      ...observation
+    }),
+    /digest is invalid/i
+  );
+  assert.throws(
+    () => createBitcoinSignetObservationEvidence({
+      finalizerEvidence:finalizer,
+      finalTransactionEvidence:finalTransaction,
+      ...observations(finalizer, { chainTip:{ observedAt:'2026-10-03T23:59:59Z' } })
+    }),
+    /stale relative/i
+  );
+  assert.throws(
+    () => createBitcoinSignetObservationEvidence({
+      finalizerEvidence:finalizer,
+      finalTransactionEvidence:finalTransaction,
+      ...observations(finalizer, { chainTip:{ blockHeight:'300006' } })
+    }),
+    /confirmation count does not match/i
+  );
+});
+
 test('Bitcoin Signet observation runner is read-only and binds driver results', async () => {
-  const finalizer = finalizerEvidence();
-  const { transaction, rescueUtxo } = observations(finalizer);
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const { transaction, chainTip, rescueUtxo } = observations(finalizer);
   const calls = [];
   const driver = {
     async readTransaction(request) {
       calls.push(['readTransaction', request]);
       return transaction;
+    },
+    async readChainTip(request) {
+      calls.push(['readChainTip', request]);
+      return chainTip;
     },
     async readTxOut(request) {
       calls.push(['readTxOut', request]);
@@ -129,21 +180,24 @@ test('Bitcoin Signet observation runner is read-only and binds driver results', 
   const result = await runBitcoinSignetObservationProof({
     driver,
     finalizerEvidence:finalizer,
-    transactionId:transaction.transactionId
+    finalTransactionEvidence:finalTransaction
   });
   assert.equal(result.success, true);
   assert.equal(result.kind, 'bitcoin-signet-observation-proof');
-  assert.equal(calls.length, 2);
-  assert.deepEqual(calls.map(call => call[0]), ['readTransaction','readTxOut']);
+  assert.equal(calls.length, 3);
+  assert.deepEqual(calls.map(call => call[0]), ['readTransaction','readChainTip','readTxOut']);
   assert.equal(result.evidence.rescueUtxo.txid, transaction.transactionId);
 });
 
 test('Bitcoin Signet observation runner rejects driver transaction substitution', async () => {
-  const finalizer = finalizerEvidence();
-  const { transaction, rescueUtxo } = observations(finalizer);
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const { transaction, chainTip, rescueUtxo } = observations(finalizer);
   const driver = {
     async readTransaction() {
       return { ...transaction, transactionId:'aa'.repeat(32) };
+    },
+    async readChainTip() {
+      return chainTip;
     },
     async readTxOut() {
       return rescueUtxo;
@@ -153,18 +207,18 @@ test('Bitcoin Signet observation runner rejects driver transaction substitution'
     () => runBitcoinSignetObservationProof({
       driver,
       finalizerEvidence:finalizer,
-      transactionId:transaction.transactionId
+      finalTransactionEvidence:finalTransaction
     }),
     /different transaction/i
   );
 });
 
 test('tampered Bitcoin Signet observation evidence fails closed', () => {
-  const finalizer = finalizerEvidence();
-  const { transaction, rescueUtxo } = observations(finalizer);
-  const evidence = structuredClone(createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, transaction, rescueUtxo }));
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const { transaction, chainTip, rescueUtxo } = observations(finalizer);
+  const evidence = structuredClone(createBitcoinSignetObservationEvidence({ finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, transaction, chainTip, rescueUtxo }));
   evidence.transaction.confirmations = '7';
   assert.equal(verifyBitcoinSignetObservationEvidence({
-    evidence, finalizerEvidence:finalizer, transaction, rescueUtxo
+    evidence, finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, transaction, chainTip, rescueUtxo
   }).ok, false);
 });

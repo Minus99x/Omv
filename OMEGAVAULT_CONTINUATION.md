@@ -21,6 +21,8 @@
 - Added fail-closed coverage for wrong network/version, txid substitution, witness substitution, output-value drift, rejected-mempool ambiguity and evidence tampering.
 - Added `scripts/verify-bitcoin-core-cross-check.js` plus package wiring as a deterministic, non-secret observation import boundary. Imported JSON cannot claim authenticated RPC provenance and always leaves `bitcoinCoreCrossCheckProven: false`.
 - The CLI rejects observation authority injection, substituted transactions, existing output targets, private-key/seed/wallet/RPC credential arguments and all broadcast/promotion authority.
+- Hardened `src/chains/bitcoin/signet-evidence.js` so finality observations require valid digest-bound finalizer and final-transaction evidence, the exact extracted txid/wtxid/raw digest, and a Signet chain-tip snapshot that derives the claimed confirmation count.
+- The read-only Signet runner now requires `readChainTip()` and rejects stale/replayed tips, tips predating inclusion, hash substitution and inconsistent confirmation arithmetic.
 
 ## Verification
 
@@ -29,7 +31,8 @@
 - Bitcoin focused suite after extraction: **32/32 passed**.
 - Bitcoin focused suite after the Core adapter: **38/38 passed**.
 - Bitcoin focused suite after the import CLI: **41/41 passed**.
-- Post-change full dependency-backed suite: **514/514 passed**.
+- Bitcoin focused suite after finality binding: **42/42 passed**.
+- Post-change full dependency-backed suite: **515/515 passed**.
 - Offline-resume verification: **ok: true** (Stellar **26/26**, Bitcoin **5/5**).
 - Global multichain checks: **passed**, including Aiken **7/7** and Solana artifact status `stale-untrusted`.
 - These are exact offline working-tree results; do not infer public-network proof from offline fixtures.
@@ -42,4 +45,4 @@
 
 ## Exact next objective
 
-When a pinned Bitcoin Core/Signet runtime becomes available, run the read-only adapter without broadcasting and retain its exact node/version/decode/mempool evidence. Until then, harden the finality layer by binding a successful Signet observation to the exact deterministic final-transaction evidence (not merely the earlier PSBT finalizer digest), rejecting stale/replayed block observations and preserving the explicit no-broadcast boundary. Public Signet submission remains a separate user-authorized gate.
+Extend the read-only Bitcoin Core acceptance evidence with exact fee diagnostics: bind Core's `testmempoolaccept.fees.base` to the deterministic input/output fee, reject effective-fee or vsize drift, and retain imported-vs-RPC provenance separation. After that, run the adapter against a pinned Bitcoin Core/Signet runtime when available; public Signet submission remains a separate user-authorized gate.

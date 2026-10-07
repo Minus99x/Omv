@@ -52,6 +52,8 @@ The evidence binds:
 - block hash and height;
 - exact rescue output script and amount;
 - rescue outpoint identity and current unspent status.
+- the exact deterministic final-transaction evidence digest, raw-transaction digest, txid and wtxid;
+- a contemporaneous Signet chain-tip hash/height/timestamp whose height derives the claimed confirmation count exactly.
 
 The runner cannot construct, sign, finalize, or broadcast Bitcoin transactions.
 
@@ -90,6 +92,8 @@ Focused tests reject:
 - decoded txid/wtxid, witness, output amount/script or size substitution;
 - mempool-result transaction substitution and rejected-result ambiguity;
 - Bitcoin Core cross-check evidence tampering.
+- final-transaction evidence digest or transaction-hash substitution;
+- stale chain-tip timestamps, tips predating inclusion and confirmation counts inconsistent with the bound tip height.
 
 ## Remaining Bitcoin gates
 
