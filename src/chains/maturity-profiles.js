@@ -44,7 +44,10 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   }),
   stellar: Object.freeze({
     stage: 'offline-verified',
-    blockers: ref('Public Stellar Testnet account-setup, submitted recovery transaction and independently captured finalized-ledger evidence are still required before public-testnet promotion.'),
+    blockers: ref(
+      'Actual Stellar Testnet execution evidence is still required before public-testnet promotion.',
+      'Offline/injected-driver evidence is not public-network proof even when transaction, finality and rescue-balance bindings verify.'
+    ),
     gateEvidence: Object.freeze({
       'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION') }),
       'address-validation': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION') }),
@@ -52,13 +55,17 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
       'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION') }),
       'evidence-export': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:STELLAR_NATIVE_RECOVERY_EXECUTION') })
     }),
-    notes: ref('Pinned Stellar SDK execution is now verified offline. This does not claim wallet signing, public-testnet submission, finalized public-network recovery or connector promotion.')
+    notes: ref(
+      'Pinned @stellar/stellar-sdk 17.1.0 execution is verified offline.',
+      'The offline pipeline now covers initial/post-heartbeat txTOO_EARLY, owner heartbeat, eligible N-of-N fee-bump recovery, finality/rescue-balance binding, failed-applied preAuthTx consumption, Horizon normalization/transport and digest-bound evidence.',
+      'Wallet signing, public-testnet submission, finalized public-network recovery and connector promotion remain separately gated.'
+    )
   }),
   bitcoin: Object.freeze({
     stage: 'reduced-semantics',
     blockers: ref(
-      'Bitcoin Core extraction cross-check and Signet broadcast/recovery evidence remain required.',
-      'The current delayed threshold Script policy cannot enforce an immutable rescue destination outside OmegaVault finalization.'
+      'Genuine Bitcoin Core / Signet RPC execution evidence and actual Signet recovery observation remain required.',
+      'The delayed-threshold Script policy still cannot independently enforce an immutable rescue destination outside OmegaVault finalization.'
     ),
     gateEvidence: Object.freeze({
       'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.23:BITCOIN_FINALIZER_SOURCE') }),
@@ -67,11 +74,14 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
       'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:BITCOIN_FINALIZER_EXECUTION') }),
       'evidence-export': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.49:BITCOIN_FINALIZER_EXECUTION') })
     }),
-    notes: ref('Pinned Noble cryptographic execution is now verified. The connector remains reduced-semantics and has no Signet public-network proof.')
+    notes: ref(
+      'Pinned Noble cryptographic execution plus deterministic finalizer extraction, exact txid/wtxid/witness/output/weight binding, imported read-only Core observation verification and Signet evidence binding are verified offline.',
+      'Imported observations remain provenance-distinct from live RPC evidence; no Signet public-network proof or connector promotion is claimed.'
+    )
   }),
   solana: Object.freeze({
     stage: 'parked',
-    blockers: ref('Rust/Agave toolchain is required to rebuild and re-run the current 0.6.21 Solana program source.'),
+    blockers: ref('The checked-in Solana SBF artifact is stale/untrusted against its historical build-evidence digest. A pinned Rust/Agave/cargo-build-sbf toolchain must rebuild current source, rerun SBF program-test, regenerate artifact evidence and then capture Devnet execution evidence.'),
     gateEvidence: Object.freeze({
       'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.21:SOLANA_TOKEN_SWEEP_SOURCE') }),
       'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.21:SOLANA_TOKEN_SWEEP_SOURCE') })
