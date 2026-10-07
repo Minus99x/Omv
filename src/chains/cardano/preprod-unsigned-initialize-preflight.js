@@ -36,6 +36,30 @@ function minAdaCheck(output, parameters, label) {
   });
 }
 
+function valueSizeCheck(output, parameters, label) {
+  if (parameters.maxValueSize == null) {
+    return Object.freeze({
+      serializedValueBytes: output.amount().to_bytes().length,
+      maxValueSize: null,
+      parameterAvailable: false,
+      satisfied: false
+    });
+  }
+  if (!Number.isSafeInteger(parameters.maxValueSize) || parameters.maxValueSize < 1) {
+    throw new TypeError('maxValueSize must be a positive safe integer when present.');
+  }
+  const serializedValueBytes = output.amount().to_bytes().length;
+  if (serializedValueBytes > parameters.maxValueSize) {
+    throw new Error(`${label} serialized value exceeds current maxValueSize.`);
+  }
+  return Object.freeze({
+    serializedValueBytes,
+    maxValueSize: parameters.maxValueSize,
+    parameterAvailable: true,
+    satisfied: true
+  });
+}
+
 export function createCardanoPreprodUnsignedInitializePreflight({
   candidate,
   appliedValidatorIdentity,
@@ -96,12 +120,15 @@ export function createCardanoPreprodUnsignedInitializePreflight({
 
   const stateMinimumAda = minAdaCheck(stateOutput, parameters, 'Unsigned initialize state output');
   const changeMinimumAda = minAdaCheck(changeOutput, parameters, 'Unsigned initialize change output');
+  const stateValueSize = valueSizeCheck(stateOutput, parameters, 'Unsigned initialize state output');
+  const changeValueSize = valueSizeCheck(changeOutput, parameters, 'Unsigned initialize change output');
   const collateralReturn = body.collateral_return();
   if (!collateralReturn) throw new Error('Unsigned initialize candidate is missing collateral return.');
   if (collateralReturn.address().to_bech32() !== utxoBindingEvidence.roles.collateral.address) {
     throw new Error('Unsigned initialize collateral return does not return to the collateral wallet address.');
   }
   const collateralReturnMinimumAda = minAdaCheck(collateralReturn, parameters, 'Unsigned initialize collateral return');
+  const collateralReturnValueSize = valueSizeCheck(collateralReturn, parameters, 'Unsigned initialize collateral return');
 
   const feeCheck = calculateCardanoMinimumFee({
     transactionBytes: candidate.transaction.feeSizingBytes,
@@ -155,6 +182,9 @@ export function createCardanoPreprodUnsignedInitializePreflight({
       stateMinimumAda,
       changeMinimumAda,
       collateralReturnMinimumAda,
+      stateValueSize,
+      changeValueSize,
+      collateralReturnValueSize,
       ownerRequiredSignerBound: true,
       walletWitnessesPresent: false,
       walletWitnessesValidated: false,

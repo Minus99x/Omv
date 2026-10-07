@@ -31,6 +31,7 @@ function rawOgmiosParameters() {
     minFeeCoefficient: Number(p.minFeeA),
     minFeeConstant: { ada: { lovelace: Number(p.minFeeB) } },
     maxTransactionSize: { bytes: p.maxTxSize },
+    maxValueSize: { bytes: 5000 },
     minUtxoDepositCoefficient: Number(p.coinsPerUtxoByte),
     scriptExecutionPrices: {
       memory: `${p.priceMemory.numerator}/${p.priceMemory.denominator}`,
@@ -55,6 +56,7 @@ function rawBlockfrostParameters() {
     min_fee_a: p.minFeeA,
     min_fee_b: p.minFeeB,
     max_tx_size: p.maxTxSize,
+    max_val_size: '5000',
     coins_per_utxo_size: p.coinsPerUtxoByte,
     price_mem: `${p.priceMemory.numerator}/${p.priceMemory.denominator}`,
     price_step: `${p.priceSteps.numerator}/${p.priceSteps.denominator}`,

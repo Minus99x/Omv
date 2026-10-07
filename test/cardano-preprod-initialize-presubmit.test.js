@@ -22,7 +22,10 @@ import {
 const snapshot = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
 snapshot.source.independentSourceCount = 2;
 snapshot.promotion.independentlyConfirmed = true;
-const parameters = normalizeCardanoProtocolParameterSnapshot(snapshot);
+const parameters = Object.freeze({
+  ...normalizeCardanoProtocolParameterSnapshot(snapshot),
+  maxValueSize: 5000
+});
 const fixtureEvidence = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_APPLIED_FIXTURE_0.6.12.json', import.meta.url), 'utf8'));
 const beaconBlueprint = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/state-beacon.applied.json', import.meta.url), 'utf8'));
 const vaultBlueprint = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/recovery-vault.applied.json', import.meta.url), 'utf8'));
@@ -154,6 +157,7 @@ test('Cardano initialize pre-submit gate proves freshness without authorizing su
   assert.equal(evidence.checks.signedTransactionSizeWithinCurrentMaximum, true);
   assert.equal(evidence.checks.signedExecutionUnitsWithinCurrentMaximum, true);
   assert.equal(evidence.checks.signedFeeCoversCurrentMinimum, true);
+  assert.equal(evidence.checks.outputValueSizesWithinCurrentMaximum, true);
   assert.match(evidence.currentProtocolParametersSha256, /^[0-9a-f]{64}$/);
   assert.equal(evidence.signedTransaction.bytes, Cardano.Transaction.from_hex(input.signedTransactionCborHex).to_bytes().length);
   assert.equal(evidence.signedTransaction.feeLovelace, input.unsignedCandidate.transaction.feeLovelace);
@@ -200,6 +204,22 @@ test('Cardano initialize pre-submit evidence binds the exact current protocol-pa
   assert.notEqual(rebound.preSubmitSha256, baseline.preSubmitSha256);
   assert.equal(rebound.checks.signedFeeCoversCurrentMinimum, true);
   assert.equal(rebound.checks.completePhaseOneValidated, false);
+});
+
+test('Cardano initialize pre-submit gate fails closed without current maxValueSize evidence', () => {
+  const input = fixture();
+  assert.throws(
+    () => createCardanoPreprodInitializePreSubmitEvidence({
+      ...input,
+      currentParameters: Object.freeze({ ...parameters, maxValueSize: null }),
+      recoveryConfig,
+      currentTip: {
+        hash: 'bf'.repeat(32),
+        slot: input.unsignedCandidate.validity.lowerSlot + 60
+      }
+    }),
+    /requires the current Cardano maxValueSize/
+  );
 });
 
 test('Cardano initialize pre-submit gate fails closed if seed is spent or validity has expired', () => {

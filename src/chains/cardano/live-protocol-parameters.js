@@ -83,6 +83,7 @@ function normalizedOgmios(parameters) {
     minFeeA: integer(p.minFeeCoefficient, 'Ogmios minFeeCoefficient'),
     minFeeB: adaLovelace(p.minFeeConstant, 'Ogmios minFeeConstant'),
     maxTxSize: bytesSize(p.maxTransactionSize, 'Ogmios maxTransactionSize'),
+    maxValueSize: bytesSize(p.maxValueSize, 'Ogmios maxValueSize'),
     coinsPerUtxoByte: integer(p.minUtxoDepositCoefficient, 'Ogmios minUtxoDepositCoefficient'),
     priceMemory: memoryPrice,
     priceSteps: cpuPrice,
@@ -105,6 +106,7 @@ function normalizedBlockfrost(parameters) {
     minFeeA: integer(p.min_fee_a, 'Blockfrost min_fee_a'),
     minFeeB: integer(p.min_fee_b, 'Blockfrost min_fee_b'),
     maxTxSize: safeInteger(p.max_tx_size, 'Blockfrost max_tx_size'),
+    maxValueSize: safeInteger(p.max_val_size, 'Blockfrost max_val_size'),
     coinsPerUtxoByte: integer(p.coins_per_utxo_size, 'Blockfrost coins_per_utxo_size'),
     priceMemory: rational(p.price_mem, 'Blockfrost price_mem'),
     priceSteps: rational(p.price_step, 'Blockfrost price_step'),
@@ -123,7 +125,7 @@ function equalRational(a, b) {
 }
 
 function assertAgreement(ogmios, blockfrost) {
-  const scalar = ['protocolVersion', 'minFeeA', 'minFeeB', 'maxTxSize', 'coinsPerUtxoByte', 'collateralPercentage', 'maxCollateralInputs'];
+  const scalar = ['protocolVersion', 'minFeeA', 'minFeeB', 'maxTxSize', 'maxValueSize', 'coinsPerUtxoByte', 'collateralPercentage', 'maxCollateralInputs'];
   for (const field of scalar) {
     if (String(ogmios[field]) !== String(blockfrost[field])) throw new Error(`Ogmios/Blockfrost protocol-parameter disagreement: ${field}.`);
   }
@@ -185,6 +187,7 @@ export function createCardanoPreprodLiveProtocolSnapshot({
       minFeeA: ogmios.minFeeA,
       minFeeB: ogmios.minFeeB,
       maxTxSize: ogmios.maxTxSize,
+      maxValueSize: ogmios.maxValueSize,
       coinsPerUtxoByte: ogmios.coinsPerUtxoByte,
       priceMemory: ogmios.priceMemory,
       priceSteps: ogmios.priceSteps,

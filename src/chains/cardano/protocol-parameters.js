@@ -37,6 +37,7 @@ export function normalizeCardanoProtocolParameterSnapshot(snapshot) {
     minFeeA: positive(params.minFeeA, 'minFeeA'),
     minFeeB: positive(params.minFeeB, 'minFeeB'),
     maxTxSize: Number(positive(params.maxTxSize, 'maxTxSize')),
+    maxValueSize: params.maxValueSize == null ? null : Number(positive(params.maxValueSize, 'maxValueSize')),
     coinsPerUtxoByte: positive(params.coinsPerUtxoByte, 'coinsPerUtxoByte'),
     priceMemory: { numerator: positive(params.priceMemory.numerator, 'priceMemory.numerator'), denominator: positive(params.priceMemory.denominator, 'priceMemory.denominator') },
     priceSteps: { numerator: positive(params.priceSteps.numerator, 'priceSteps.numerator'), denominator: positive(params.priceSteps.denominator, 'priceSteps.denominator') },
@@ -54,7 +55,7 @@ export function normalizeCardanoProtocolParameterSnapshot(snapshot) {
 export function createCardanoProtocolParameterGate(snapshots) {
   if (!Array.isArray(snapshots) || snapshots.length < 1) throw new TypeError('At least one normalized snapshot is required.');
   const first = snapshots[0];
-  const fields = ['epoch', 'protocolVersion', 'minFeeA', 'minFeeB', 'maxTxSize', 'coinsPerUtxoByte', 'collateralPercentage', 'maxCollateralInputs', 'plutusV3CostModelSha256'];
+  const fields = ['epoch', 'protocolVersion', 'minFeeA', 'minFeeB', 'maxTxSize', 'maxValueSize', 'coinsPerUtxoByte', 'collateralPercentage', 'maxCollateralInputs', 'plutusV3CostModelSha256'];
   const matching = snapshots.every(snapshot => fields.every(field => String(snapshot[field]) === String(first[field])));
   const sourceCount = snapshots.reduce((total, snapshot) => total + snapshot.sourceCount, 0);
   return Object.freeze({

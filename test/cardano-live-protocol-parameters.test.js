@@ -12,6 +12,7 @@ function ogmios() {
     minFeeCoefficient: 44,
     minFeeConstant: { ada: { lovelace: 155381 } },
     maxTransactionSize: { bytes: 16384 },
+    maxValueSize: { bytes: 5000 },
     minUtxoDepositCoefficient: 4310,
     scriptExecutionPrices: { memory: '577/10000', cpu: '721/10000000' },
     maxExecutionUnitsPerTransaction: { memory: 17500000, cpu: 10000000000 },
@@ -29,6 +30,7 @@ function blockfrost() {
     min_fee_a: 44,
     min_fee_b: 155381,
     max_tx_size: 16384,
+    max_val_size: '5000',
     coins_per_utxo_size: '4310',
     price_mem: 0.0577,
     price_step: 0.0000721,
@@ -58,6 +60,7 @@ test('current Preprod protocol snapshot requires and records Ogmios/Blockfrost a
   assert.equal(normalized.sourceCount, 2);
   assert.equal(normalized.independentlyConfirmed, true);
   assert.equal(normalized.maxTxExUnits.steps, 10000000000n);
+  assert.equal(normalized.maxValueSize, 5000);
 });
 
 test('current Preprod protocol snapshot fails closed on any provider disagreement', () => {
@@ -66,6 +69,14 @@ test('current Preprod protocol snapshot fails closed on any provider disagreemen
   assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
     ogmiosParameters: ogmios(), blockfrostParameters: changed, epoch: 400, tip
   }), /disagreement: minFeeA/);
+});
+
+test('current Preprod protocol snapshot fails closed on maxValueSize disagreement', () => {
+  const changed = blockfrost();
+  changed.max_val_size = '4999';
+  assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+    ogmiosParameters: ogmios(), blockfrostParameters: changed, epoch: 400, tip
+  }), /disagreement: maxValueSize/);
 });
 
 test('current Preprod protocol snapshot fails closed without raw Plutus V3 confirmation', () => {

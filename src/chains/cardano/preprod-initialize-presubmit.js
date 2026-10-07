@@ -67,6 +67,9 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
   if (!currentParameters?.independentlyConfirmed || currentParameters?.sourceCount < 2) {
     throw new Error('Pre-submit gate requires current independently confirmed Cardano Preprod protocol parameters.');
   }
+  if (!Number.isSafeInteger(currentParameters.maxValueSize) || currentParameters.maxValueSize < 1) {
+    throw new Error('Pre-submit gate requires the current Cardano maxValueSize protocol parameter.');
+  }
 
   const witnessCheck = verifyCardanoPreprodInitializeWalletWitnessEvidence({
     evidence: witnessEvidence,
@@ -91,6 +94,14 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
   });
   if (recomputedUnsignedPreflight.preflightSha256 !== unsignedPreflight.preflightSha256) {
     throw new Error('Current protocol parameters no longer reproduce the frozen unsigned preflight; rebuild/re-evaluate before submission.');
+  }
+  const valueSizeChecks = [
+    recomputedUnsignedPreflight.checks.stateValueSize,
+    recomputedUnsignedPreflight.checks.changeValueSize,
+    recomputedUnsignedPreflight.checks.collateralReturnValueSize
+  ];
+  if (valueSizeChecks.some(check => check?.parameterAvailable !== true || check?.satisfied !== true)) {
+    throw new Error('Signed initialize outputs are not proven within the current maxValueSize limit.');
   }
 
   const tip = normalizedTip(currentTip);
@@ -157,6 +168,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       signedTransactionSizeWithinCurrentMaximum: signedTransactionBytes <= currentParameters.maxTxSize,
       signedExecutionUnitsWithinCurrentMaximum: true,
       signedFeeCoversCurrentMinimum: true,
+      outputValueSizesWithinCurrentMaximum: true,
       seedStillUnspent: true,
       collateralStillUnspent: true,
       boundInputValuesUnchanged: true,
@@ -173,7 +185,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       supportClaimAuthorized: false
     }),
     nextGate: 'independent-complete-phase-one-ledger-validation-and-explicit-human-submission-authorization',
-    authorityBoundary: 'This gate proves the signed initialize body/witness remains bound to two still-unspent real Preprod inputs under an exact digest-bound set of current independently confirmed protocol parameters, verifies the actual signed transaction size/execution-unit fee floor, and requires an unexpired validity interval. It intentionally does not claim complete node phase-1 validation and does not authorize submission.'
+    authorityBoundary: 'This gate proves the signed initialize body/witness remains bound to two still-unspent real Preprod inputs under an exact digest-bound set of current independently confirmed protocol parameters, verifies the actual signed transaction size/execution-unit fee floor and each output value against current maxValueSize, and requires an unexpired validity interval. It intentionally does not claim complete node phase-1 validation and does not authorize submission.'
   });
   return Object.freeze({ ...core, preSubmitSha256: hashCardanoEvidence(core) });
 }
