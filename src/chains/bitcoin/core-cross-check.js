@@ -241,6 +241,8 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
   if (!Array.isArray(evidences) || !evidences.length) return Object.freeze({ ok:false, errors:Object.freeze(['Bitcoin Core evidence chain must be a non-empty array.']) });
   const seen = new Set();
   let previous = null;
+  let identity = null;
+  let provenance = null;
   evidences.forEach((evidence, index) => {
     if (!evidence || evidence.schema !== 'omegavault.bitcoin.core-cross-check-evidence.v2') {
       errors.push(`Evidence ${index} has an unsupported schema.`);
@@ -253,19 +255,44 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
     if (normalizedSha !== digest(core)) errors.push(`Evidence ${index} digest is invalid.`);
     if (seen.has(normalizedSha)) errors.push(`Evidence ${index} replays a previously observed receipt.`);
     seen.add(normalizedSha);
-    const context = evidence.observationContext;
-    if (!context) {
+
+    const currentIdentity = [
+      evidence.rawTransactionSha256,
+      evidence.finalTransactionEvidenceSha256,
+      evidence.txid,
+      evidence.wtxid
+    ].join(':');
+    if (identity == null) identity = currentIdentity;
+    else if (currentIdentity !== identity) errors.push(`Evidence ${index} is bound to a different extracted transaction.`);
+
+    if (provenance == null) provenance = evidence.observationSource;
+    else if (evidence.observationSource !== provenance) errors.push(`Evidence ${index} mixes observation provenance with the receipt chain.`);
+
+    const rawContext = evidence.observationContext;
+    if (!rawContext) {
       errors.push(`Evidence ${index} lacks observationContext.`);
       return;
     }
+    let context;
+    try {
+      const actualFields = Object.keys(rawContext).sort();
+      const expectedFields = ['observedAt','previousEvidenceSha256','sequence'];
+      if (JSON.stringify(actualFields) !== JSON.stringify(expectedFields)) throw new Error('observationContext has unexpected or missing fields.');
+      context = normalizeObservationContext(rawContext);
+    } catch (error) {
+      errors.push(`Evidence ${index} observationContext is invalid: ${String(error.message || error)}`);
+      return;
+    }
+
     if (previous) {
-      if (context.sequence !== previous.observationContext.sequence + 1) errors.push(`Evidence ${index} observation sequence is reordered or non-contiguous.`);
+      const previousContext = previous.observationContext;
+      if (context.sequence !== previousContext.sequence + 1) errors.push(`Evidence ${index} observation sequence is reordered or non-contiguous.`);
       if (context.previousEvidenceSha256 !== previous.sha256) errors.push(`Evidence ${index} previousEvidenceSha256 does not bind the preceding receipt.`);
-      if (Date.parse(context.observedAt) <= Date.parse(previous.observationContext.observedAt)) errors.push(`Evidence ${index} observation timestamp is stale or reordered.`);
+      if (Date.parse(context.observedAt) <= Date.parse(previousContext.observedAt)) errors.push(`Evidence ${index} observation timestamp is stale or reordered.`);
     } else if (context.previousEvidenceSha256 !== null) {
       errors.push('First Bitcoin Core evidence receipt must not claim a predecessor.');
     }
-    previous = evidence;
+    previous = { ...evidence, observationContext:context };
   });
   if (now != null || maxAgeMs != null) {
     if (now == null || !Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0) errors.push('now and non-negative maxAgeMs must be supplied together for freshness enforcement.');
