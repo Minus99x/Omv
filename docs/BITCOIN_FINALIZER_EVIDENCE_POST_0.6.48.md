@@ -55,6 +55,18 @@ The evidence binds:
 
 The runner cannot construct, sign, finalize, or broadcast Bitcoin transactions.
 
+## Read-only Bitcoin Core cross-check
+
+`src/chains/bitcoin/core-cross-check.js` provides a separate injected-driver gate for the exact transaction produced by the deterministic extractor. It requires a pinned Bitcoin Core version on Signet and binds:
+
+- the SHA-256 of the exact network-serialized transaction;
+- Core's decoded txid, wtxid, size, weight, virtual size, version and locktime;
+- every input outpoint, sequence, empty native SegWit `scriptSig` and complete witness stack;
+- every output index, exact satoshi amount and script;
+- exactly one non-broadcast `testmempoolaccept` result for the same txid/wtxid.
+
+Offline fixtures keep `bitcoinCoreCrossCheckProven: false`. The read-only runner can set it only from a driver identified as Bitcoin Core RPC and only when the pinned node accepts the exact transaction. This flag is still not a Signet inclusion/finality proof. The runner exposes no signing or broadcast capability, and the evidence keeps `signetExecutionProven`, `broadcastPerformed`, `broadcastAuthorized` and `chainPromotionAuthority` false.
+
 ## Adversarial coverage
 
 Focused tests reject:
@@ -72,6 +84,10 @@ Focused tests reject:
 - non-canonical descriptor/contact ordering;
 - descriptor, CSV and rescue-output substitution during final extraction;
 - final-transaction evidence tampering.
+- wrong Signet identity or unpinned Bitcoin Core version;
+- decoded txid/wtxid, witness, output amount/script or size substitution;
+- mempool-result transaction substitution and rejected-result ambiguity;
+- Bitcoin Core cross-check evidence tampering.
 
 ## Remaining Bitcoin gates
 
@@ -80,7 +96,7 @@ Bitcoin remains `reduced-semantics`.
 The remaining evidence/semantic boundaries are:
 
 1. actual public Signet execution/observation;
-2. an independent Bitcoin Core decode/finalizer/acceptance cross-check for the now-deterministic final signed transaction path;
+2. execution of the read-only decode/acceptance cross-check against an actual pinned Bitcoin Core runtime rather than the offline driver fixture;
 3. production fee/finality policy evidence;
 4. the known immutable-rescue limitation: standard key + CSV script does not cryptographically force all future threshold spends to one rescue destination.
 
