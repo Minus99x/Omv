@@ -33,7 +33,17 @@ function fixture() {
       vin:[{ txid:'ab'.repeat(32), vout:0, scriptSig:{ hex:'' }, txinwitness:transaction.witnesses[0].stackItems, sequence:144 }],
       vout:[{ value:'0.00099000', n:0, scriptPubKey:{ hex:rescueScriptPubKey } }]
     },
-    mempoolResult:{ txid:transaction.txid, wtxid:transaction.wtxid, allowed:true, vsize:transaction.virtualBytes }
+    mempoolResult:{
+      txid:transaction.txid,
+      wtxid:transaction.wtxid,
+      allowed:true,
+      vsize:transaction.virtualBytes,
+      fees:{
+        base:'0.00001000',
+        'effective-feerate':'0.00005000',
+        'effective-includes':[transaction.wtxid]
+      }
+    }
   };
   return { transaction, observations };
 }
