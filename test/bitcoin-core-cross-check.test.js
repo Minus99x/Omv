@@ -17,10 +17,10 @@ const contacts = [key(2), key(3)];
 const rescueScriptPubKey = `0014${'11'.repeat(20)}`;
 const descriptor = createBitcoinRecoveryDescriptor({ ownerKey:pub(key(1)), contactKeys:contacts.map(pub), threshold:2, csvBlocks:144, network:'signet' });
 
-function transaction() {
+function transaction(inputByte = 'ab') {
   const intent = {
     txVersion:2, fallbackLocktime:0, txModifiable:0,
-    inputs:[{ txid:'ab'.repeat(32), vout:0, sequence:144, amountSats:'100000', scriptPubKey:descriptor.scriptPubKeyHex, witnessScript:descriptor.witnessScriptHex }],
+    inputs:[{ txid:inputByte.repeat(32), vout:0, sequence:144, amountSats:'100000', scriptPubKey:descriptor.scriptPubKeyHex, witnessScript:descriptor.witnessScriptHex }],
     outputs:[{ amountSats:'99000', scriptPubKey:rescueScriptPubKey }]
   };
   const unsigned = encodePsbtV2(intent);
@@ -35,7 +35,7 @@ function observations(tx, overrides = {}) {
     decodedTransaction:{
       txid:tx.txid, hash:tx.wtxid, size:tx.bytes, vsize:tx.virtualBytes, weight:tx.weight,
       version:2, locktime:0,
-      vin:[{ txid:'ab'.repeat(32), vout:0, scriptSig:{ hex:'' }, txinwitness:tx.witnesses[0].stackItems, sequence:144 }],
+      vin:[{ txid:tx.finalizerEvidence.inputs[0].txid, vout:0, scriptSig:{ hex:'' }, txinwitness:tx.witnesses[0].stackItems, sequence:144 }],
       vout:[{ value:'0.00099000', n:0, scriptPubKey:{ hex:rescueScriptPubKey } }]
     },
     mempoolResult:{
@@ -268,6 +268,38 @@ test('Bitcoin Core observation receipt chain rejects stale, replayed and reorder
   const reordered = verifyBitcoinCoreCrossCheckEvidenceChain([second, first]);
   assert.equal(reordered.ok, false);
   assert.ok(reordered.errors.some(value => /reordered|predecessor/i.test(value)));
+});
+
+test('Bitcoin Core observation receipt chain forbids transaction drift and provenance mixing', () => {
+  const txA = transaction('ab');
+  const txB = transaction('ac');
+  const inputA = observations(txA);
+  const inputB = observations(txB);
+  const first = createBitcoinCoreCrossCheckEvidence({
+    transaction:txA,
+    ...inputA,
+    observationSource:'bitcoin-core-rpc',
+    observationContext:context(1, '2026-10-07T05:20:00Z')
+  });
+  const differentTransaction = createBitcoinCoreCrossCheckEvidence({
+    transaction:txB,
+    ...inputB,
+    observationSource:'bitcoin-core-rpc',
+    observationContext:context(2, '2026-10-07T05:21:00Z', first.sha256)
+  });
+  const drift = verifyBitcoinCoreCrossCheckEvidenceChain([first, differentTransaction]);
+  assert.equal(drift.ok, false);
+  assert.ok(drift.errors.some(value => /different extracted transaction/i.test(value)));
+
+  const imported = createBitcoinCoreCrossCheckEvidence({
+    transaction:txA,
+    ...inputA,
+    observationSource:'imported-json',
+    observationContext:context(2, '2026-10-07T05:21:00Z', first.sha256)
+  });
+  const mixed = verifyBitcoinCoreCrossCheckEvidenceChain([first, imported]);
+  assert.equal(mixed.ok, false);
+  assert.ok(mixed.errors.some(value => /mixes observation provenance/i.test(value)));
 });
 
 test('tampered Bitcoin Core cross-check evidence fails closed', () => {
