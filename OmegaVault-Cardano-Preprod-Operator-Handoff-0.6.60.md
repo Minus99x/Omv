@@ -2,6 +2,23 @@
 
 Status: **development handoff until the 0.6.60 checkpoint is sealed**
 
+## Current operator path — first real initialize
+
+The earlier four-action synthetic/evaluation campaign is complete and remains useful as regression evidence, but it is **not** today's primary workstation objective.
+
+For the next real Cardano Preprod milestone, use:
+
+```powershell
+npm.cmd run cardano:preprod:real-initialize:guided
+```
+
+The guided command is designed for a short Windows console window. It collects the owner/rescue/contact Preprod addresses and any missing provider values through the clipboard, validates them without printing secrets, checks the owner wallet has two distinct plain ADA-only UTxOs, writes an append-only recovery configuration/session plan, and launches the real initialize read/evaluation capture.
+
+It stops at an unsigned candidate. Wallet signing and submission remain unauthorized.
+
+See `docs/CARDANO_PREPROD_REAL_INITIALIZE_QUICKSTART.md` for the exact one-command-at-a-time workstation sequence.
+
+
 This runbook minimizes user-controlled workstation time while preserving every OmegaVault non-custodial and evidence boundary.
 
 ## BLUF
