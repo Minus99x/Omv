@@ -55,7 +55,12 @@ export function createCardanoPreprodInitializeWalletWitnessEvidence({
   }
 
   const unsignedTx = Cardano.Transaction.from_hex(unsignedCandidate.transaction.cborHex);
-  const signedTx = Cardano.Transaction.from_hex(signedTransactionCborHex);
+  const normalizedSignedTransactionCborHex = signedTransactionCborHex.toLowerCase();
+  const signedTx = Cardano.Transaction.from_hex(normalizedSignedTransactionCborHex);
+  const canonicalSignedTransactionCborHex = signedTx.to_hex();
+  if (canonicalSignedTransactionCborHex !== normalizedSignedTransactionCborHex) {
+    throw new Error('Wallet-signed transaction CBOR must round-trip canonically without byte substitution.');
+  }
 
   const unsignedBodyHex = unsignedTx.body().to_hex();
   const signedBodyHex = signedTx.body().to_hex();
@@ -114,11 +119,13 @@ export function createCardanoPreprodInitializeWalletWitnessEvidence({
     validatorIdentitySha256: appliedValidatorIdentity.identitySha256,
     utxoBindingEvidenceSha256: utxoBindingEvidence.evidenceSha256,
     transactionBodyHash: bodyHashHex,
-    signedTransactionCborHex: signedTx.to_hex(),
-    signedTransactionSha256: createHash('sha256').update(Buffer.from(signedTx.to_hex(), 'hex')).digest('hex'),
+    signedTransactionCborHex: normalizedSignedTransactionCborHex,
+    signedTransactionSha256: createHash('sha256').update(Buffer.from(normalizedSignedTransactionCborHex, 'hex')).digest('hex'),
     ownerPaymentKeyHash: keyHash,
     witnessCount: 1,
     checks: Object.freeze({
+      exactWalletProducedSignedBytesPreserved: true,
+      signedTransactionCanonicalRoundTripExact: true,
       exactUnsignedBodyPreserved: true,
       auxiliaryDataPreserved: true,
       nonWalletWitnessesPreserved: true,
@@ -137,7 +144,7 @@ export function createCardanoPreprodInitializeWalletWitnessEvidence({
       supportClaimAuthorized: false
     }),
     nextGate: 'complete-signed-transaction-phase-one-validation-at-current-preprod-ledger-state-before-any-submission',
-    authorityBoundary: 'This evidence verifies one already-produced owner wallet witness against the exact frozen initialize body. It does not authorize ChatGPT/OmegaVault to create signatures, does not authorize submission, and does not prove phase-1 validity, inclusion/finality, recovery or support promotion.'
+    authorityBoundary: 'This evidence preserves and hashes the exact wallet-produced signed transaction bytes (hex case normalized only), requires canonical CBOR round-trip without byte substitution, and verifies one already-produced owner wallet witness against the exact frozen initialize body. It does not authorize ChatGPT/OmegaVault to create signatures, does not authorize submission, and does not prove phase-1 validity, inclusion/finality, recovery or support promotion.'
   });
 
   return Object.freeze({ ...core, witnessEvidenceSha256: hashCardanoEvidence(core) });

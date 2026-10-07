@@ -133,6 +133,13 @@ test('Cardano initialize wallet witness verifier accepts exactly one valid owner
   });
   assert.equal(evidence.ownerPaymentKeyHash, ownerKeyHash);
   assert.equal(evidence.witnessCount, 1);
+  assert.equal(evidence.signedTransactionCborHex, signedTransactionCborHex);
+  assert.equal(
+    evidence.signedTransactionSha256,
+    createHash('sha256').update(Buffer.from(signedTransactionCborHex, 'hex')).digest('hex')
+  );
+  assert.equal(evidence.checks.exactWalletProducedSignedBytesPreserved, true);
+  assert.equal(evidence.checks.signedTransactionCanonicalRoundTripExact, true);
   assert.equal(evidence.checks.exactUnsignedBodyPreserved, true);
   assert.equal(evidence.checks.nonWalletWitnessesPreserved, true);
   assert.equal(evidence.checks.ownerSignatureCryptographicallyValid, true);
@@ -151,6 +158,27 @@ test('Cardano initialize wallet witness verifier accepts exactly one valid owner
     recoveryConfig
   });
   assert.equal(verified.valid, true, verified.errors.join('; '));
+});
+
+test('Cardano initialize wallet witness evidence preserves exact signed bytes while normalizing only hex case', () => {
+  const input = fixture();
+  const signedTransactionCborHex = signCandidate(input.unsignedCandidate);
+  const uppercaseHex = signedTransactionCborHex.toUpperCase();
+  const evidence = createCardanoPreprodInitializeWalletWitnessEvidence({
+    signedTransactionCborHex: uppercaseHex,
+    ...input,
+    parameters,
+    recoveryConfig
+  });
+  assert.equal(evidence.signedTransactionCborHex, signedTransactionCborHex);
+  assert.equal(
+    evidence.signedTransactionSha256,
+    createHash('sha256').update(Buffer.from(signedTransactionCborHex, 'hex')).digest('hex')
+  );
+  assert.equal(evidence.checks.exactWalletProducedSignedBytesPreserved, true);
+  assert.equal(evidence.checks.signedTransactionCanonicalRoundTripExact, true);
+  assert.equal(evidence.checks.completePhaseOneValidated, false);
+  assert.equal(evidence.liveActions.transactionSubmissionAuthorized, false);
 });
 
 test('Cardano initialize wallet witness verifier rejects a missing owner VKey witness', () => {
