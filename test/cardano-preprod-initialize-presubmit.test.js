@@ -48,6 +48,35 @@ const recoveryConfig = Object.freeze({
   stateLovelace: '10000000'
 });
 
+function currentProtocolSnapshotAt(tip, parameterOverrides = {}) {
+  const value = structuredClone(snapshot);
+  value.schemaVersion = 2;
+  value.capturedAt = '2026-10-06T00:00:00.000Z';
+  value.source = {
+    provider: 'Ogmios + Blockfrost',
+    independentSourceCount: 2,
+    ogmios: 'queryLedgerState/protocolParameters',
+    blockfrost: 'GET /epochs/latest/parameters'
+  };
+  value.tip = {
+    epoch: value.parameters.epoch,
+    blockHeight: value.tip.blockHeight ?? null,
+    blockHash: tip.hash,
+    slot: tip.slot
+  };
+  value.parameters = {
+    ...value.parameters,
+    sourceBlockHash: tip.hash,
+    ...parameterOverrides
+  };
+  value.promotion = {
+    ...value.promotion,
+    currentAtCapture: true,
+    independentlyConfirmed: true
+  };
+  return value;
+}
+
 function fixture() {
   const appliedValidatorIdentity = createCardanoPreprodAppliedValidatorIdentity({
     seedReference: {
@@ -124,6 +153,13 @@ function fixture() {
     recoveryConfig
   });
 
+  const currentTip = {
+    hash: 'bb'.repeat(32),
+    slot: unsignedCandidate.validity.lowerSlot + 60
+  };
+  const currentProtocolSnapshot = currentProtocolSnapshotAt(currentTip);
+  const currentParameters = normalizeCardanoProtocolParameterSnapshot(currentProtocolSnapshot);
+
   return {
     appliedValidatorIdentity,
     utxoBindingEvidence,
@@ -131,28 +167,25 @@ function fixture() {
     unsignedPreflight,
     signedTransactionCborHex,
     witnessEvidence,
-    currentProtocolSnapshot: snapshot,
+    currentProtocolSnapshot,
+    currentParameters,
+    currentTip,
     currentQueriedUtxo: queriedUtxo
   };
 }
 
 test('Cardano initialize pre-submit gate proves freshness without authorizing submission', () => {
   const input = fixture();
-  const currentTip = {
-    hash: 'bb'.repeat(32),
-    slot: input.unsignedCandidate.validity.lowerSlot + 60
-  };
   const evidence = createCardanoPreprodInitializePreSubmitEvidence({
     ...input,
-    currentParameters: parameters,
-    recoveryConfig,
-    currentTip
+    recoveryConfig
   });
   assert.equal(evidence.checks.seedStillUnspent, true);
   assert.equal(evidence.checks.collateralStillUnspent, true);
   assert.equal(evidence.checks.validityIntervalCurrent, true);
   assert.equal(evidence.checks.walletWitnessEvidenceVerified, true);
   assert.equal(evidence.checks.currentProtocolSnapshotBoundAndReproducible, true);
+  assert.equal(evidence.checks.currentProtocolSnapshotStableTipBound, true);
   assert.equal(evidence.checks.currentProtocolParametersBoundByDigest, true);
   assert.match(evidence.currentProtocolSnapshotSha256, /^[0-9a-f]{64}$/);
   assert.equal(evidence.currentProtocolSnapshot.parameters.maxValueSize, 5000);
@@ -174,34 +207,26 @@ test('Cardano initialize pre-submit gate proves freshness without authorizing su
   const verified = verifyCardanoPreprodInitializePreSubmitEvidence({
     evidence,
     ...input,
-    currentParameters: parameters,
-    recoveryConfig,
-    currentTip
+    recoveryConfig
   });
   assert.equal(verified.valid, true, verified.errors.join('; '));
 });
 
 test('Cardano initialize pre-submit evidence binds the exact current protocol-parameter set even when the transaction remains valid', () => {
   const input = fixture();
-  const currentTip = {
-    hash: 'be'.repeat(32),
-    slot: input.unsignedCandidate.validity.lowerSlot + 60
-  };
   const baseline = createCardanoPreprodInitializePreSubmitEvidence({
     ...input,
-    currentParameters: parameters,
-    recoveryConfig,
-    currentTip
+    recoveryConfig
   });
-  const changedButCompatibleSnapshot = structuredClone(snapshot);
-  changedButCompatibleSnapshot.parameters.maxTxSize += 1;
+  const changedButCompatibleSnapshot = currentProtocolSnapshotAt(input.currentTip, {
+    maxTxSize: snapshot.parameters.maxTxSize + 1
+  });
   const changedButCompatibleParameters = normalizeCardanoProtocolParameterSnapshot(changedButCompatibleSnapshot);
   const rebound = createCardanoPreprodInitializePreSubmitEvidence({
     ...input,
     currentProtocolSnapshot: changedButCompatibleSnapshot,
     currentParameters: changedButCompatibleParameters,
-    recoveryConfig,
-    currentTip
+    recoveryConfig
   });
   assert.notEqual(rebound.currentProtocolParametersSha256, baseline.currentProtocolParametersSha256);
   assert.notEqual(rebound.preSubmitSha256, baseline.preSubmitSha256);
@@ -214,12 +239,8 @@ test('Cardano initialize pre-submit gate fails closed if normalized parameters d
   assert.throws(
     () => createCardanoPreprodInitializePreSubmitEvidence({
       ...input,
-      currentParameters: Object.freeze({ ...parameters, maxTxSize: parameters.maxTxSize + 1 }),
-      recoveryConfig,
-      currentTip: {
-        hash: 'af'.repeat(32),
-        slot: input.unsignedCandidate.validity.lowerSlot + 60
-      }
+      currentParameters: Object.freeze({ ...input.currentParameters, maxTxSize: input.currentParameters.maxTxSize + 1 }),
+      recoveryConfig
     }),
     /do not reproduce from the bound live protocol snapshot/
   );
@@ -230,43 +251,53 @@ test('Cardano initialize pre-submit gate fails closed without current maxValueSi
   assert.throws(
     () => createCardanoPreprodInitializePreSubmitEvidence({
       ...input,
-      currentParameters: Object.freeze({ ...parameters, maxValueSize: null }),
-      recoveryConfig,
-      currentTip: {
-        hash: 'bf'.repeat(32),
-        slot: input.unsignedCandidate.validity.lowerSlot + 60
-      }
+      currentParameters: Object.freeze({ ...input.currentParameters, maxValueSize: null }),
+      recoveryConfig
     }),
     /requires the current Cardano maxValueSize/
   );
 });
 
-test('Cardano initialize pre-submit gate fails closed if seed is spent or validity has expired', () => {
+test('Cardano initialize pre-submit gate fails closed if the current protocol snapshot is not bound to the freshness tip', () => {
   const input = fixture();
-  const currentTip = {
-    hash: 'bb'.repeat(32),
-    slot: input.unsignedCandidate.validity.lowerSlot + 60
-  };
+  const mismatchedSnapshot = currentProtocolSnapshotAt({
+    hash: 'ef'.repeat(32),
+    slot: input.currentTip.slot
+  });
   assert.throws(
     () => createCardanoPreprodInitializePreSubmitEvidence({
       ...input,
-      currentParameters: parameters,
+      currentProtocolSnapshot: mismatchedSnapshot,
+      currentParameters: normalizeCardanoProtocolParameterSnapshot(mismatchedSnapshot),
+      recoveryConfig
+    }),
+    /protocol snapshot tip does not match the current stable Preprod tip/
+  );
+});
+
+test('Cardano initialize pre-submit gate fails closed if seed is spent or validity has expired', () => {
+  const input = fixture();
+  assert.throws(
+    () => createCardanoPreprodInitializePreSubmitEvidence({
+      ...input,
       recoveryConfig,
-      currentTip,
       currentQueriedUtxo: [input.currentQueriedUtxo[1]]
     }),
     /exactly the bound seed and collateral|seed UTxO/
   );
 
+  const expiredTip = {
+    hash: 'cc'.repeat(32),
+    slot: input.unsignedCandidate.validity.upperSlot + 1
+  };
+  const expiredSnapshot = currentProtocolSnapshotAt(expiredTip);
   assert.throws(
     () => createCardanoPreprodInitializePreSubmitEvidence({
       ...input,
-      currentParameters: parameters,
+      currentProtocolSnapshot: expiredSnapshot,
+      currentParameters: normalizeCardanoProtocolParameterSnapshot(expiredSnapshot),
       recoveryConfig,
-      currentTip: {
-        hash: 'cc'.repeat(32),
-        slot: input.unsignedCandidate.validity.upperSlot + 1
-      }
+      currentTip: expiredTip
     }),
     /expired/
   );
@@ -274,19 +305,13 @@ test('Cardano initialize pre-submit gate fails closed if seed is spent or validi
 
 test('Cardano initialize pre-submit gate fails closed on current input datum or reference-script shape drift', () => {
   const input = fixture();
-  const currentTip = {
-    hash: 'de'.repeat(32),
-    slot: input.unsignedCandidate.validity.lowerSlot + 60
-  };
 
   const datumDrift = structuredClone(input.currentQueriedUtxo);
   datumDrift[0].datumHash = 'ab'.repeat(32);
   assert.throws(
     () => createCardanoPreprodInitializePreSubmitEvidence({
       ...input,
-      currentParameters: parameters,
       recoveryConfig,
-      currentTip,
       currentQueriedUtxo: datumDrift
     }),
     /datum presence differs/
@@ -297,9 +322,7 @@ test('Cardano initialize pre-submit gate fails closed on current input datum or 
   assert.throws(
     () => createCardanoPreprodInitializePreSubmitEvidence({
       ...input,
-      currentParameters: parameters,
       recoveryConfig,
-      currentTip,
       currentQueriedUtxo: scriptDrift
     }),
     /reference-script presence differs/
@@ -313,12 +336,7 @@ test('Cardano initialize pre-submit gate fails closed on current input value dri
   assert.throws(
     () => createCardanoPreprodInitializePreSubmitEvidence({
       ...input,
-      currentParameters: parameters,
       recoveryConfig,
-      currentTip: {
-        hash: 'dd'.repeat(32),
-        slot: input.unsignedCandidate.validity.lowerSlot + 60
-      },
       currentQueriedUtxo: drifted
     }),
     /value differs|lovelace differs/

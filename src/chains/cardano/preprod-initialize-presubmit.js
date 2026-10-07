@@ -85,6 +85,17 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
     throw new Error('Pre-submit gate requires the current Cardano maxValueSize protocol parameter.');
   }
 
+  const tip = normalizedTip(currentTip);
+  if (currentProtocolSnapshot?.schemaVersion !== 2) {
+    throw new Error('Pre-submit gate requires a current live Cardano protocol snapshot schemaVersion 2.');
+  }
+  const snapshotTipHash = String(currentProtocolSnapshot?.tip?.blockHash ?? '').toLowerCase();
+  const snapshotTipSlot = Number(currentProtocolSnapshot?.tip?.slot);
+  const snapshotSourceBlockHash = String(currentProtocolSnapshot?.parameters?.sourceBlockHash ?? '').toLowerCase();
+  if (snapshotTipHash !== tip.hash || snapshotTipSlot !== tip.slot || snapshotSourceBlockHash !== tip.hash) {
+    throw new Error('Current protocol snapshot tip does not match the current stable Preprod tip.');
+  }
+
   const normalizedSnapshotParameters = normalizeCardanoProtocolParameterSnapshot(currentProtocolSnapshot);
   const currentProtocolParametersSha256 = hashCardanoEvidence(currentParameters);
   if (hashCardanoEvidence(normalizedSnapshotParameters) !== currentProtocolParametersSha256) {
@@ -125,7 +136,6 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
     throw new Error('Signed initialize outputs are not proven within the current maxValueSize limit.');
   }
 
-  const tip = normalizedTip(currentTip);
   if (tip.slot < unsignedCandidate.validity.lowerSlot) {
     throw new Error('Current Preprod tip is before the initialize validity interval.');
   }
@@ -186,6 +196,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       walletWitnessEvidenceVerified: true,
       exactSignedBodyPreserved: true,
       currentProtocolSnapshotBoundAndReproducible: true,
+      currentProtocolSnapshotStableTipBound: true,
       currentProtocolParametersBoundByDigest: true,
       signedTransactionSizeWithinCurrentMaximum: signedTransactionBytes <= currentParameters.maxTxSize,
       signedExecutionUnitsWithinCurrentMaximum: true,
@@ -208,7 +219,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       supportClaimAuthorized: false
     }),
     nextGate: 'independent-complete-phase-one-ledger-validation-and-explicit-human-submission-authorization',
-    authorityBoundary: 'This gate proves the signed initialize body/witness remains bound to two still-unspent real Preprod inputs under a persisted, digest-bound and reproducible current protocol-parameter snapshot, verifies the actual signed transaction size/execution-unit fee floor and each output value against current maxValueSize, and requires an unexpired validity interval. It intentionally does not claim complete node phase-1 validation and does not authorize submission.'
+    authorityBoundary: 'This gate proves the signed initialize body/witness remains bound to two still-unspent real Preprod inputs under a persisted, digest-bound and reproducible current protocol-parameter snapshot bound to the same stable tip as the freshness UTxO evidence, verifies the actual signed transaction size/execution-unit fee floor and each output value against current maxValueSize, and requires an unexpired validity interval. It intentionally does not claim complete node phase-1 validation and does not authorize submission.'
   });
   return Object.freeze({ ...core, preSubmitSha256: hashCardanoEvidence(core) });
 }
