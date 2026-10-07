@@ -183,6 +183,7 @@ function validateRecoveryConfig(config, ownerKeyHash) {
   const normalizedContacts = contacts.map((entry, index) => keyHash(entry, `recoveryConfig.contactKeyHashes[${index}]`));
   if (new Set(normalizedContacts).size !== normalizedContacts.length) throw new Error('Recovery contacts must be unique.');
   if (normalizedContacts.includes(ownerKeyHash)) throw new Error('Owner cannot also be a trusted contact.');
+  if (normalizedContacts.includes(rescueKeyHash)) throw new Error('Rescue destination cannot also be a trusted contact.');
   const threshold = Number(value.threshold);
   if (!Number.isInteger(threshold) || threshold < 1 || threshold > normalizedContacts.length) throw new Error('Recovery threshold must be reachable.');
   const inactivityMs = Number(value.inactivityMs);
