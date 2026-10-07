@@ -5,7 +5,9 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import {
   createCardanoOgmiosHttpClient,
+  fetchCardanoBlockfrostPreprodAddressUtxos,
   fetchCardanoBlockfrostPreprodProtocolParameters,
+  selectCardanoPreprodInitializeUtxos,
   normalizeCardanoOgmiosWebSocketUrl,
   parseCardanoOgmiosTipResponse
 } from '../src/chains/cardano/preprod-live-capture.js';
@@ -237,6 +239,14 @@ try {
   await fetchCardanoBlockfrostPreprodProtocolParameters({ projectId:blockfrostProjectId });
   output.write(`Provider preflight passed at Ogmios Preprod tip slot ${tip.slot}.\n`);
 
+  output.write('Checking the owner wallet for two distinct plain ADA-only Preprod UTxOs...\n');
+  const discoveredUtxos = await fetchCardanoBlockfrostPreprodAddressUtxos({
+    projectId:blockfrostProjectId,
+    address:walletAddress
+  });
+  const selectedUtxos = selectCardanoPreprodInitializeUtxos(discoveredUtxos);
+  output.write(`Wallet UTxO preflight passed: ${discoveredUtxos.length} total UTxO(s), with a valid seed/funding + collateral pair selected.\n`);
+
   rl.close();
 
   await mkdir(sessionRoot, { recursive:false });
@@ -250,6 +260,10 @@ try {
     captureOutput,
     stableTipRetries:retries,
     providerPreflightComplete:true,
+    walletUtxoPreflightComplete:true,
+    discoveredWalletUtxoCount:discoveredUtxos.length,
+    selectedSeedReference:selectedUtxos.seed,
+    selectedCollateralReference:selectedUtxos.collateral,
     providerSecretsPersisted:false,
     walletSigningAuthorized:false,
     transactionSubmissionAuthorized:false,
