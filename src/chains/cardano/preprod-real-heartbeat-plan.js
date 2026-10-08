@@ -97,12 +97,6 @@ export function createCardanoPreprodRealHeartbeatPlan({
   if (String(observation.stateObservation?.inlineDatumCborHex ?? '').length < 2) {
     throw new Error('Heartbeat predecessor state observation is missing its inline datum.');
   }
-  if (!Number.isSafeInteger(observation.stateObservation?.lastHeartbeatMs) || observation.stateObservation.lastHeartbeatMs < 0) {
-    throw new Error('Heartbeat predecessor state observation is missing a valid lastHeartbeatMs.');
-  }
-  if (!Array.isArray(observation.stateObservation?.approvalKeyHashes) || observation.stateObservation.approvalKeyHashes.length !== 0) {
-    throw new Error('The first real heartbeat predecessor must be the initialize state with no approvals.');
-  }
   if (!HEX_32.test(String(observation.validatorIdentitySha256 ?? ''))) {
     throw new Error('Heartbeat predecessor state observation is missing its validator identity digest.');
   }
@@ -132,8 +126,8 @@ export function createCardanoPreprodRealHeartbeatPlan({
       beaconAssetNameHex:observation.stateObservation.beaconAssetNameHex,
       beaconQuantity:observation.stateObservation.beaconQuantity,
       predecessorInlineDatumCborHex:observation.stateObservation.inlineDatumCborHex,
-      predecessorLastHeartbeatMs:observation.stateObservation.lastHeartbeatMs,
-      predecessorApprovalKeyHashes:observation.stateObservation.approvalKeyHashes
+      predecessorLastHeartbeatMs:Number.isSafeInteger(observation.stateObservation.lastHeartbeatMs) ? observation.stateObservation.lastHeartbeatMs : null,
+      predecessorApprovalKeyHashes:Array.isArray(observation.stateObservation.approvalKeyHashes) ? Object.freeze([...observation.stateObservation.approvalKeyHashes]) : null
     }),
     externalFunding:Object.freeze({
       fundingLovelace:funding.lovelace,
