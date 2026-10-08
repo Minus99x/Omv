@@ -109,9 +109,12 @@ export function createCardanoPreprodRealHeartbeatPlan({
     predecessorStateObservationSha256:observation.observationSha256,
     predecessorTransactionBodyHash:observation.transactionBodyHash,
     predecessorObservedTip:observation.observedTip,
+    validatorIdentitySha256:observation.validatorIdentitySha256,
     stateInput:stateReference,
     ownerFundingInput:funding.reference,
+    ownerFundingAddress:funding.address,
     collateralInput:collateral.reference,
+    collateralAddress:collateral.address,
     ownerPaymentKeyHash:owner,
     protectedState:Object.freeze({
       address:observation.stateObservation.address,
@@ -119,7 +122,9 @@ export function createCardanoPreprodRealHeartbeatPlan({
       beaconPolicyId:observation.stateObservation.beaconPolicyId,
       beaconAssetNameHex:observation.stateObservation.beaconAssetNameHex,
       beaconQuantity:observation.stateObservation.beaconQuantity,
-      predecessorInlineDatumCborHex:observation.stateObservation.inlineDatumCborHex
+      predecessorInlineDatumCborHex:observation.stateObservation.inlineDatumCborHex,
+      predecessorLastHeartbeatMs:observation.stateObservation.lastHeartbeatMs,
+      predecessorApprovalKeyHashes:observation.stateObservation.approvalKeyHashes
     }),
     externalFunding:Object.freeze({
       fundingLovelace:funding.lovelace,
