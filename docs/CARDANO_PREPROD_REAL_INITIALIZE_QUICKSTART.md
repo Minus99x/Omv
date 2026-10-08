@@ -156,24 +156,25 @@ Do not proceed merely because the real initialize capture succeeded. The capture
 After the human operator has explicitly authorized **Preprod signing only**, use the local Lace signing gate:
 
 ```powershell
-npm.cmd run cardano:preprod:initialize:lace-sign:guided -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --authorize-signing
+npm.cmd run cardano:preprod:initialize:lace-sign:guided -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --expected-body-hash "<APPROVED-64-HEX-BODY-HASH>" --authorize-signing
 ```
 
 The signing gate:
 
 1. refuses to run without the explicit `--authorize-signing` flag;
-2. refuses stale/near-expiry frozen candidates;
-3. binds only to `127.0.0.1` with a random local session token;
-4. opens a local browser page for the Lace CIP-30 connector;
-5. requires the connected Lace wallet to be on Cardano Preprod/testnet network id 0;
-6. verifies that the selected Lace account controls the exact frozen owner payment key;
-7. displays the frozen transaction body hash and fee before signing;
-8. invokes the wallet's `signTx` path only after a human click;
-9. rejects wrong-key signatures, extra VKey witnesses and wallet-injected non-VKey witness material;
-10. merges only the verified owner VKey witness into the unchanged frozen transaction body;
-11. writes append-only witness/signing artifacts;
-12. immediately runs the existing offline wallet-witness verifier;
-13. hard-stops with transaction submission still unauthorized.
+2. requires `--expected-body-hash` and rejects any capture whose frozen transaction body hash differs from the hash explicitly approved for signing;
+3. refuses stale/near-expiry frozen candidates;
+4. binds only to `127.0.0.1` with a random local session token;
+5. opens a local browser page for the Lace CIP-30 connector;
+6. requires the connected Lace wallet to be on Cardano Preprod/testnet network id 0;
+7. verifies that the selected Lace account controls the exact frozen owner payment key;
+8. displays the frozen transaction body hash and fee before signing;
+9. invokes the wallet's `signTx` path only after a human click;
+10. rejects wrong-key signatures, extra VKey witnesses and wallet-injected non-VKey witness material;
+11. merges only the verified owner VKey witness into the unchanged frozen transaction body;
+12. writes append-only witness/signing artifacts;
+13. immediately runs the existing offline wallet-witness verifier;
+14. hard-stops with transaction submission still unauthorized.
 
 The local signing bridge does not contain a wallet transaction-submission call.
 
