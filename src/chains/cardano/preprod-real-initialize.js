@@ -1,6 +1,7 @@
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from './evidence-binding.js';
+import { verifyCardanoPreprodAppliedValidatorIdentity } from './live-validator-identity.js';
 import {
   CARDANO_PREPROD_EVALUATION_VALIDITY_WINDOW_SLOTS,
   CARDANO_PREPROD_NETWORK_ID,
@@ -121,9 +122,9 @@ function validateIdentity(identity) {
       value.networkId !== CARDANO_PREPROD_NETWORK_ID) {
     throw new Error('A Cardano Preprod applied validator identity is required.');
   }
-  if (!HEX_32.test(String(value.identitySha256 ?? '')) ||
-      hashCardanoEvidence(withoutDigest(value, 'identitySha256')) !== String(value.identitySha256).toLowerCase()) {
-    throw new Error('Applied validator identity digest is invalid.');
+  const identityVerification = verifyCardanoPreprodAppliedValidatorIdentity(value);
+  if (!identityVerification.valid) {
+    throw new Error(`Applied validator identity verification failed: ${identityVerification.errors.join('; ')}`);
   }
   const policyId = String(value.stateBeacon?.policyId ?? '').toLowerCase();
   const beaconCode = String(value.stateBeacon?.compiledCode ?? '');
