@@ -17,7 +17,6 @@ import { createCardanoPlutusV3CostModels } from './witness-set.js';
 import { createCardanoOgmiosEvaluationRequest } from './ogmios-evaluation.js';
 
 const HEX_28 = /^[0-9a-f]{56}$/i;
-const HEX_32 = /^[0-9a-f]{64}$/i;
 
 function hex(value) {
   return Buffer.from(value).toString('hex');
