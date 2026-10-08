@@ -232,6 +232,33 @@ test('Cardano real initialize candidate verifier reproduces exact evidence and r
   assert.ok(rejected.errors.some(error => /digest mismatch|does not reproduce/i.test(error)));
 });
 
+test('Cardano real initialize candidate accepts the Aiken provenance wrapper emitted by live derivation', () => {
+  const baseIdentity = identity();
+  const appliedIdentity = Object.freeze({
+    ...baseIdentity,
+    provenance: Object.freeze({
+      aikenVersion: 'aiken v1.1.24+bacbeb3',
+      sourceBlueprint: 'validators/cardano/plutus.json',
+      beaconAppliedBlueprintSha256: 'aa'.repeat(32),
+      recoveryAppliedBlueprintSha256: 'bb'.repeat(32)
+    })
+  });
+  const utxoBindingEvidence = binding(appliedIdentity);
+
+  const candidate = buildCardanoPreprodRealInitializeCandidate({
+    appliedValidatorIdentity: appliedIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig,
+    evaluationMode: true
+  });
+
+  assert.equal(candidate.validatorIdentitySha256, baseIdentity.identitySha256);
+  assert.equal(candidate.liveActions.walletSigningAuthorized, false);
+  assert.equal(candidate.liveActions.transactionSubmissionAuthorized, false);
+  assert.match(candidate.candidateSha256, /^[0-9a-f]{64}$/);
+});
+
 test('Cardano real initialize candidate fails closed on validator/binding identity mismatch', () => {
   const appliedIdentity = identity();
   const utxoBindingEvidence = structuredClone(binding(appliedIdentity));
