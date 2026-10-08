@@ -12,7 +12,7 @@ test('Cardano operator handoff reports the sealed checkpoint, fastest infrastruc
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
   assert.equal(report.ok, true);
-  assert.equal(report.schema, 'omegavault.cardano.preprod-operator-handoff.v2');
+  assert.equal(report.schema, 'omegavault.cardano.preprod-operator-handoff.v3');
   assert.equal(report.sealedCheckpoint.ref, '0.6.59-dev');
   assert.equal(report.sealedCheckpoint.commit, '1353fe9fd94fcbdd787fd594c85937e934b60571');
   assert.equal(report.network.name, 'Cardano Preprod');
@@ -20,9 +20,14 @@ test('Cardano operator handoff reports the sealed checkpoint, fastest infrastruc
   assert.equal(report.fastestInfrastructurePath.localCardanoNodeRequired, false);
   assert.equal(report.fastestInfrastructurePath.fullChainSyncRequired, false);
   assert.equal(report.fastestInfrastructurePath.independentProtocolParameterSourcesRequired, 2);
-  assert.equal(report.currentMilestone.name, 'first-real-preprod-initialize-capture');
+  assert.equal(report.currentMilestone.name, 'fresh-real-preprod-initialize-capture-then-explicit-lace-signing');
   assert.match(report.currentMilestone.primaryCommand, /real-initialize:guided/);
   assert.equal(report.currentMilestone.requiredPlainAdaOnlyUtxos, 2);
+  assert.equal(report.currentMilestone.shortValidityWindowRequiresFreshCaptureBeforeSigning, true);
+  assert.equal(report.currentMilestone.walletSigningRequiresSeparateHumanAuthorization, true);
+  assert.equal(report.currentMilestone.transactionSubmissionRequiresSeparateHumanAuthorization, true);
+  assert.match(report.currentMilestone.signingCommandTemplate, /lace-sign:guided/);
+  assert.match(report.currentMilestone.reconnectDiagnosticCommand, /ogmios:diagnose/);
   assert.equal(report.faucet.requiredForCurrentSynchronizedEvaluationOnlyGate, false);
   assert.equal(report.faucet.requiredForCurrentRealInitializeGate, true);
   assert.equal(report.faucet.preprodTestAdaRequired, true);
@@ -32,7 +37,16 @@ test('Cardano operator handoff reports the sealed checkpoint, fastest infrastruc
   assert.equal(report.operatorBoundary.supportClaimAuthorized, false);
   assert.equal(report.currentEvidenceScope.priorSyntheticCampaignComplete, true);
   assert.equal(report.currentEvidenceScope.realInitializeEndsUnsigned, true);
+  assert.equal(report.currentEvidenceScope.laceCip30SigningGateImplemented, true);
+  assert.equal(report.currentEvidenceScope.walletWitnessVerifierImplemented, true);
+  assert.equal(report.currentEvidenceScope.preSubmitFreshnessGateImplemented, true);
+  assert.equal(report.currentEvidenceScope.completeSignedCurrentLedgerPhaseOneValidationImplemented, false);
+  assert.equal(report.currentEvidenceScope.submissionMustRemainUnauthorizedAfterPreSubmitFreshness, true);
   assert.equal(report.currentEvidenceScope.fullPhaseOneValidationRemainsSeparateLaterGate, true);
+  assert.match(report.nextCommands.diagnoseOgmiosReconnect, /ogmios:diagnose/);
+  assert.match(report.nextCommands.guidedLaceSign, /lace-sign:guided/);
+  assert.match(report.nextCommands.verifyWalletWitness, /witness:verify/);
+  assert.match(report.nextCommands.preSubmitFreshness, /initialize:presubmit/);
   assert.equal(report.networkRequestsPerformed, false);
 });
 
