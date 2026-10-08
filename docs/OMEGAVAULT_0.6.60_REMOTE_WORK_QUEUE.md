@@ -27,7 +27,7 @@ This checklist separates work that can be completed remotely in the repository f
 ## Next remote engineering block
 
 - [x] Define the real Cardano Preprod lifecycle roadmap from initialize through immutable rescue.
-- [ ] Build post-initialize observation/inclusion evidence that binds the exact signed transaction to the expected recovery-vault state UTxO without claiming finality.
+- [x] Build post-initialize observation/inclusion evidence that binds the exact signed transaction to the expected recovery-vault state UTxO without claiming finality.
 - [ ] Build the real heartbeat construction/evaluation scaffold from an observed active state UTxO.
 - [ ] Build the real contact-approval construction scaffold with independent-contact authority checks.
 - [ ] Build the real execute/rescue construction scaffold with immutable-destination and full-value payout checks.
