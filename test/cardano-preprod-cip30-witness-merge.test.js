@@ -116,7 +116,11 @@ test('CIP-30 owner witness merge rejects injected non-VKey witness material', ()
   vkeys.add(Cardano.make_vkey_witness(bodyHash, ownerPrivateKey));
   const witnesses = Cardano.TransactionWitnessSet.new();
   witnesses.set_vkeys(vkeys);
-  witnesses.set_redeemers(Cardano.Redeemers.new());
+  const nativeScripts = Cardano.NativeScripts.new();
+  nativeScripts.add(Cardano.NativeScript.new_script_pubkey(
+    Cardano.ScriptPubkey.new(Cardano.Ed25519KeyHash.from_hex('ab'.repeat(28)))
+  ));
+  witnesses.set_native_scripts(nativeScripts);
 
   assert.throws(
     () => mergeCardanoCip30OwnerWitness({
