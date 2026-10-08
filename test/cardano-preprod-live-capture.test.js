@@ -140,6 +140,65 @@ test('Ogmios WebSocket client reuses one authenticated connection across JSON-RP
   client.close();
 });
 
+test('Ogmios WebSocket client closeAndWait releases an authenticated socket before a later reconnect', async () => {
+  let connections = 0;
+  let closes = 0;
+  class FakeWebSocket {
+    constructor() {
+      this.listeners = new Map();
+      connections += 1;
+      queueMicrotask(() => this.emit('open', {}));
+    }
+    addEventListener(name, fn) {
+      if (!this.listeners.has(name)) this.listeners.set(name, []);
+      this.listeners.get(name).push(fn);
+    }
+    on(name, fn) { this.addEventListener(name, fn); }
+    once(name, fn) {
+      const wrapped = event => {
+        const list = this.listeners.get(name) ?? [];
+        this.listeners.set(name, list.filter(item => item !== wrapped));
+        fn(event);
+      };
+      this.addEventListener(name, wrapped);
+    }
+    emit(name, event) {
+      for (const fn of [...(this.listeners.get(name) ?? [])]) fn(event);
+    }
+    send(payload) {
+      const request = JSON.parse(payload);
+      queueMicrotask(() => this.emit('message', {
+        data: JSON.stringify({ jsonrpc: '2.0', id: request.id, result: { tip: { id: 'ab'.repeat(32), slot: 123 } } })
+      }));
+    }
+    close() {
+      closes += 1;
+      queueMicrotask(() => this.emit('close', { code: 1000 }));
+    }
+  }
+
+  const first = createCardanoOgmiosHttpClient({
+    url: 'wss://preprod.example.invalid',
+    apiKey: 'secret',
+    apiKeyHeader: 'dmtr-api-key',
+    WebSocketImpl: FakeWebSocket
+  });
+  await first.rpc('queryNetwork/tip', undefined, 'first');
+  await first.closeAndWait();
+  assert.equal(closes, 1);
+
+  const second = createCardanoOgmiosHttpClient({
+    url: 'wss://preprod.example.invalid',
+    apiKey: 'secret',
+    apiKeyHeader: 'dmtr-api-key',
+    WebSocketImpl: FakeWebSocket
+  });
+  await second.rpc('queryNetwork/tip', undefined, 'second');
+  assert.equal(connections, 2);
+  await second.closeAndWait();
+  assert.equal(closes, 2);
+});
+
 test('Ogmios WebSocket client sends configured Demeter authentication header', async () => {
   let constructorArgs = null;
   class FakeWebSocket {
