@@ -101,7 +101,7 @@ const tools = Object.freeze({
 });
 
 const report = Object.freeze({
-  schema: 'omegavault.cardano.preprod-operator-handoff.v2',
+  schema: 'omegavault.cardano.preprod-operator-handoff.v3',
   ok: true,
   projectVersion: packageJson.version,
   sealedCheckpoint: SEALED_CHECKPOINT,
@@ -129,12 +129,18 @@ const report = Object.freeze({
     ogmiosPort: 1337
   }),
   currentMilestone: Object.freeze({
-    name: 'first-real-preprod-initialize-capture',
+    name: 'fresh-real-preprod-initialize-capture-then-explicit-lace-signing',
     primaryCommand: 'npm.cmd run cardano:preprod:real-initialize:guided',
+    reconnectDiagnosticCommand: 'npm.cmd run cardano:preprod:ogmios:diagnose',
+    signingCommandTemplate: 'npm.cmd run cardano:preprod:initialize:lace-sign:guided -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --authorize-signing',
+    witnessVerifyCommandTemplate: 'npm.cmd run cardano:preprod:initialize:witness:verify -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --signed-tx "<SIGNED-TRANSACTION-CBOR>" --output "<NEW-WITNESS-EVIDENCE.JSON>"',
+    preSubmitCommandTemplate: 'npm.cmd run cardano:preprod:initialize:presubmit -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --witness-evidence "<WALLET-WITNESS-EVIDENCE.JSON>" --output "<NEW-PRESUBMIT-EVIDENCE.JSON>"',
     actualWalletUtxosRequired: true,
     requiredPlainAdaOnlyUtxos: 2,
-    networkWritesPerformedByMilestone: false,
-    walletSigningAuthorized: false,
+    shortValidityWindowRequiresFreshCaptureBeforeSigning: true,
+    networkWritesPerformedByCapture: false,
+    walletSigningRequiresSeparateHumanAuthorization: true,
+    transactionSubmissionRequiresSeparateHumanAuthorization: true,
     transactionSubmissionAuthorized: false
   }),
   faucet: Object.freeze({
@@ -159,16 +165,25 @@ const report = Object.freeze({
     supportClaimAuthorized: false
   }),
   currentEvidenceScope: Object.freeze({
-    campaignPurpose: 'first real Preprod initialize read/evaluation capture from actual wallet UTxOs',
+    campaignPurpose: 'real Preprod initialize read/evaluation from actual wallet UTxOs followed by separately authorized owner-wallet witness verification',
     priorSyntheticCampaignComplete: true,
     fixtureCandidatesAreNotPublicNetworkRecoveryProof: true,
     realInitializeEndsUnsigned: true,
+    laceCip30SigningGateImplemented: true,
+    walletWitnessVerifierImplemented: true,
+    preSubmitFreshnessGateImplemented: true,
+    completeSignedCurrentLedgerPhaseOneValidationImplemented: false,
     fullPhaseOneValidationRemainsSeparateLaterGate: true,
-    signingAndSubmissionRemainSeparateLaterGates: true
+    signingAndSubmissionRemainSeparateLaterGates: true,
+    submissionMustRemainUnauthorizedAfterPreSubmitFreshness: true
   }),
   nextCommands: Object.freeze({
+    diagnoseOgmiosReconnect: 'npm.cmd run cardano:preprod:ogmios:diagnose',
     guidedRealInitialize: 'npm.cmd run cardano:preprod:real-initialize:guided',
     directRealInitialize: 'npm.cmd run cardano:preprod:real-initialize:capture -- --wallet-address "<OWNER-ADDR_TEST1>" --recovery-config "<RECOVERY-CONFIG.JSON>" --output "<NEW-REAL-INITIALIZE-CAPTURE-DIR>"',
+    guidedLaceSign: 'npm.cmd run cardano:preprod:initialize:lace-sign:guided -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --authorize-signing',
+    verifyWalletWitness: 'npm.cmd run cardano:preprod:initialize:witness:verify -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --signed-tx "<SIGNED-TRANSACTION-CBOR>" --output "<NEW-WITNESS-EVIDENCE.JSON>"',
+    preSubmitFreshness: 'npm.cmd run cardano:preprod:initialize:presubmit -- --capture "<REAL-INITIALIZE-CAPTURE-DIR>" --witness-evidence "<WALLET-WITNESS-EVIDENCE.JSON>" --output "<NEW-PRESUBMIT-EVIDENCE.JSON>"',
     inspectHandoff: 'npm.cmd run cardano:preprod:operator:handoff',
     legacyEvaluationCampaignLaunch: 'npm.cmd run cardano:preprod:campaign:launch -- --bundle-dir "<sealed-0.6.59-bundle-dir>" --campaign "<campaign-dir>"',
     legacyVerifyCampaign: 'npm.cmd run cardano:preprod:campaign:verify -- --campaign "<campaign-dir>"'
