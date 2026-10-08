@@ -18,9 +18,10 @@ This checklist separates work that can be completed remotely in the repository f
 - [x] Add a regression test covering authenticated Ogmios socket release followed by a later reconnect.
 - [x] Add a read-only two-connection Ogmios reconnect diagnostic that never prints credentials and never signs/submits.
 - [x] Wire the reconnect diagnostic into package scripts/checks and document the HTTP 401 diagnostic path.
-- [ ] Run a repository-side audit of the next signed/current-ledger phase-one gate and prepare any purely offline hardening/tests that do not require a live wallet or provider.
+- [x] Run a repository-side audit of the next signed/current-ledger phase-one gate and document the exact covered/uncovered authority boundary.
+- [x] Harden unsigned/wallet-witness validation so the Cardano transaction validity flag must remain true.
 - [ ] Review Cardano evidence/documentation for stale wording after the new signing gate and reconnect fix.
-- [ ] Prepare the exact post-signing operator handoff/checklist so the workstation steps remain one-command-at-a-time.
+- [x] Prepare the exact post-signing operator handoff/checklist so the workstation steps remain one-command-at-a-time.
 
 ## Workstation-required gates
 
