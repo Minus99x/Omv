@@ -5,6 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
+import { CARDANO_PREPROD_SLOT_ANCHOR, CARDANO_PREPROD_TIME_ANCHOR_MS } from '../src/chains/cardano/transaction-body.js';
 import {
   mergeCardanoCip30OwnerWitness,
   verifyCardanoCip30OwnerContext
@@ -85,7 +86,7 @@ const post=async(path,body)=>{
     '<b>Body hash:</b> <code>'+state.bodyHash+'</code><br>'+
     '<b>Fee:</b> '+state.feeLovelace+' lovelace<br>'+
     '<b>Protected state:</b> '+state.stateLovelace+' lovelace<br>'+
-    '<b>Submission authorized:</b> NO';
+    '<b>Validity upper slot:</b> '+state.validityUpperSlot+'<br>'+\n    '<b>Submission authorized:</b> NO';
 })();
 document.getElementById('connect').onclick=async()=>{
   try{
@@ -183,6 +184,12 @@ if (!captureArg) {
       throw new Error('Frozen candidate/preflight is not at the unsigned wallet-signing gate.');
     }
 
+    const currentApproximateSlot = CARDANO_PREPROD_SLOT_ANCHOR + Math.floor((Date.now() - CARDANO_PREPROD_TIME_ANCHOR_MS) / 1000);
+    const upperSlot = Number(unsignedCandidate?.validity?.upperSlot);
+    if (!Number.isSafeInteger(upperSlot) || currentApproximateSlot + 120 > upperSlot) {
+      throw new Error('Frozen initialize validity window is expired or within two minutes of expiry. Rerun the read/evaluation capture before requesting a wallet signature.');
+    }
+
     const outputDir = resolve(outputArg ?? join(dirname(capture), 'wallet-signing'));
     if (await exists(outputDir)) {
       throw new Error('Signing output directory already exists; refusing to overwrite append-only signing evidence.');
@@ -196,6 +203,8 @@ if (!captureArg) {
       stateLovelace:unsignedCandidate.recoveryConfiguration.stateLovelace,
       expectedOwnerPaymentKeyHash:unsignedCandidate.ownerPaymentKeyHash,
       unsignedTransactionCborHex:unsignedCandidate.transaction.cborHex,
+      validityUpperSlot:upperSlot,
+      approximateSlotAtLaunch:currentApproximateSlot,
       submissionAuthorized:false
     });
     let walletContextVerified = false;
