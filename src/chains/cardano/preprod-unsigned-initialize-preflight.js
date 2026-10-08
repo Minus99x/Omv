@@ -86,6 +86,7 @@ export function createCardanoPreprodUnsignedInitializePreflight({
 
   const tx = Cardano.Transaction.from_hex(candidate.transaction.cborHex);
   const body = tx.body();
+  if (tx.is_valid() !== true) throw new Error('Unsigned initialize candidate must carry a true transaction validity flag.');
   if (tx.witness_set().vkeys() != null) throw new Error('Unsigned initialize preflight must not contain wallet key witnesses.');
   if (body.inputs().len() !== 1) throw new Error('Unsigned initialize preflight requires exactly one seed input.');
   if (body.collateral()?.len() !== 1) throw new Error('Unsigned initialize preflight requires exactly one collateral input.');
