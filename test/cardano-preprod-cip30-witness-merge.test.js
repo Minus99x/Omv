@@ -47,7 +47,7 @@ function walletWitnessSetHex(privateKey = ownerPrivateKey) {
   vkeys.add(Cardano.make_vkey_witness(bodyHash, privateKey));
   const witnesses = Cardano.TransactionWitnessSet.new();
   witnesses.set_vkeys(vkeys);
-  return witnesses.to_hex();
+  return Buffer.from(witnesses.to_bytes()).toString('hex');
 }
 
 test('CIP-30 owner context requires Preprod and the frozen owner payment key', () => {
@@ -121,7 +121,7 @@ test('CIP-30 owner witness merge rejects injected non-VKey witness material', ()
   assert.throws(
     () => mergeCardanoCip30OwnerWitness({
       unsignedTransactionCborHex: unsignedTransactionHex(),
-      walletWitnessSetCborHex: witnesses.to_hex(),
+      walletWitnessSetCborHex: Buffer.from(witnesses.to_bytes()).toString('hex'),
       expectedOwnerPaymentKeyHash: ownerKeyHash
     }),
     /unexpected non-VKey/
