@@ -307,13 +307,51 @@ export function createCardanoOgmiosHttpClient({
     rejectPending(new Error('Ogmios client closed.'));
   }
 
+  async function closeAndWait(timeoutMs = 5000) {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30000) {
+      throw new RangeError('closeAndWait timeoutMs must be an integer from 1 through 30000.');
+    }
+    const closingSocket = socket;
+    if (!closingSocket) {
+      close();
+      return;
+    }
+
+    await new Promise(resolve => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(() => {
+        try { closingSocket.terminate?.(); } catch {}
+        finish();
+      }, timeoutMs);
+
+      try {
+        if (typeof closingSocket.once === 'function') closingSocket.once('close', finish);
+        else closingSocket.addEventListener?.('close', finish, { once:true });
+      } catch {}
+
+      try { closingSocket.close(); } catch { finish(); }
+    });
+
+    if (socket === closingSocket) socket = null;
+    socketOpen = false;
+    socketOpening = null;
+    rejectPending(new Error('Ogmios client closed.'));
+  }
+
   return Object.freeze({
     async rpc(method, params = undefined, requestId = undefined) {
       return isWebSocket
         ? rpcWebSocket(method, params, requestId)
         : rpcHttp(method, params, requestId);
     },
-    close
+    close,
+    closeAndWait
   });
 }
 
