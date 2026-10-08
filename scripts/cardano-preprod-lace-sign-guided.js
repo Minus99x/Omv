@@ -86,7 +86,8 @@ const post=async(path,body)=>{
     '<b>Body hash:</b> <code>'+state.bodyHash+'</code><br>'+
     '<b>Fee:</b> '+state.feeLovelace+' lovelace<br>'+
     '<b>Protected state:</b> '+state.stateLovelace+' lovelace<br>'+
-    '<b>Validity upper slot:</b> '+state.validityUpperSlot+'<br>'+\n    '<b>Submission authorized:</b> NO';
+    '<b>Validity upper slot:</b> '+state.validityUpperSlot+'<br>'+
+    '<b>Submission authorized:</b> NO';
 })();
 document.getElementById('connect').onclick=async()=>{
   try{
