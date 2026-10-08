@@ -181,6 +181,22 @@ test('Cardano initialize wallet witness evidence preserves exact signed bytes wh
   assert.equal(evidence.liveActions.transactionSubmissionAuthorized, false);
 });
 
+
+test('Cardano initialize wallet witness verifier rejects a false transaction validity flag', () => {
+  const input = fixture();
+  const signedTx = Cardano.Transaction.from_hex(signCandidate(input.unsignedCandidate));
+  signedTx.set_is_valid(false);
+  assert.throws(
+    () => createCardanoPreprodInitializeWalletWitnessEvidence({
+      signedTransactionCborHex: signedTx.to_hex(),
+      ...input,
+      parameters,
+      recoveryConfig
+    }),
+    /must carry a true transaction validity flag/
+  );
+});
+
 test('Cardano initialize wallet witness verifier rejects a missing owner VKey witness', () => {
   const input = fixture();
   assert.throws(
