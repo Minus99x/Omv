@@ -204,6 +204,8 @@ export function createCardanoPreprodInitializeStateObservationEvidence({
       beaconAssetNameHex:assetNameHex,
       beaconQuantity:'1',
       inlineDatumCborHex:expectedDatumHex,
+      lastHeartbeatMs:cardanoPreprodSlotToUnixTimeMs(lowerSlot),
+      approvalKeyHashes:Object.freeze([]),
       referenceScriptPresent:false
     }),
     checks:Object.freeze({
