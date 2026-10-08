@@ -62,6 +62,9 @@ export function createCardanoPreprodInitializeWalletWitnessEvidence({
     throw new Error('Wallet-signed transaction CBOR must round-trip canonically without byte substitution.');
   }
 
+  if (unsignedTx.is_valid() !== true) throw new Error('Frozen unsigned initialize candidate must carry a true transaction validity flag.');
+  if (signedTx.is_valid() !== true) throw new Error('Wallet-signed initialize transaction must carry a true transaction validity flag.');
+
   const unsignedBodyHex = unsignedTx.body().to_hex();
   const signedBodyHex = signedTx.body().to_hex();
   if (signedBodyHex !== unsignedBodyHex) {
