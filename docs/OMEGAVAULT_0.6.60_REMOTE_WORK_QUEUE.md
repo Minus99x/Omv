@@ -23,6 +23,17 @@ This checklist separates work that can be completed remotely in the repository f
 - [x] Review current Cardano operator documentation for stale wording after the signing/reconnect changes; retain the explicitly versioned 0.6.11/0.6.12 historical documents unchanged as historical evidence.
 - [x] Prepare the exact post-signing operator handoff/checklist so the workstation steps remain one-command-at-a-time.
 
+
+## Next remote engineering block
+
+- [x] Define the real Cardano Preprod lifecycle roadmap from initialize through immutable rescue.
+- [ ] Build post-initialize observation/inclusion evidence that binds the exact signed transaction to the expected recovery-vault state UTxO without claiming finality.
+- [ ] Build the real heartbeat construction/evaluation scaffold from an observed active state UTxO.
+- [ ] Build the real contact-approval construction scaffold with independent-contact authority checks.
+- [ ] Build the real execute/rescue construction scaffold with immutable-destination and full-value payout checks.
+- [ ] Add lifecycle adversarial tests covering stale state, duplicate approval, unconfigured contact, premature execute, wrong rescue destination, continuing state/beacon and protected-value leakage.
+- [ ] Define Cardano Preprod inclusion/finality evidence separately from mere transaction inclusion before any support-promotion work.
+
 ## Workstation-required gates
 
 - [ ] Fast-forward the laptop to the latest remote branch head.
