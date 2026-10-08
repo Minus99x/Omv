@@ -97,6 +97,15 @@ export function createCardanoPreprodRealHeartbeatPlan({
   if (String(observation.stateObservation?.inlineDatumCborHex ?? '').length < 2) {
     throw new Error('Heartbeat predecessor state observation is missing its inline datum.');
   }
+  if (!Number.isSafeInteger(observation.stateObservation?.lastHeartbeatMs) || observation.stateObservation.lastHeartbeatMs < 0) {
+    throw new Error('Heartbeat predecessor state observation is missing a valid lastHeartbeatMs.');
+  }
+  if (!Array.isArray(observation.stateObservation?.approvalKeyHashes) || observation.stateObservation.approvalKeyHashes.length !== 0) {
+    throw new Error('The first real heartbeat predecessor must be the initialize state with no approvals.');
+  }
+  if (!HEX_32.test(String(observation.validatorIdentitySha256 ?? ''))) {
+    throw new Error('Heartbeat predecessor state observation is missing its validator identity digest.');
+  }
   if (!HEX_32.test(String(observation.transactionBodyHash ?? '')) ||
       observation.transactionBodyHash !== stateReference.transaction.id) {
     throw new Error('Heartbeat predecessor state reference is not bound to the observed initialize transaction body hash.');
