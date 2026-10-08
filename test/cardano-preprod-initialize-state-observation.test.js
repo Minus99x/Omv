@@ -163,6 +163,8 @@ test('Cardano initialize state observation binds the exact active state UTxO wit
   assert.equal(evidence.checks.exactProtectedLovelaceObserved, true);
   assert.equal(evidence.checks.exactSingleBeaconObserved, true);
   assert.equal(evidence.checks.exactConfiguredInlineDatumObserved, true);
+  assert.equal(Number.isSafeInteger(evidence.stateObservation.lastHeartbeatMs), true);
+  assert.deepEqual(evidence.stateObservation.approvalKeyHashes, []);
   assert.equal(evidence.checks.inclusionObserved, true);
   assert.equal(evidence.checks.finalityProven, false);
   assert.equal(evidence.liveActions.transactionSubmissionPerformed, true);
