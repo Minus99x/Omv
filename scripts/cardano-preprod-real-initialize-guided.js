@@ -151,7 +151,8 @@ async function probeOgmios(url, apiKey = null) {
     const response = await client.rpc('queryNetwork/tip', undefined, 'omegavault-guided-real-initialize-preflight');
     return parseCardanoOgmiosTipResponse(response);
   } finally {
-    client.close();
+    if (typeof client.closeAndWait === 'function') await client.closeAndWait();
+    else client.close();
   }
 }
 
