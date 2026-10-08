@@ -8,6 +8,7 @@ This checklist separates work that can be completed remotely in the repository f
 
 - [x] Add fail-closed Lace/CIP-30 owner-witness merge logic.
 - [x] Add guided local Lace signing gate with no transaction-submission path.
+- [x] Bind every Lace signing authorization to the exact fresh frozen transaction body hash so an expired/changed candidate cannot inherit an earlier approval.
 - [x] Add stale/near-expiry candidate guard before wallet signing.
 - [x] Add wrong-signer, extra-witness and non-VKey-injection regression tests.
 - [x] Add operator documentation for the Lace signing-only gate.
