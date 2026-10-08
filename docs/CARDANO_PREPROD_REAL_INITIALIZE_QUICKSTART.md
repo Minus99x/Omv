@@ -178,3 +178,27 @@ The signing gate:
 The local signing bridge does not contain a wallet transaction-submission call.
 
 If the signing gate reports that the frozen candidate has expired, rerun the real initialize read/evaluation capture. No wallet signature should be requested for the stale candidate.
+
+
+## If provider preflight passes but capture reconnect returns HTTP 401
+
+A successful guided provider preflight followed by an Ogmios WebSocket HTTP 401 during the child capture is treated as a **connection-lifecycle/reconnect boundary**, not as evidence that the wallet addresses or recovery configuration are invalid.
+
+The guided flow now waits for the authenticated preflight WebSocket to close completely before the capture process opens the next authenticated connection.
+
+For a read-only transport diagnostic, set the same Ogmios environment values and run:
+
+```powershell
+npm.cmd run cardano:preprod:ogmios:diagnose
+```
+
+The diagnostic performs only:
+
+1. authenticated Preprod tip query;
+2. complete WebSocket shutdown;
+3. a second authenticated Preprod tip query;
+4. complete shutdown again.
+
+It never prints provider credentials and performs no transaction construction, wallet signing or submission.
+
+If the first connection succeeds and the second returns HTTP 401 even after complete shutdown, treat the result as a provider/session-policy issue and stop before retrying the real initialize flow.
