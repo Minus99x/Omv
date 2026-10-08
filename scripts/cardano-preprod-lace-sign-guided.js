@@ -127,16 +127,20 @@ signButton.onclick=async()=>{
 const captureArg = arg('--capture');
 const outputArg = arg('--output');
 const signingAuthorized = process.argv.includes('--authorize-signing');
+const expectedBodyHashArg = arg('--expected-body-hash');
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.stdout.write([
     'OmegaVault Cardano Preprod Lace signing gate',
     '',
     'Usage:',
-    '  npm.cmd run cardano:preprod:initialize:lace-sign:guided -- --capture "<capture-dir>" --authorize-signing',
+    '  npm.cmd run cardano:preprod:initialize:lace-sign:guided -- --capture "<capture-dir>" --expected-body-hash "<64-HEX-BODY-HASH>" --authorize-signing',
     '',
     'Optional:',
     '  --output <dir>   Append-only signing output directory (default: sibling wallet-signing directory)',
+    '',
+    '--expected-body-hash is mandatory and binds the explicit signing authorization',
+    'to one exact fresh frozen transaction body.',
     '',
     'This command starts a loopback-only local page, connects to Lace through CIP-30,',
     'verifies the selected Preprod account controls the frozen owner payment key,',
@@ -154,6 +158,9 @@ if (!captureArg) {
   process.exitCode = 2;
 } else if (!signingAuthorized) {
   process.stderr.write('Lace signing gate blocked: explicit --authorize-signing is required. This authorizes signing only, never submission.\n');
+  process.exitCode = 2;
+} else if (!expectedBodyHashArg || !/^[0-9a-f]{64}$/i.test(expectedBodyHashArg)) {
+  process.stderr.write('Lace signing gate blocked: --expected-body-hash must be the exact 64-hex frozen transaction body hash approved for signing.\n');
   process.exitCode = 2;
 } else {
   const projectRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -178,6 +185,10 @@ if (!captureArg) {
 
     const unsignedCandidate = await readJson(join(capture, manifest.files.finalUnsignedCandidate));
     const unsignedPreflight = await readJson(join(capture, manifest.files.unsignedPhaseOnePreflight));
+    const expectedBodyHash = expectedBodyHashArg.toLowerCase();
+    if (String(unsignedCandidate?.transaction?.bodyHash ?? '').toLowerCase() !== expectedBodyHash) {
+      throw new Error('Explicit signing authorization body hash does not match the frozen initialize candidate.');
+    }
     if (unsignedCandidate?.liveActions?.transactionSubmissionAuthorized !== false ||
         unsignedPreflight?.checks?.unsignedPhaseOnePreflightComplete !== true ||
         unsignedPreflight?.checks?.walletWitnessesPresent !== false ||
@@ -200,6 +211,7 @@ if (!captureArg) {
     const state = Object.freeze({
       network:'preprod',
       bodyHash:unsignedCandidate.transaction.bodyHash,
+      signingAuthorizationBodyHash:expectedBodyHash,
       feeLovelace:unsignedCandidate.transaction.feeLovelace,
       stateLovelace:unsignedCandidate.recoveryConfiguration.stateLovelace,
       expectedOwnerPaymentKeyHash:unsignedCandidate.ownerPaymentKeyHash,
@@ -268,6 +280,7 @@ if (!captureArg) {
             capture,
             captureManifestSha256:manifest.manifestSha256,
             transactionBodyHash:merged.transactionBodyHash,
+            signingAuthorizationBodyHash:expectedBodyHash,
             ownerPaymentKeyHash:merged.ownerPaymentKeyHash,
             walletWitnessSetSha256:merged.walletWitnessSetSha256,
             signedTransactionSha256:merged.signedTransactionSha256,
