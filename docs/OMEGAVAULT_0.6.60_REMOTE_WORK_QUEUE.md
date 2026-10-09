@@ -55,8 +55,11 @@ Remote implementation note: the lifecycle scaffold was locally executed on the w
 
 ## Workstation-required gates
 
+Operator-priority rule: do not reopen completed chain work merely because a migration/helper/inspector exists. Workstation time is reserved for the current active proof gate. Historical Ethereum/Sepolia proof remains historical evidence unless a specific missing binding is demonstrated and is actually required for a current 0.6 support gate.
+
+
 - [x] Fast-forward the laptop to the latest remote branch head (through the successful capture/signing state; newest provider-normalization commits require one more pull).
-- [ ] Run the read-only Ethereum 0.4.3 identifier inspector against `~/.omegavault-test/vaults.json` so retained Sepolia contract/transaction identifiers can be rebound instead of unnecessarily repeated.
+- [~] DEFERRED / NO OPERATOR ACTION: Ethereum 0.4.3 Sepolia live-proof work is treated as completed historical evidence. Do not send the operator back through Sepolia or legacy-proof reconstruction unless a concrete 0.6 migration gate identifies one exact missing identifier that cannot be recovered from existing repository/checkpoint evidence.
 - [x] Run the targeted Ogmios transport regression test locally (14/14 green before the newest transport-normalization follow-up).
 - [x] Rerun the guided real Cardano Preprod initialize capture using the existing test-only addresses and provider credentials.
 - [x] Confirm the fresh unsigned preflight remains green.
