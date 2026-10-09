@@ -72,12 +72,26 @@ That track must remain clearly separated from XRPL mainnet support:
 - keeps the Hooks-family track separate from XRPL mainnet promotion;
 - cannot promote XRPL merely because invariant equivalence is theoretically achieved; public-testnet evidence remains separately required.
 
+## Completed 0.6.60 follow-through
+
+The first composition-analysis block is now implemented rather than left as a design note:
+
+- `src/chains/xrpl/permission-delegation.js` models DelegateSet with amendment-state gating, exact permission sets, non-delegable permission rejection, read-back evidence expectations and a fail-closed revocation boundary.
+- Delegated `Payment` authority is explicitly classified as too broad for immutable Plan-B recovery because current Permission Delegation cannot custom-bind one destination, amount or currency.
+- A delegate account's own SignerList can supply threshold authorization, but that threshold still does not solve destination/amount/currency or inactivity enforcement.
+- `src/chains/xrpl/native-recovery-sequence.js` enumerates and adversarially compares fixed escrow, delegated threshold Payment, owner SignerList + Ticket, and escrow plus off-ledger contact coordination.
+- Tickets are treated as one-use sequence reservations rather than transaction-intent commitments.
+- Batch is treated as atomicity machinery rather than a missing authorization primitive; the outer Batch transaction is not treated as delegated recovery authority.
+- `src/chains/xrpl/testnet-evidence-plan.js` defines public-Testnet evidence capture for the individual primitives without allowing passing primitive tests to be mislabeled as exact OmegaVault recovery.
+
+The present result remains `reduced-semantics`: no verified native composition currently combines owner-resettable inactivity, chain-native contact threshold, immutable rescue destination and immutable protected scope.
+
 ## Next XRPL engineering work
 
-1. Add explicit Permission Delegation transaction/evidence modeling.
-2. Add Batch/Ticket composition builders only where they materially strengthen a specific invariant.
-3. Model a candidate native recovery sequence and enumerate every transaction authority at each stage.
-4. Attack that sequence adversarially for unrelated-payment authority, destination substitution, stale recovery, replay, duplicate approval and owner-reset behavior.
-5. If exact equivalence still cannot be reached, preserve `reduced-semantics` and define the strongest honest XRPL product tier instead of weakening the OmegaVault invariants.
+1. Execute the primitive-scoped Testnet evidence plan when a live XRPL test session is scheduled.
+2. Re-evaluate the composition only when the target network's actual amendment state is captured.
+3. Continue monitoring new XRPL granular permissions or other ledger-native mechanisms that could close the destination/scope and resettable-inactivity gaps.
+4. Keep the Hooks-family programmable proof track separate from XRPL-mainnet support.
+5. If the gaps remain, define the strongest honest reduced-semantics product behavior rather than weakening OmegaVault invariants.
 
 No item in this document authorizes signing, submission, mainnet use, support promotion or public recovery claims.
