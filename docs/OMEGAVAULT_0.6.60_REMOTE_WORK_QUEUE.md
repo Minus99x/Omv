@@ -42,9 +42,16 @@ Remote implementation note: the newly completed lifecycle scaffolds and regressi
 - [x] Keep Hooks-family programmable research explicitly separate from XRPL mainnet support claims.
 - [x] Reframe XRPL maturity wording around invariant equivalence rather than one missing primitive.
 - [x] Prepare a precise Solana pinned-toolchain / SBF artifact provenance rebuild plan without rewriting the existing Solana recovery architecture.
-- [ ] Add explicit XRPL Permission Delegation transaction/evidence modeling.
-- [ ] Model the strongest XRPL-native recovery sequence and adversarially test authority leakage, destination substitution, stale recovery, replay and owner-reset behavior.
-- [ ] Prepare Ethereum 0.4.3 Sepolia live-proof migration mapping into the 0.6 evidence-contract gate without rerunning historical work unnecessarily.
+- [x] Add explicit XRPL Permission Delegation transaction/evidence modeling.
+- [x] Model the strongest XRPL-native recovery sequence and adversarially test authority leakage, destination substitution, stale recovery, replay and owner-reset behavior.
+- [x] Prepare Ethereum 0.4.3 Sepolia live-proof migration mapping into the 0.6 evidence-contract gate without rerunning historical work unnecessarily.
+
+## Additional parallel remote work
+
+- [ ] Reconcile the XRPL Permission Delegation and native-sequence findings into the product-tier/capability wording without weakening the canonical invariants.
+- [ ] Prepare a fail-closed XRPL public-Testnet evidence capture plan for the primitives that *are* honestly supported today (SignerList, DelegateSet, Escrow, Ticket/Batch capability checks) without claiming exact OmegaVault recovery.
+- [ ] Audit the Ethereum Sepolia legacy migration path for the exact historical identifiers still preserved in repository/checkpoint metadata; if absent, explicitly record which gates require fresh proof.
+- [ ] Prepare Solana artifact rebuild evidence schema so a future pinned SBF rebuild can replace the stale artifact deterministically rather than by hand-editing evidence JSON.
 
 ## Workstation-required gates
 
