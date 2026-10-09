@@ -38,8 +38,21 @@ function fixture() {
    currentProtocolParametersSha256:h('a'),currentTip:tip,
    validity:{lowerSlot:9990,upperSlot:10010,currentTipWithinInterval:true},
    currentInputs:{seed:utxo('1',0),collateral:utxo('2',1)},
-   checks:{...checks,completePhaseOneValidated:false},liveActions:{...actions}
+   checks:{...checks,completeCurrentInputValuesPreserved:true,completePhaseOneValidated:false},liveActions:{...actions}
  };
+ presubmit.ledgerInputSnapshot={
+   source:'read-only-ogmios-queryLedgerState/utxo',
+   tip:structuredClone(tip),
+   utxos:Object.fromEntries(['seed','collateral'].map(name=>[name,{
+     reference:structuredClone(presubmit.currentInputs[name].reference),
+     address:presubmit.currentInputs[name].address,
+     value:{ada:{lovelace:'5000000'}},datumHash:null,datum:null,script:null
+   }]))
+ };
+ for(const role of ['seed','collateral']){
+   presubmit.currentInputs[role].valueSha256=hashCardanoEvidence(presubmit.ledgerInputSnapshot.utxos[role].value);
+ }
+ presubmit.ledgerInputSnapshotSha256=hashCardanoEvidence(presubmit.ledgerInputSnapshot);
  presubmit.preSubmitSha256=hashCardanoEvidence(presubmit);
  return {witnessEvidence:witness,preSubmitEvidence:presubmit,signedTransactionCborHex:signed};
 }
@@ -120,4 +133,32 @@ test('rejects a forged cryptographic witness check even if the digest is recompu
  x.preSubmitEvidence.witnessEvidenceSha256=x.witnessEvidence.witnessEvidenceSha256;
  resign(x.preSubmitEvidence,'preSubmitSha256');
  assert.throws(()=>create(x),/ownerSignatureCryptographicallyValid/);
+});
+
+test('fails closed when the complete ledger UTxO snapshot is omitted',()=>{
+ const x=fixture();delete x.preSubmitEvidence.ledgerInputSnapshot;resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/must be an object/);
+});
+test('fails closed when a full UTxO value is changed without updating its digest',()=>{
+ const x=fixture();x.preSubmitEvidence.ledgerInputSnapshot.utxos.seed.value.ada.lovelace='6000000';
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/full current ledger input snapshot does not match its bound digest/i);
+});
+test('fails closed when a full UTxO value is changed and its digest is forged',()=>{
+ const x=fixture();x.preSubmitEvidence.ledgerInputSnapshot.utxos.seed.value.ada.lovelace='6000000';
+ x.preSubmitEvidence.ledgerInputSnapshotSha256=hashCardanoEvidence(x.preSubmitEvidence.ledgerInputSnapshot);
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/full UTxO value does not match frozen live input commitment/);
+});
+test('fails closed when complete current UTxO source tip drifts',()=>{
+ const x=fixture();x.preSubmitEvidence.ledgerInputSnapshot.tip.slot+=1;
+ x.preSubmitEvidence.ledgerInputSnapshotSha256=hashCardanoEvidence(x.preSubmitEvidence.ledgerInputSnapshot);
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/not captured at the bound stable tip/);
+});
+test('includes full current input values for the independent ledger implementation',()=>{
+ const input=create(fixture());
+ assert.deepEqual(input.ledgerContext.utxos.seed.value,{ada:{lovelace:'5000000'}});
+ assert.deepEqual(input.ledgerContext.utxos.collateral.value,{ada:{lovelace:'5000000'}});
+ assert.equal(input.completePhaseOneValidated,false);
 });
