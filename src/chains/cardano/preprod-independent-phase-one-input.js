@@ -20,6 +20,7 @@ const REQUIRED_CHECKS = Object.freeze([
   'collateralStillUnspent',
   'boundInputValuesUnchanged',
   'boundInputOutputShapeUnchanged',
+  'completeCurrentInputValuesPreserved',
   'validityIntervalCurrent',
   'preSubmitFreshnessGateComplete'
 ]);
@@ -54,6 +55,32 @@ function assertNoAuthority(value, label) {
   ]) {
     if (flags[field] !== false) throw new Error(`${label} must explicitly deny ${field}.`);
   }
+}
+function sameReference(left, right) {
+  return left?.transaction?.id === right?.transaction?.id && left?.index === right?.index;
+}
+function fullLedgerUtxo(record, commitment, label) {
+  const full = object(record, label);
+  const expected = object(commitment, `${label}.commitment`);
+  if (!sameReference(full.reference, expected.reference)) throw new Error(`${label} reference changed from live freshness evidence.`);
+  if (full.address !== expected.address) throw new Error(`${label} address changed from live freshness evidence.`);
+  if (full.datum != null || full.datumHash != null || full.script != null || expected.datumPresent || expected.referenceScriptPresent) {
+    throw new Error(`${label} is not a datum-free, reference-script-free initialization input.`);
+  }
+  const value = object(full.value, `${label}.value`);
+  const assets = Object.keys(value).filter(key => key !== 'ada');
+  if (assets.length || String(value.ada?.lovelace ?? '') !== expected.lovelace ||
+      hashCardanoEvidence(value) !== expected.valueSha256) {
+    throw new Error(`${label} full UTxO value does not match frozen live input commitment.`);
+  }
+  return Object.freeze({
+    reference: expected.reference,
+    address: expected.address,
+    value,
+    datumHash: null,
+    datum: null,
+    script: null
+  });
 }
 function reference(role, label) {
   const item = object(role, label);
@@ -160,6 +187,17 @@ export function createCardanoPreprodIndependentPhaseOneInput({
   if (seed.reference.transaction.id === collateral.reference.transaction.id && seed.reference.index === collateral.reference.index) {
     throw new Error('Seed and collateral must be distinct current UTxOs.');
   }
+  const ledgerSnapshot = object(preSubmit.ledgerInputSnapshot, 'preSubmitEvidence.ledgerInputSnapshot');
+  const ledgerSnapshotDigest = hex32(preSubmit.ledgerInputSnapshotSha256, 'preSubmitEvidence.ledgerInputSnapshotSha256');
+  if (hashCardanoEvidence(ledgerSnapshot) !== ledgerSnapshotDigest) {
+    throw new Error('Full current ledger input snapshot does not match its bound digest.');
+  }
+  if (ledgerSnapshot.source !== 'read-only-ogmios-queryLedgerState/utxo' ||
+      ledgerSnapshot.tip?.hash !== tipHash || ledgerSnapshot.tip?.slot !== tip.slot) {
+    throw new Error('Full current ledger input snapshot was not captured at the bound stable tip.');
+  }
+  const fullSeed = fullLedgerUtxo(ledgerSnapshot.utxos?.seed, seed, 'ledgerInputSnapshot.seed');
+  const fullCollateral = fullLedgerUtxo(ledgerSnapshot.utxos?.collateral, collateral, 'ledgerInputSnapshot.collateral');
   const core = Object.freeze({
     schema: REQUEST_SCHEMA,
     network: 'preprod',
@@ -177,12 +215,14 @@ export function createCardanoPreprodIndependentPhaseOneInput({
       unsignedCandidateSha256: hex32(witness.unsignedCandidateSha256, 'witnessEvidence.unsignedCandidateSha256'),
       validatorIdentitySha256: hex32(witness.validatorIdentitySha256, 'witnessEvidence.validatorIdentitySha256'),
       currentProtocolSnapshotSha256: preSubmit.currentProtocolSnapshotSha256,
-      currentProtocolParametersSha256: hex32(preSubmit.currentProtocolParametersSha256, 'preSubmitEvidence.currentProtocolParametersSha256')
+      currentProtocolParametersSha256: hex32(preSubmit.currentProtocolParametersSha256, 'preSubmitEvidence.currentProtocolParametersSha256'),
+      ledgerInputSnapshotSha256: ledgerSnapshotDigest
     }),
     ledgerContext: Object.freeze({
       tip: Object.freeze({ hash: tipHash, slot: tip.slot }),
       protocolSnapshot: snapshot,
-      utxos: Object.freeze({ seed, collateral }),
+      utxoCommitments: Object.freeze({ seed, collateral }),
+      utxos: Object.freeze({ seed: fullSeed, collateral: fullCollateral }),
       validity: Object.freeze({ lowerSlot: lower, upperSlot: upper })
     }),
     validationRequirements: Object.freeze({
