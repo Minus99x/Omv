@@ -16,7 +16,7 @@ function help() {
     '  OMEGAVAULT_OGMIOS_URL',
     '',
     'Optional:',
-    '  OMEGAVAULT_OGMIOS_API_KEY (used only if the endpoint itself does not authenticate)',
+    '  OMEGAVAULT_OGMIOS_API_KEY (recommended for Demeter dmtr-api-key WebSocket authentication)',
     '  OMEGAVAULT_OGMIOS_API_KEY_HEADER (default: dmtr-api-key)',
     '',
     'The diagnostic opens one authenticated read-only WebSocket connection,',
@@ -53,18 +53,10 @@ if (!urlRaw) {
 } else {
   try {
     const url = normalizeCardanoOgmiosWebSocketUrl(urlRaw);
-    let selectedApiKey = null;
+    const selectedApiKey = apiKey || null;
 
     process.stdout.write('Ogmios diagnostic: first authenticated read-only connection...\n');
-    let first;
-    try {
-      first = await probeOnce(url, 'first', null);
-    } catch (error) {
-      const unauthorized = /(?:HTTP|handshake returned HTTP)\s+401\b/i.test(String(error?.message ?? error));
-      if (!unauthorized || !apiKey) throw error;
-      selectedApiKey = apiKey;
-      first = await probeOnce(url, 'first-header-auth', selectedApiKey);
-    }
+    const first = await probeOnce(url, 'first', selectedApiKey);
     process.stdout.write(`First connection passed at Preprod tip slot ${first.slot}. Socket fully closed.\n`);
 
     process.stdout.write('Ogmios diagnostic: second authenticated read-only connection...\n');
