@@ -9,9 +9,30 @@ const NON_DELEGABLE=new Set([
   'AccountDelete',
   'AccountSet',
   'Batch',
+  'ConfidentialMPTConvert',
   'DelegateSet',
+  'EnableAmendment',
+  'LedgerStateFix',
+  'LoanBrokerCoverClawback',
+  'LoanBrokerCoverDeposit',
+  'LoanBrokerCoverWithdraw',
+  'LoanBrokerDelete',
+  'LoanBrokerSet',
+  'LoanDelete',
+  'LoanManage',
+  'LoanPay',
+  'LoanSet',
+  'SetFee',
   'SetRegularKey',
-  'SignerListSet'
+  'SignerListSet',
+  'SponsorshipTransfer',
+  'VaultClawback',
+  'VaultCreate',
+  'VaultDelete',
+  'VaultDeposit',
+  'VaultSet',
+  'VaultWithdraw',
+  'UNLModify'
 ]);
 
 const GRANULAR_PAYMENT_PERMISSIONS=new Set(['PaymentMint','PaymentBurn']);
@@ -60,7 +81,8 @@ export function buildXrplDelegateSet({
   ticketSequence=null,
   feeDrops=null,
   lastLedgerSequence=null,
-  permissionDelegationFeature=null
+  permissionDelegationFeature=null,
+  existingDelegateEntryObserved=false
 }){
   assertClassicAddress(owner,'owner');
   assertClassicAddress(delegate,'delegate');
@@ -75,6 +97,12 @@ export function buildXrplDelegateSet({
   }
   const normalized=permissions.map(normalizePermission);
   if(new Set(normalized).size!==normalized.length) throw new TypeError('XRPL delegated permissions must be unique.');
+  if(normalized.includes('PaymentBurn')) {
+    throw new TypeError('OmegaVault does not delegate PaymentBurn; amendment-dependent historical behavior makes this permission outside the recovery-planning allowlist.');
+  }
+  if(normalized.length===0 && existingDelegateEntryObserved!==true) {
+    throw new TypeError('Revoking all delegated permissions requires an observed existing Delegate ledger entry.');
+  }
 
   const transaction={
     TransactionType:'DelegateSet',
@@ -96,6 +124,7 @@ export function buildXrplDelegateSet({
     transaction:Object.freeze(transaction),
     permissions:Object.freeze(normalized),
     revocation:normalized.length===0,
+    existingDelegateEntryObserved:normalized.length===0 ? true : existingDelegateEntryObserved===true,
     amendment:Object.freeze({
       name:'PermissionDelegationV1_1',
       enabled:true,
