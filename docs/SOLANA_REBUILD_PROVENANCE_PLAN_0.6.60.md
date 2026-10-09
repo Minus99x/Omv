@@ -86,3 +86,11 @@ Wallet signing, deployment, Devnet submission and support promotion remain separ
 ## Workstation/tooling note
 
 The last known workstation preflight did not have the required Rust/Solana toolchain available. That is not a design failure. The rebuild can be scheduled once an appropriate pinned environment is available, while Cardano and XRPL remote work proceed independently.
+
+## Deterministic replacement evidence
+
+`src/chains/solana/artifact-build-evidence.js` now defines the replacement evidence envelope for a future rebuild.
+
+It requires the exact source Git commit, all source/config/test digests, the pinned toolchain versions, rebuilt artifact SHA-256/byte length, and an SBF program-test run that loads that exact compiled artifact and covers initialize/heartbeat/approve/execute-native with zero failures.
+
+Even a trusted rebuilt artifact keeps `devnetDeploymentProven`, `liveSubmissionReady`, `publicNetworkRecoveryProven`, and `supportClaimAuthorized` false. Rebuild provenance restores artifact trust only; it does not collapse the later Devnet authority gates.
