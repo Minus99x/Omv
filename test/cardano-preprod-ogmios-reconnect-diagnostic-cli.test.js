@@ -17,8 +17,19 @@ test('Ogmios reconnect diagnostic help documents two sequential read-only connec
   assert.match(result.stdout, /submission/i);
 });
 
-test('Ogmios reconnect diagnostic fails closed without provider credentials', () => {
+test('Ogmios reconnect diagnostic fails closed without an endpoint URL', () => {
   const result = run();
   assert.equal(result.status, 2);
-  assert.match(result.stderr, /requires OMEGAVAULT_OGMIOS_URL and OMEGAVAULT_OGMIOS_API_KEY/i);
+  assert.match(result.stderr, /requires OMEGAVAULT_OGMIOS_URL/i);
+  assert.doesNotMatch(result.stderr, /and OMEGAVAULT_OGMIOS_API_KEY/i);
+});
+
+test('Ogmios reconnect diagnostic can attempt an authenticated endpoint URL without a separate API-key header', () => {
+  const result = run([], {
+    OMEGAVAULT_OGMIOS_URL:'ws://127.0.0.1:1',
+    OMEGAVAULT_OGMIOS_API_KEY:''
+  });
+  assert.equal(result.status, 2);
+  assert.match(result.stdout, /first authenticated read-only connection/i);
+  assert.doesNotMatch(result.stderr, /requires OMEGAVAULT_OGMIOS_API_KEY/i);
 });
