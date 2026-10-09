@@ -50,12 +50,13 @@ Remote implementation note: the newly completed lifecycle scaffolds and regressi
 
 - [x] Reconcile the XRPL Permission Delegation and native-sequence findings into the product-tier/capability wording without weakening the canonical invariants.
 - [x] Prepare a fail-closed XRPL public-Testnet evidence capture plan for the primitives that *are* honestly supported today (SignerList, DelegateSet, Escrow, Ticket/Batch capability checks) without claiming exact OmegaVault recovery.
-- [ ] Audit the Ethereum Sepolia legacy migration path for the exact historical identifiers still preserved in repository/checkpoint metadata; if absent, explicitly record which gates require fresh proof.
+- [x] Audit the Ethereum Sepolia legacy migration path for the exact historical identifiers still preserved in repository/checkpoint metadata; if absent, explicitly record which gates require fresh proof.
 - [x] Prepare Solana artifact rebuild evidence schema so a future pinned SBF rebuild can replace the stale artifact deterministically rather than by hand-editing evidence JSON.
 
 ## Workstation-required gates
 
 - [ ] Fast-forward the laptop to the latest remote branch head.
+- [ ] Run the read-only Ethereum 0.4.3 identifier inspector against `~/.omegavault-test/vaults.json` so retained Sepolia contract/transaction identifiers can be rebound instead of unnecessarily repeated.
 - [ ] Run the targeted Ogmios transport regression test locally.
 - [ ] Rerun the guided real Cardano Preprod initialize capture using the existing test-only addresses and provider credentials.
 - [ ] Confirm the fresh unsigned preflight remains green.
