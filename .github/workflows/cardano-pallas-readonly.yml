@@ -1,0 +1,31 @@
+name: Cardano Pallas Read-Only Decoder
+
+on:
+  push:
+    branches:
+      - 'dev/**'
+    paths:
+      - 'tools/cardano-pallas-readonly/**'
+      - '.github/workflows/cardano-pallas-readonly.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pallas-decode:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rust version
+        run: rustc --version && cargo --version
+      - name: Verify pinned Pallas CBOR decoder builds and rejects invalid inputs
+        run: cargo test --manifest-path tools/cardano-pallas-readonly/Cargo.toml --all-targets
+      - name: Build offline inspection binary
+        run: cargo build --manifest-path tools/cardano-pallas-readonly/Cargo.toml --release
+      - name: Confirm no authorization or submission paths exist
+        run: |
+          grep -q '"completePhaseOneValidated": false' tools/cardano-pallas-readonly/src/main.rs
+          grep -q '"transactionSubmissionAuthorized": false' tools/cardano-pallas-readonly/src/main.rs
+          grep -q 'Pallas phase-one validation has not run' tools/cardano-pallas-readonly/src/main.rs
