@@ -245,18 +245,23 @@ try {
   const ogmiosUrl = normalizeCardanoOgmiosWebSocketUrl(copiedOgmiosUrl);
 
   output.write('\nRead-only provider preflight: checking Ogmios and Blockfrost Preprod...\n');
-  let ogmiosApiKey = useEnvironment('OMEGAVAULT_OGMIOS_API_KEY', validSecret);
+  let ogmiosApiKey = null;
   let tip;
   try {
-    tip = await probeOgmios(ogmiosUrl, ogmiosApiKey);
+    // Prefer an authenticated endpoint URL directly. This avoids sending a stale
+    // header credential when Demeter has already embedded authentication in the host.
+    tip = await probeOgmios(ogmiosUrl, null);
   } catch (error) {
-    if (!isUnauthorized(error) || ogmiosApiKey) throw error;
-    ogmiosApiKey = await collectClipboard(
-      rl,
-      'the API key from that SAME Demeter Ogmios resource',
-      validSecret,
-      'That clipboard value does not look like an Ogmios API key.'
-    );
+    if (!isUnauthorized(error)) throw error;
+    ogmiosApiKey = useEnvironment('OMEGAVAULT_OGMIOS_API_KEY', validSecret);
+    if (!ogmiosApiKey) {
+      ogmiosApiKey = await collectClipboard(
+        rl,
+        'the API key from that SAME Demeter Ogmios resource',
+        validSecret,
+        'That clipboard value does not look like an Ogmios API key.'
+      );
+    }
     tip = await probeOgmios(ogmiosUrl, ogmiosApiKey);
   }
 
