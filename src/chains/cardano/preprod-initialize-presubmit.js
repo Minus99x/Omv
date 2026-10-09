@@ -65,6 +65,32 @@ function withoutDigest(value) {
   return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'preSubmitSha256'));
 }
 
+// Preserve complete, query-returned UTxO values (not just their hashes) for
+// independent ledger validation. These are read-only observations and are
+// bound to the exact stable Preprod tip used for the freshness gate.
+function fullCurrentInput(roleName, checkedRole, current) {
+  const key = refKey(checkedRole.reference);
+  const found = current.get(key);
+  if (!found) throw new Error(`Current ${roleName} output disappeared before ledger snapshot binding.`);
+  if (found.datum != null || found.datumHash != null || found.script != null ||
+      checkedRole.datumPresent || checkedRole.referenceScriptPresent) {
+    throw new Error(`Initialize ${roleName} must remain a plain ADA-only, datum-free, reference-script-free UTxO.`);
+  }
+  const nonAdaPolicies = Object.keys(found.value ?? {}).filter(name => name !== 'ada');
+  if (nonAdaPolicies.length !== 0) throw new Error(`Initialize ${roleName} has unexpected native assets.`);
+  if (hashCardanoEvidence(found.value) !== checkedRole.valueSha256) {
+    throw new Error(`Current ${roleName} full value does not match bound digest.`);
+  }
+  return Object.freeze({
+    reference: checkedRole.reference,
+    address: checkedRole.address,
+    value: found.value,
+    datumHash: null,
+    datum: null,
+    script: null
+  });
+}
+
 export function createCardanoPreprodInitializePreSubmitEvidence({
   witnessEvidence,
   signedTransactionCborHex,
@@ -147,6 +173,15 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
   if (current.size !== 2) throw new Error('Pre-submit UTxO query must return exactly the bound seed and collateral outputs.');
   const seed = verifyRoleStillUnspent('seed', utxoBindingEvidence.roles.seed, current);
   const collateral = verifyRoleStillUnspent('collateral', utxoBindingEvidence.roles.collateral, current);
+  const ledgerInputSnapshotCore = Object.freeze({
+    source: 'read-only-ogmios-queryLedgerState/utxo',
+    tip,
+    utxos: Object.freeze({
+      seed: fullCurrentInput('seed', seed, current),
+      collateral: fullCurrentInput('collateral', collateral, current)
+    })
+  });
+  const ledgerInputSnapshotSha256 = hashCardanoEvidence(ledgerInputSnapshotCore);
 
   const signedTx = Cardano.Transaction.from_hex(signedTransactionCborHex);
   if (signedTx.body().to_hex() !== Cardano.Transaction.from_hex(unsignedCandidate.transaction.cborHex).body().to_hex()) {
@@ -190,6 +225,8 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       currentTipWithinInterval: true
     }),
     currentInputs: Object.freeze({ seed, collateral }),
+    ledgerInputSnapshot: ledgerInputSnapshotCore,
+    ledgerInputSnapshotSha256,
     checks: Object.freeze({
       currentProtocolParametersIndependentlyConfirmed: true,
       frozenUnsignedPreflightStillReproduces: true,
@@ -206,6 +243,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
       collateralStillUnspent: true,
       boundInputValuesUnchanged: true,
       boundInputOutputShapeUnchanged: true,
+      completeCurrentInputValuesPreserved: true,
       validityIntervalCurrent: true,
       preSubmitFreshnessGateComplete: true,
       completePhaseOneValidated: false
