@@ -35,7 +35,18 @@ This checklist separates work that can be completed remotely in the repository f
 - [x] Add lifecycle adversarial tests covering stale state, duplicate approval, unconfigured contact, premature execute, wrong rescue destination, continuing state/beacon and protected-value leakage.
 - [x] Define Cardano Preprod inclusion/finality evidence separately from mere transaction inclusion before any support-promotion work.
 
-Remote implementation note: the newly completed lifecycle scaffolds and regression files are checked in remotely but are **not yet claimed locally green**. Local syntax/test execution remains part of the workstation gate below.\n\n## Workstation-required gates
+Remote implementation note: the newly completed lifecycle scaffolds and regression files are checked in remotely but are **not yet claimed locally green**. Local syntax/test execution remains part of the workstation gate below.\n\n## Parallel multichain remote work while Cardano awaits workstation verification
+
+- [x] Formalize the invariant-first / chain-native implementation rule for XRPL rather than forcing EVM/Cardano mechanics onto it.
+- [x] Add an XRPL native-composition assessment that keeps Signer Lists, Permission Delegation, Escrow, Tickets and Batch distinct and fails closed on unresolved resettable-inactivity/contact-redirection gaps.
+- [x] Keep Hooks-family programmable research explicitly separate from XRPL mainnet support claims.
+- [x] Reframe XRPL maturity wording around invariant equivalence rather than one missing primitive.
+- [x] Prepare a precise Solana pinned-toolchain / SBF artifact provenance rebuild plan without rewriting the existing Solana recovery architecture.
+- [ ] Add explicit XRPL Permission Delegation transaction/evidence modeling.
+- [ ] Model the strongest XRPL-native recovery sequence and adversarially test authority leakage, destination substitution, stale recovery, replay and owner-reset behavior.
+- [ ] Prepare Ethereum 0.4.3 Sepolia live-proof migration mapping into the 0.6 evidence-contract gate without rerunning historical work unnecessarily.
+
+## Workstation-required gates
 
 - [ ] Fast-forward the laptop to the latest remote branch head.
 - [ ] Run the targeted Ogmios transport regression test locally.
