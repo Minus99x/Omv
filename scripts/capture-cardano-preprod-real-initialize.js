@@ -4,7 +4,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
-import { createCardanoOgmiosHttpClient } from '../src/chains/cardano/preprod-live-capture.js';
+import { createCardanoOgmiosHttpClient, normalizeCardanoOgmiosWebSocketUrl } from '../src/chains/cardano/preprod-live-capture.js';
 import { captureCardanoPreprodRealInitializeEvaluation } from '../src/chains/cardano/preprod-real-initialize-live.js';
 
 function arg(name, fallback = null) {
@@ -70,7 +70,7 @@ if (!walletAddress || !recoveryConfigArg || !outputArg) {
     };
 
     client = createCardanoOgmiosHttpClient({
-      url: ogmiosUrl,
+      url: normalizeCardanoOgmiosWebSocketUrl(ogmiosUrl),
       apiKey: ogmiosApiKey,
       apiKeyHeader: ogmiosApiKeyHeader
     });
