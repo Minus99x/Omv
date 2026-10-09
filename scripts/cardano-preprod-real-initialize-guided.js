@@ -8,8 +8,7 @@ import {
   fetchCardanoBlockfrostPreprodAddressUtxos,
   fetchCardanoBlockfrostPreprodProtocolParameters,
   selectCardanoPreprodInitializeUtxos,
-  normalizeCardanoOgmiosWebSocketUrl,
-  parseCardanoOgmiosTipResponse
+  normalizeCardanoOgmiosWebSocketUrl
 } from '../src/chains/cardano/preprod-live-capture.js';
 import {
   cardanoPreprodPaymentKeyHashFromAddress,
@@ -118,10 +117,6 @@ function validPreprodAddress(value) {
   }
 }
 
-function isUnauthorized(error) {
-  return /(?:HTTP|handshake returned HTTP)\s+401\b/i.test(String(error?.message ?? error));
-}
-
 async function collectClipboard(rl, label, validator, invalidMessage) {
   for (;;) {
     await rl.question(`Copy ${label} to the clipboard, then press Enter here. `);
@@ -139,21 +134,6 @@ function useEnvironment(name, validator) {
   if (!validator(value)) return null;
   output.write(`${name}: using existing environment value without displaying it.\n`);
   return value;
-}
-
-async function probeOgmios(url, apiKey = null) {
-  const client = createCardanoOgmiosHttpClient({
-    url,
-    apiKey,
-    apiKeyHeader:'dmtr-api-key'
-  });
-  try {
-    const response = await client.rpc('queryNetwork/tip', undefined, 'omegavault-guided-real-initialize-preflight');
-    return parseCardanoOgmiosTipResponse(response);
-  } finally {
-    if (typeof client.closeAndWait === 'function') await client.closeAndWait();
-    else client.close();
-  }
 }
 
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -244,28 +224,11 @@ try {
   }
   const ogmiosUrl = normalizeCardanoOgmiosWebSocketUrl(copiedOgmiosUrl);
 
-  output.write('\nRead-only provider preflight: checking Ogmios and Blockfrost Preprod...\n');
-  let ogmiosApiKey = useEnvironment('OMEGAVAULT_OGMIOS_API_KEY', validSecret);
-  let tip;
-  if (ogmiosApiKey) {
-    tip = await probeOgmios(ogmiosUrl, ogmiosApiKey);
-  } else {
-    try {
-      tip = await probeOgmios(ogmiosUrl, null);
-    } catch (error) {
-      if (!isUnauthorized(error)) throw error;
-      ogmiosApiKey = await collectClipboard(
-        rl,
-        'the API key from that SAME Demeter Ogmios resource',
-        validSecret,
-        'That clipboard value does not look like an Ogmios API key.'
-      );
-      tip = await probeOgmios(ogmiosUrl, ogmiosApiKey);
-    }
-  }
-
+  output.write('\nProvider preparation: checking Blockfrost Preprod and wallet UTxOs...\n');
+  const ogmiosApiKey = useEnvironment('OMEGAVAULT_OGMIOS_API_KEY', validSecret);
   await fetchCardanoBlockfrostPreprodProtocolParameters({ projectId:blockfrostProjectId });
-  output.write(`Provider preflight passed at Ogmios Preprod tip slot ${tip.slot}.\n`);
+  output.write('Blockfrost provider preflight passed.\n');
+  output.write('Ogmios verification is intentionally deferred to the capture process so Demeter receives one authenticated WebSocket session instead of two rapid sequential sessions.\n');
 
   output.write('Checking the owner wallet for two distinct plain ADA-only Preprod UTxOs...\n');
   const discoveredUtxos = await fetchCardanoBlockfrostPreprodAddressUtxos({
@@ -289,7 +252,9 @@ try {
     recoveryConfigPath,
     captureOutput,
     stableTipRetries:retries,
-    providerPreflightComplete:true,
+    providerPreflightComplete:false,
+    blockfrostPreflightComplete:true,
+    ogmiosVerificationDeferredToCapture:true,
     walletUtxoPreflightComplete:true,
     discoveredWalletUtxoCount:discoveredUtxos.length,
     selectedSeedReference:selectedUtxos.seed,
