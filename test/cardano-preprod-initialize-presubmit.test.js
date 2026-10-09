@@ -342,3 +342,10 @@ test('Cardano initialize pre-submit gate fails closed on current input value dri
     /value differs|lovelace differs/
   );
 });
+
+
+test('Cardano pre-submit CLI normalizes the configured Ogmios endpoint to WebSocket transport', () => {
+  const source = readFileSync(new URL('../scripts/check-cardano-preprod-initialize-presubmit.js', import.meta.url), 'utf8');
+  assert.match(source, /normalizeCardanoOgmiosWebSocketUrl/);
+  assert.match(source, /url:\s*normalizeCardanoOgmiosWebSocketUrl\(ogmiosUrl\)/);
+});
