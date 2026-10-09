@@ -12,12 +12,12 @@ This checklist separates work that can be completed remotely in the repository f
 - [x] Add stale/near-expiry candidate guard before wallet signing.
 - [x] Add wrong-signer, extra-witness and non-VKey-injection regression tests.
 - [x] Add operator documentation for the Lace signing-only gate.
-- [x] Diagnose the repeated post-preflight Ogmios HTTP 401 as a second WebSocket connection/reconnect boundary, not an address or recovery-config failure.
-- [x] Add `closeAndWait()` to the Ogmios WebSocket client so the preflight connection is fully released before capture starts.
-- [x] Change the guided preflight to await the Ogmios socket shutdown before launching the capture child process.
-- [x] Add a regression test covering authenticated Ogmios socket release followed by a later reconnect.
+- [x] Diagnose the Ogmios 401 sequence through direct provider tests: raw WebSocket upgrade with the Demeter header succeeds, while Node `ws` required `perMessageDeflate:false` and Demeter can reject rapid second authenticated sessions.
+- [x] Add `closeAndWait()` to the Ogmios WebSocket client and disable `permessage-deflate` negotiation for Demeter compatibility.
+- [x] Change the guided real-initialize flow to avoid a redundant parent Ogmios session and let the capture own the single authenticated WebSocket session.
+- [x] Add regression coverage for authenticated Ogmios socket release, Demeter compression compatibility, and the single-session guided flow.
 - [x] Add a read-only two-connection Ogmios reconnect diagnostic that never prints credentials and never signs/submits.
-- [x] Wire the reconnect diagnostic into package scripts/checks and document the HTTP 401 diagnostic path.
+- [x] Normalize live Cardano CLI Ogmios endpoints to WebSocket transport so an `https://` environment endpoint cannot silently fall back to incompatible HTTP RPC behavior.
 - [x] Run a repository-side audit of the next signed/current-ledger phase-one gate and document the exact covered/uncovered authority boundary.
 - [x] Harden unsigned/wallet-witness validation so the Cardano transaction validity flag must remain true.
 - [x] Review current Cardano operator documentation for stale wording after the signing/reconnect changes; retain the explicitly versioned 0.6.11/0.6.12 historical documents unchanged as historical evidence.
@@ -35,7 +35,7 @@ This checklist separates work that can be completed remotely in the repository f
 - [x] Add lifecycle adversarial tests covering stale state, duplicate approval, unconfigured contact, premature execute, wrong rescue destination, continuing state/beacon and protected-value leakage.
 - [x] Define Cardano Preprod inclusion/finality evidence separately from mere transaction inclusion before any support-promotion work.
 
-Remote implementation note: the newly completed lifecycle scaffolds and regression files are checked in remotely but are **not yet claimed locally green**. Local syntax/test execution remains part of the workstation gate below.\n\n## Parallel multichain remote work while Cardano awaits workstation verification
+Remote implementation note: the lifecycle scaffold was locally executed on the workstation on 2026-10-09: the real-lifecycle suite passed 43/43. The focused Ogmios transport suite also passed locally before the subsequent provider-compatibility fixes; the newest transport-normalization changes still require the next local pull/test.\n\n## Parallel multichain remote work while Cardano awaits workstation verification
 
 - [x] Formalize the invariant-first / chain-native implementation rule for XRPL rather than forcing EVM/Cardano mechanics onto it.
 - [x] Add an XRPL native-composition assessment that keeps Signer Lists, Permission Delegation, Escrow, Tickets and Batch distinct and fails closed on unresolved resettable-inactivity/contact-redirection gaps.
@@ -55,14 +55,14 @@ Remote implementation note: the newly completed lifecycle scaffolds and regressi
 
 ## Workstation-required gates
 
-- [ ] Fast-forward the laptop to the latest remote branch head.
+- [x] Fast-forward the laptop to the latest remote branch head (through the successful capture/signing state; newest provider-normalization commits require one more pull).
 - [ ] Run the read-only Ethereum 0.4.3 identifier inspector against `~/.omegavault-test/vaults.json` so retained Sepolia contract/transaction identifiers can be rebound instead of unnecessarily repeated.
-- [ ] Run the targeted Ogmios transport regression test locally.
-- [ ] Rerun the guided real Cardano Preprod initialize capture using the existing test-only addresses and provider credentials.
-- [ ] Confirm the fresh unsigned preflight remains green.
-- [ ] Human-authorized Lace signing of the exact fresh frozen transaction only.
-- [ ] Verify the wallet-produced owner witness offline.
-- [ ] Run the live pre-submit freshness gate against the signed transaction.
+- [x] Run the targeted Ogmios transport regression test locally (14/14 green before the newest transport-normalization follow-up).
+- [x] Rerun the guided real Cardano Preprod initialize capture using the existing test-only addresses and provider credentials.
+- [x] Confirm the fresh unsigned preflight remains green.
+- [x] Human-authorized Lace signing of exact body hash `92a32dd6ec064752525d7482119b8fd20304445f4a63b47ffb5f64dbfe140455` only; submission explicitly not authorized.
+- [x] Verify the wallet-produced owner witness offline; signing gate completed with submission still unauthorized.
+- [ ] Pull the newest WebSocket-normalization fixes, rerun the focused transport regression, then rerun the live pre-submit freshness gate against the signed transaction. If the signed validity window has expired, regenerate a fresh capture and obtain a new exact-body-hash signing authorization rather than reusing the old one.
 - [ ] Independently complete the remaining signed/current-ledger phase-one validation.
 - [ ] Obtain a separate explicit human authorization before any Preprod submission.
 - [ ] Prove inclusion/finality.
