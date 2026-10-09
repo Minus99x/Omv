@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const ETH_ADDRESS=/^0x[0-9a-f]{40}$/i;
 const ETH_TX=/^0x[0-9a-f]{64}$/i;
@@ -114,7 +115,7 @@ export function summarizeEthereumSepoliaLegacyProofCandidates(candidates){
   });
 }
 
-if(import.meta.url===`file://${process.argv[1]}`){
+if(process.argv[1] && import.meta.url===pathToFileURL(path.resolve(process.argv[1])).href){
   const file=path.resolve(argValue('--vault-store') ?? path.join(os.homedir(),'.omegavault-test','vaults.json'));
   if(!fs.existsSync(file)){
     console.error(JSON.stringify({
