@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   cardanoSameTip,
   createCardanoOgmiosHttpClient,
@@ -408,4 +409,18 @@ test('Ogmios/Blockfrost helpers fail closed on RPC or HTTP errors', async () => 
   const client = createCardanoOgmiosHttpClient({ url: 'https://example.invalid', fetchImpl: failFetch });
   await assert.rejects(() => client.rpc('queryNetwork/tip'), /HTTP 403/);
   await assert.rejects(() => fetchCardanoBlockfrostPreprodProtocolParameters({ projectId: 'x', fetchImpl: failFetch }), /HTTP 403/);
+});
+
+
+test('Cardano live CLI entrypoints normalize configured Ogmios URLs to WebSocket transport', () => {
+  for (const relative of [
+    '../scripts/capture-cardano-preprod-real-initialize.js',
+    '../scripts/capture-cardano-preprod-real-utxo-binding.js',
+    '../scripts/capture-cardano-preprod-evaluation-campaign.js',
+    '../scripts/check-cardano-preprod-initialize-presubmit.js'
+  ]) {
+    const source = readFileSync(new URL(relative, import.meta.url), 'utf8');
+    assert.match(source, /normalizeCardanoOgmiosWebSocketUrl/);
+    assert.match(source, /url:\s*normalizeCardanoOgmiosWebSocketUrl\(ogmiosUrl\)/);
+  }
 });
