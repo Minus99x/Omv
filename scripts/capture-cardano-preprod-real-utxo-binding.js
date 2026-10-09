@@ -2,6 +2,7 @@ import { access, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
   createCardanoOgmiosHttpClient,
+  normalizeCardanoOgmiosWebSocketUrl,
   parseCardanoOgmiosTipResponse,
   parseCardanoOgmiosUtxoResponse
 } from '../src/chains/cardano/preprod-live-capture.js';
@@ -48,7 +49,7 @@ if (!planArg || !outputArg) {
     if (!planCheck.valid) throw new Error(`Real UTxO binding plan verification failed: ${planCheck.errors.join('; ')}`);
 
     client = createCardanoOgmiosHttpClient({
-      url: ogmiosUrl,
+      url: normalizeCardanoOgmiosWebSocketUrl(ogmiosUrl),
       apiKey: ogmiosApiKey,
       apiKeyHeader: ogmiosApiKeyHeader
     });
