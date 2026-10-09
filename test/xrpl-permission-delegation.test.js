@@ -118,3 +118,54 @@ test('XRPL permission feature parsing fails closed when amendment status is unkn
   assert.equal(feature.known,false);
   assert.equal(feature.enabled,false);
 });
+
+
+test('XRPL DelegateSet revocation requires observed existing Delegate state',()=>{
+  const feature=enabledFeature();
+  assert.throws(
+    ()=>buildXrplDelegateSet({
+      owner,
+      delegate,
+      permissions:[],
+      sequence:10,
+      permissionDelegationFeature:feature
+    }),
+    /requires an observed existing Delegate ledger entry/
+  );
+  const revoke=buildXrplDelegateSet({
+    owner,
+    delegate,
+    permissions:[],
+    sequence:10,
+    permissionDelegationFeature:feature,
+    existingDelegateEntryObserved:true
+  });
+  assert.equal(revoke.revocation,true);
+  assert.deepEqual(revoke.transaction.Permissions,[]);
+});
+
+test('XRPL OmegaVault delegation planning rejects PaymentBurn and current non-delegable authority-changing permissions',()=>{
+  const feature=enabledFeature();
+  assert.throws(
+    ()=>buildXrplDelegateSet({
+      owner,
+      delegate,
+      permissions:['PaymentBurn'],
+      sequence:10,
+      permissionDelegationFeature:feature
+    }),
+    /does not delegate PaymentBurn/
+  );
+  for(const permission of ['Batch','DelegateSet','SetRegularKey','SignerListSet','VaultWithdraw']){
+    assert.throws(
+      ()=>buildXrplDelegateSet({
+        owner,
+        delegate,
+        permissions:[permission],
+        sequence:10,
+        permissionDelegationFeature:feature
+      }),
+      /non-delegable/
+    );
+  }
+});
