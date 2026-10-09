@@ -99,3 +99,34 @@ When workstation/public-network work resumes:
 7. evaluate support only through the current capability/invariant gates.
 
 No part of this plan authorizes wallet signing, value movement, production use, or Ethereum support promotion.
+
+## Repository identifier audit
+
+The current repository preserves the historical Sepolia proof status, network identity, contract source hash, compiler settings, deployment-verification policy, and the local-store schema that retained bound deployments and chain activity.
+
+The checked-in repository metadata inspected in this block does **not** expose one canonical 0.4.3 deployed contract address plus exact deployment/heartbeat/approval/execute transaction hashes. Those on-chain identifiers were intentionally stored with the local vault record rather than hard-coded into source.
+
+The stable local store is:
+
+`~/.omegavault-test/vaults.json`
+
+and the 0.4.3 resume code can also import prior `omegavault-mvp-0.4.x/data/vaults.json` records from Downloads.
+
+Those vault records can contain:
+
+- verified `chainBindings.ethereum.contractRef`;
+- `deploymentTxRef`;
+- source SHA-256 and contract/adapter version;
+- `chainActivity` transaction references for heartbeat, approvals and recovery execution.
+
+A read-only inspector is now available:
+
+`npm run ethereum:legacy:inspect`
+
+It emits only migration-relevant public identifiers from the local test metadata. It does not access wallet keys, sign, query Sepolia or submit anything.
+
+Therefore the exact public-network migration status is now explicit:
+
+- **repository-only:** enough to preserve provenance and current source/offline gates, but not enough to rebind the actual 0.4.3 live transaction sequence;
+- **workstation local store found:** use the exact retained addresses/hashes as rebind candidates and independently re-observe them on Sepolia;
+- **local identifiers missing:** perform fresh Sepolia transactions only for the public-network gates whose historical identities cannot be recovered.
