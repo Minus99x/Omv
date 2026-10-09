@@ -48,10 +48,10 @@ Remote implementation note: the newly completed lifecycle scaffolds and regressi
 
 ## Additional parallel remote work
 
-- [ ] Reconcile the XRPL Permission Delegation and native-sequence findings into the product-tier/capability wording without weakening the canonical invariants.
-- [ ] Prepare a fail-closed XRPL public-Testnet evidence capture plan for the primitives that *are* honestly supported today (SignerList, DelegateSet, Escrow, Ticket/Batch capability checks) without claiming exact OmegaVault recovery.
+- [x] Reconcile the XRPL Permission Delegation and native-sequence findings into the product-tier/capability wording without weakening the canonical invariants.
+- [x] Prepare a fail-closed XRPL public-Testnet evidence capture plan for the primitives that *are* honestly supported today (SignerList, DelegateSet, Escrow, Ticket/Batch capability checks) without claiming exact OmegaVault recovery.
 - [ ] Audit the Ethereum Sepolia legacy migration path for the exact historical identifiers still preserved in repository/checkpoint metadata; if absent, explicitly record which gates require fresh proof.
-- [ ] Prepare Solana artifact rebuild evidence schema so a future pinned SBF rebuild can replace the stale artifact deterministically rather than by hand-editing evidence JSON.
+- [x] Prepare Solana artifact rebuild evidence schema so a future pinned SBF rebuild can replace the stale artifact deterministically rather than by hand-editing evidence JSON.
 
 ## Workstation-required gates
 
