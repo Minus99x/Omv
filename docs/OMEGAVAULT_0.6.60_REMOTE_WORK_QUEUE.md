@@ -30,12 +30,12 @@ This checklist separates work that can be completed remotely in the repository f
 - [x] Build post-initialize observation/inclusion evidence that binds the exact signed transaction to the expected recovery-vault state UTxO without claiming finality.
 - [x] Build the real heartbeat predecessor/funding/collateral plan from an observed active state UTxO.
 - [x] Build the unsigned real-heartbeat candidate construction and live-evaluation scaffold from that bound plan.
-- [ ] Build the real contact-approval construction scaffold with independent-contact authority checks.
-- [ ] Build the real execute/rescue construction scaffold with immutable-destination and full-value payout checks.
-- [ ] Add lifecycle adversarial tests covering stale state, duplicate approval, unconfigured contact, premature execute, wrong rescue destination, continuing state/beacon and protected-value leakage.
-- [ ] Define Cardano Preprod inclusion/finality evidence separately from mere transaction inclusion before any support-promotion work.
+- [x] Build the real contact-approval construction scaffold with independent-contact authority checks.
+- [x] Build the real execute/rescue construction scaffold with immutable-destination and full-value payout checks.
+- [x] Add lifecycle adversarial tests covering stale state, duplicate approval, unconfigured contact, premature execute, wrong rescue destination, continuing state/beacon and protected-value leakage.
+- [x] Define Cardano Preprod inclusion/finality evidence separately from mere transaction inclusion before any support-promotion work.
 
-## Workstation-required gates
+Remote implementation note: the newly completed lifecycle scaffolds and regression files are checked in remotely but are **not yet claimed locally green**. Local syntax/test execution remains part of the workstation gate below.\n\n## Workstation-required gates
 
 - [ ] Fast-forward the laptop to the latest remote branch head.
 - [ ] Run the targeted Ogmios transport regression test locally.
