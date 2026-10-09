@@ -6,6 +6,7 @@ import {
   cardanoSameTip,
   createCardanoOgmiosHttpClient,
   fetchCardanoBlockfrostPreprodProtocolParameters,
+  normalizeCardanoOgmiosWebSocketUrl,
   parseCardanoOgmiosBlockHeightResponse,
   parseCardanoOgmiosEpochResponse,
   parseCardanoOgmiosProtocolParametersResponse,
@@ -129,7 +130,7 @@ if (!campaignArg) {
 
     process.stderr.write('Live capture stage 2/4: acquiring stable independently-confirmed Preprod protocol context...\n');
     client = createCardanoOgmiosHttpClient({
-      url: ogmiosUrl,
+      url: normalizeCardanoOgmiosWebSocketUrl(ogmiosUrl),
       apiKey: ogmiosApiKey,
       apiKeyHeader: ogmiosApiKeyHeader
     });
