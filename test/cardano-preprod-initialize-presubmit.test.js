@@ -5,6 +5,7 @@ import { blake2b } from '@noble/hashes/blake2.js';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { CARDANO_PREPROD_NETWORK_ID } from '../src/chains/cardano/transaction-body.js';
+import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { normalizeCardanoProtocolParameterSnapshot } from '../src/chains/cardano/protocol-parameters.js';
 import { createCardanoPreprodAppliedValidatorIdentity } from '../src/chains/cardano/live-validator-identity.js';
 import {
@@ -194,6 +195,12 @@ test('Cardano initialize pre-submit gate proves freshness without authorizing su
   assert.equal(evidence.checks.signedFeeCoversCurrentMinimum, true);
   assert.equal(evidence.checks.outputValueSizesWithinCurrentMaximum, true);
   assert.equal(evidence.checks.boundInputOutputShapeUnchanged, true);
+  assert.equal(evidence.checks.completeCurrentInputValuesPreserved, true);
+  assert.equal(evidence.ledgerInputSnapshot.source, 'read-only-ogmios-queryLedgerState/utxo');
+  assert.deepEqual(evidence.ledgerInputSnapshot.tip, input.currentTip);
+  assert.deepEqual(evidence.ledgerInputSnapshot.utxos.seed.value, { ada: { lovelace: '20000000' } });
+  assert.deepEqual(evidence.ledgerInputSnapshot.utxos.collateral.value, { ada: { lovelace: '5000000' } });
+  assert.equal(evidence.ledgerInputSnapshotSha256, hashCardanoEvidence(evidence.ledgerInputSnapshot));
   assert.match(evidence.currentProtocolParametersSha256, /^[0-9a-f]{64}$/);
   assert.equal(evidence.signedTransaction.bytes, Cardano.Transaction.from_hex(input.signedTransactionCborHex).to_bytes().length);
   assert.equal(evidence.signedTransaction.feeLovelace, input.unsignedCandidate.transaction.feeLovelace);
