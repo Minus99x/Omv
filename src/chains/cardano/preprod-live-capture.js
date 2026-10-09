@@ -203,9 +203,14 @@ export function createCardanoOgmiosHttpClient({
     if (socketOpening) return socketOpening;
 
     socketOpening = new Promise((resolve, reject) => {
-      const ws = apiKey
-        ? new WebSocketImpl(url, [], { headers: { [apiKeyHeader]: apiKey } })
-        : new WebSocketImpl(url);
+      // Demeter's Ogmios WebSocket front door currently rejects the default
+      // permessage-deflate extension negotiation used by the ws package. Keep
+      // compression disabled so the Node handshake matches the provider-accepted
+      // RFC 6455 upgrade shape.
+      const wsOptions = apiKey
+        ? { headers: { [apiKeyHeader]: apiKey }, perMessageDeflate:false }
+        : { perMessageDeflate:false };
+      const ws = new WebSocketImpl(url, [], wsOptions);
       socket = ws;
       let opened = false;
 
