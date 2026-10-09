@@ -70,5 +70,7 @@ test('XRPL exact native equivalence still cannot bypass public-testnet promotion
   assert.equal(assessment.stageRecommendation,'implementation-candidate');
   for(const id of CORE_INVARIANT_IDS.filter(id=>id!=='OV-I13')) assert.equal(assessment.invariantCoverage[id],true);
   assert.equal(assessment.invariantCoverage['OV-I13'],false);
-  assert.throws(()=>assertXrplNativeCompositionCanPromote(assessment),/public-testnet evidence/);
+  // OV-I13 is the public-testnet proof gate; even a hypothetical native
+  // composition that satisfies all other invariants may not bypass it.
+  assert.throws(()=>assertXrplNativeCompositionCanPromote(assessment),/missing invariant coverage: OV-I13/);
 });
