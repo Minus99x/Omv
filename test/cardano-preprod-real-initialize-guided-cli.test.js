@@ -48,3 +48,12 @@ test('guided Cardano real initialize validates safe numeric controls before prom
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /state-lovelace/i);
 });
+
+
+test('guided Cardano initialize defers Ogmios verification to the capture process to avoid redundant provider sessions', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const source = await readFile('scripts/cardano-preprod-real-initialize-guided.js', 'utf8');
+  assert.match(source, /Ogmios verification is intentionally deferred to the capture process/i);
+  assert.doesNotMatch(source, /async function probeOgmios/);
+  assert.match(source, /ogmiosVerificationDeferredToCapture:true/);
+});
