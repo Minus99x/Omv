@@ -4,6 +4,7 @@ import {
   createCardanoOgmiosHttpClient,
   createCardanoOgmiosUtxoByOutputReferencesParams,
   fetchCardanoBlockfrostPreprodProtocolParameters,
+  normalizeCardanoOgmiosWebSocketUrl,
   parseCardanoOgmiosBlockHeightResponse,
   parseCardanoOgmiosEpochResponse,
   parseCardanoOgmiosProtocolParametersResponse,
@@ -78,7 +79,7 @@ if (!captureArg || !witnessArg || !outputArg) {
     };
 
     client = createCardanoOgmiosHttpClient({
-      url: ogmiosUrl,
+      url: normalizeCardanoOgmiosWebSocketUrl(ogmiosUrl),
       apiKey: ogmiosApiKey,
       apiKeyHeader: ogmiosApiKeyHeader
     });
