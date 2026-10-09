@@ -76,8 +76,8 @@ export function createSolanaSbfBuildEvidence({
   const passed=positiveInteger(programTest?.passed,'programTest.passed');
   const failed=nonNegativeInteger(programTest?.failed,'programTest.failed');
   if(failed!==0) throw new Error('Solana build evidence cannot become trusted while SBF program-test failures remain.');
-  if(!Array.isArray(programTest?.coveredInstructions) || programTest.coveredInstructions.length<4) {
-    throw new TypeError('programTest.coveredInstructions must include the real lifecycle instruction coverage.');
+  if(!Array.isArray(programTest?.coveredInstructions) || programTest.coveredInstructions.length===0) {
+    throw new TypeError('programTest.coveredInstructions must be a non-empty instruction list.');
   }
   const coveredInstructions=Object.freeze([...new Set(programTest.coveredInstructions.map((value,index)=>textValue(value,`programTest.coveredInstructions[${index}]`)))]);
   for(const required of ['initialize','heartbeat','approve','execute-native']){
