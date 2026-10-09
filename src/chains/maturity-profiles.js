@@ -89,11 +89,18 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   }),
   xrpl: Object.freeze({
     stage: 'reduced-semantics',
-    blockers: ref('XRPL Permission Delegation does not independently enforce resettable inactivity, immutable rescue destination, amount or currency restrictions.'),
+    blockers: ref(
+      'No verified XRPL-native composition yet enforces the complete OmegaVault combination of owner-resettable inactivity, threshold approval, immutable rescue scope and contact non-redirection.',
+      'Signer Lists, Permission Delegation, Escrow, Tickets and Batch must be evaluated as a composition against the canonical invariants rather than treated as substitutes for one another.'
+    ),
     gateEvidence: Object.freeze({
       'network-profile': Object.freeze({ passed: true, level: 'source', refs: ref('0.6.22:XRPL_PERMISSION_DELEGATION') }),
       'adversarial-tests': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.22:XRPL_PERMISSION_DELEGATION') })
-    })
+    }),
+    notes: ref(
+      '0.6.60 adds an invariant-first native-composition assessment. XRPL remains reduced-semantics until exact equivalence is independently demonstrated and public-network evidence is captured.',
+      'Hooks-family programmable research is a separate proof track and cannot be used to claim XRPL mainnet support.'
+    )
   }),
   base: Object.freeze({ stage: 'compatibility-ready', blockers: ref('Base Sepolia live recovery and parent-finality evidence have not been captured.') }),
   arbitrum: Object.freeze({ stage: 'compatibility-ready', blockers: ref('Arbitrum Sepolia live recovery and rollup-finality evidence have not been captured.') }),
