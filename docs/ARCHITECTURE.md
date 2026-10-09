@@ -1,5 +1,21 @@
 # OmegaVault Architecture — MVP 0.4
 
+## 0.6 multichain implementation doctrine
+
+OmegaVault standardizes the **security guarantees**, not a single blockchain mechanism.
+
+Each chain adapter must therefore implement the canonical invariants using the strongest chain-native mechanism available on that network. An EVM contract, a Cardano EUTXO validator/state machine, a Solana program/PDA model, an XRPL native-primitive composition, a Stellar preauthorized-transaction model, or a Bitcoin Script/PSBT construction may look materially different while still being evaluated against the same protected outcome.
+
+The governing rule is:
+
+`same OmegaVault invariants -> chain-native enforcement -> chain-specific adversarial proof -> public-testnet evidence -> support gate`
+
+A chain must not be rejected merely because it cannot imitate Ethereum. Conversely, a chain-specific shortcut must not weaken a canonical invariant just to obtain feature parity.
+
+Where a network cannot presently enforce the complete invariant set, OmegaVault records the strongest honest semantic tier such as `reduced-semantics` rather than moving missing authority off-chain and calling it equivalent.
+
+This doctrine is captured formally by `OV-I11` (cross-chain equivalence) and the other canonical invariants in `src/core/invariants.js`.
+
 ## Core rule
 
 OmegaVault Core expresses recovery concepts, not Ethereum concepts.
