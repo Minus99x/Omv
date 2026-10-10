@@ -1,11 +1,10 @@
 // Live READ-ONLY UTxO and two-provider parameter recheck for an existing
 // OmegaVault Cardano Preprod unsigned capture. This cannot sign or submit.
 // Old UTxO and protocol evidence is immutable; the latest tip is a NEW check.
-import { readFile } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
-import { inspectCardanoPreprodUnsignedCapture } from './inspect-cardano-preprod-unsigned-capture.js';
+import { loadVerifiedCardanoPreprodUnsignedCapture } from './inspect-cardano-preprod-unsigned-capture.js';
 import {
   createCardanoOgmiosHttpClient,
   normalizeCardanoOgmiosWebSocketUrl,
@@ -138,12 +137,12 @@ async function recheck({capture,client,blockfrostProjectId,fetchImpl=globalThis.
   if (!Number.isSafeInteger(retries)||retries<1||retries>MAX_STABLE_RETRIES) throw new Error('Invalid stable-tip retry count.');
   // Must pass all offline checks first, including manifest transitively
   // digest-binding the COMPLETE saved protocol snapshot.
-  await inspectCardanoPreprodUnsignedCapture(capture);
-  const root=resolve(capture);
-  const manifest=JSON.parse(await readFile(join(root,'capture-manifest.json'),'utf8'));
-  const sourceBinding=JSON.parse(await readFile(join(root,manifest.files.utxoBindingEvidence),'utf8'));
-  const candidate=JSON.parse(await readFile(join(root,manifest.files.finalUnsignedCandidate),'utf8'));
-  const capturedSnapshot=JSON.parse(await readFile(join(root,manifest.files.protocolSnapshot),'utf8'));
+  // Reuse the exact digest-verified documents read by the offline inspector.
+  // A second read from disk could consume different or path-swapped evidence.
+  const {documents}=await loadVerifiedCardanoPreprodUnsignedCapture(capture);
+  const sourceBinding=documents.utxoBindingEvidence;
+  const candidate=documents.finalUnsignedCandidate;
+  const capturedSnapshot=documents.protocolSnapshot;
   const roles=sourceBinding.roles;
   const params=createCardanoOgmiosUtxoByOutputReferencesParams([
     roles.seed.reference,roles.collateral.reference
