@@ -17,6 +17,7 @@ use pallas_primitives::{
 };
 use pallas_validate::utils::ConwayProtParams;
 use serde_json::Value;
+use sha2::{Digest,Sha256};
 
 const REQUIRED_EXTRA: &[&str] = &[
     "systemStart", "epochLength", "slotLength",
@@ -136,6 +137,20 @@ pub fn conway_params_from_verified_snapshot(snapshot: &Value) -> Result<ConwayPr
         return Err(format!("Complete independently verified Conway parameters missing: {}",missing.join(", ")));
     }
     let extra = required(params,"completeConway")?;
+    let agreement=required(params,"completeConwayAgreement")?;
+    if uint(agreement,"independentSourceCount")? < 2 {
+        return Err("Complete Conway parameters lack two independent provider confirmations".into());
+    }
+    let canonical=serde_json::to_vec(extra)
+        .map_err(|_|"Could not canonicalize complete Conway parameters")?;
+    let actual_digest=hex::encode(Sha256::digest(canonical));
+    for provider in ["ogmiosSha256","blockfrostSha256"] {
+        let expected=required(agreement,provider)?.as_str()
+            .ok_or_else(||format!("Missing {provider} extended Conway digest"))?;
+        if expected != actual_digest {
+            return Err(format!("Extended Conway provider disagreement: {provider} digest mismatch"));
+        }
+    }
     let started = required(extra,"systemStart")?.as_str()
         .ok_or("Conway systemStart must be RFC3339 UTC time")?;
     let system_start = DateTime::parse_from_rfc3339(started)
@@ -236,4 +251,18 @@ mod tests{
         assert!(ratio(&json!({"numerator":"4","denominator":"0"}),"ratio",true).is_err());
         assert!(ratio(&json!({"numerator":"3","denominator":"2"}),"ratio",true).is_err());
     }
+    #[test]
+    fn explicit_agreement_is_required_for_extended_conway_fields() {
+        let snapshot=json!({
+            "network":"preprod","networkId":0,
+            "source":{"independentSourceCount":2},
+            "promotion":{"independentlyConfirmed":true},
+            "parameters":{"era":"Conway","protocolVersion":"10.0","completeConway":{
+                "systemStart":"2022-06-21T00:00:00Z"
+            }}
+        });
+        assert!(missing_conway_parameter_fields(&snapshot).len()>0);
+        assert!(conway_params_from_verified_snapshot(&snapshot).is_err());
+    }
+
 }
