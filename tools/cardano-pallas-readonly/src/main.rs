@@ -7,7 +7,9 @@
 //! never returns a passing phase-one verdict or submission authorization.
 
 mod ledger_utxos;
+mod conway_protocol;
 use ledger_utxos::assemble_conway_initialize_utxos;
+use conway_protocol::{conway_params_from_verified_snapshot,missing_conway_parameter_fields};
 
 use std::io::{self, Read};
 use sha2::{Digest, Sha256};
@@ -468,6 +470,27 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         return Err("Pallas ledger UTxO assembly did not preserve both inputs".into());
     }
 
+    // Invoke Pallas's REAL Conway phase-one rule set only when every live
+    // protocol parameter has an independently confirmed, digest-bound value.
+    // Our existing V2 capture intentionally lacks some required Conway fields;
+    // in that case report exact gaps and leave phase-one authorization CLOSED.
+    let snapshot = request.pointer("/ledgerContext/protocolSnapshot")
+        .ok_or_else(|| "Missing digest-verified current Conway snapshot".to_owned())?;
+    let missing_conway = missing_conway_parameter_fields(snapshot);
+    let pallas_ledger_rules_passed = if missing_conway.is_empty() {
+        let current_pp = conway_params_from_verified_snapshot(snapshot)?;
+        pallas_validate::phase1::conway::validate_conway_tx(
+            &conway,
+            &current_ledger_utxos,
+            &current_pp,
+            &tip_slot,
+            &0u8,
+        ).map_err(|error| format!("Pallas complete Conway ledger phase-one rule failure: {error:?}"))?;
+        true
+    } else {
+        false
+    };
+
     // Deliberately NO success value, until we have independently reconstructed
     // full Conway ledger parameters and CertState from a current trusted source,
     // and actually run pallas_validate::phase1::validate_tx on these exact bytes.
@@ -487,12 +510,14 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         "pallasInitializeAdaAndCollateralConservationChecked": true,
         "pallasSingleStateBeaconMintAndOutputMatched": true,
         "pallasCompleteCurrentLedgerUtxosAssembled": true,
+        "pallasConwayLedgerRulesExecutedAndPassed": pallas_ledger_rules_passed,
+        "missingIndependentlyConfirmedConwayParameters": missing_conway,
         "requestProtocolAndLedgerSnapshotDigestsVerified": true,
         "completePhaseOneValidated": false,
         "transactionSubmissionAuthorized": false,
         "transactionSubmissionPerformed": false,
         "supportClaimAuthorized": false,
-        "hardStop": "STRUCTURAL DECODE ONLY. Pallas phase-one validation has not run. Do not sign or submit."
+        "hardStop": "READ-ONLY. Native Conway ledger rules execute only when every independently confirmed protocol parameter is supplied; this inspection is never fresh ledger attestation or authorization to sign/submit. No transaction submission or funds movement."
     }))
 }
 
