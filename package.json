@@ -54,6 +54,7 @@
     "cardano:preprod:campaign:launch": "node scripts/cardano-preprod-campaign-workstation-launch.js",
     "test:cardano-campaign-workstation-launch": "node --test test/cardano-preprod-campaign-workstation-launch-cli.test.js",
     "cardano:preprod:operator:handoff": "node scripts/cardano-preprod-operator-handoff.js",
+    "cardano:preprod:console:ready": "node scripts/cardano-preprod-console-readiness.js",
     "test:cardano-operator-handoff": "node --test test/cardano-preprod-operator-handoff-cli.test.js",
     "cardano:preprod:first-run": "node scripts/cardano-preprod-first-run.js",
     "test:cardano-first-run": "node --test test/cardano-preprod-first-run-cli.test.js",
