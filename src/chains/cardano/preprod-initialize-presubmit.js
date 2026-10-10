@@ -162,10 +162,19 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
     throw new Error('Signed initialize outputs are not proven within the current maxValueSize limit.');
   }
 
-  if (tip.slot < unsignedCandidate.validity.lowerSlot) {
+  // Cardano validity intervals are half-open: [invalidBefore, invalidHereafter).
+  // Missing or malformed bounds MUST fail closed rather than letting
+  // comparisons with undefined/NaN silently pass the freshness gate.
+  const lowerSlot = unsignedCandidate?.validity?.lowerSlot;
+  const upperSlot = unsignedCandidate?.validity?.upperSlot;
+  if (!Number.isSafeInteger(lowerSlot) || lowerSlot < 0 ||
+      !Number.isSafeInteger(upperSlot) || upperSlot <= lowerSlot) {
+    throw new Error('Initialize candidate has invalid lower/upper validity bounds.');
+  }
+  if (tip.slot < lowerSlot) {
     throw new Error('Current Preprod tip is before the initialize validity interval.');
   }
-  if (tip.slot > unsignedCandidate.validity.upperSlot) {
+  if (tip.slot >= upperSlot) {
     throw new Error('Initialize validity interval has expired; rebuild from fresh real UTxO evidence.');
   }
 
