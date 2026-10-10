@@ -99,3 +99,66 @@ test('deep-copies source before computing commitment so caller cannot mutate it 
   args.ogmiosCompleteConway.systemStart='2000-01-01T00:00:00Z';
   assert.equal(result.parameters.completeConway.systemStart,'2022-06-21T00:00:00Z');
 });
+
+test('matching but impossible Conway genesis dates cannot pass two-source agreement',()=>{
+  const args=fixture();
+  args.ogmiosCompleteConway.systemStart='2026-02-30T00:00:00Z';
+  args.blockfrostCompleteConway.systemStart='2026-02-30T00:00:00Z';
+  assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/systemStart.*valid calendar time/);
+});
+test('matching zero epoch lengths are not usable as ledger timing evidence',()=>{
+  const args=fixture();
+  args.ogmiosCompleteConway.epochLength=0;
+  args.blockfrostCompleteConway.epochLength=0;
+  assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/epochLength.*supported ledger integer range/);
+});
+test('matching nonintegral slot lengths are rejected before digest binding',()=>{
+  const args=fixture();
+  args.ogmiosCompleteConway.slotLength='1.5';
+  args.blockfrostCompleteConway.slotLength='1.5';
+  assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/slotLength.*exact non-negative integer/);
+});
+test('matching out-of-range u32 block limits cannot be accepted',()=>{
+  const args=fixture();
+  args.ogmiosCompleteConway.maxBlockBodySize=4294967296;
+  args.blockfrostCompleteConway.maxBlockBodySize=4294967296;
+  assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/maxBlockBodySize.*supported ledger integer range/);
+});
+test('matching unsafe floating-point integers cannot be promoted as exact parameters',()=>{
+  const args=fixture();
+  args.ogmiosCompleteConway.governanceActionDeposit=2**54;
+  args.blockfrostCompleteConway.governanceActionDeposit=2**54;
+  assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/governanceActionDeposit.*exact non-negative integer/);
+});
+test('matching zero denominators cannot become Conway rational evidence',()=>{
+  const args=fixture();
+  args.ogmiosCompleteConway.expansionRate={numerator:'1',denominator:'0'};
+  args.blockfrostCompleteConway.expansionRate={numerator:'1',denominator:'0'};
+  assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/expansionRate.denominator.*supported ledger integer range/);
+});
+test('matching out-of-range governance voting thresholds still fail',()=>{
+  const args=fixture();
+  args.ogmiosCompleteConway.drepVotingThresholds.treasuryWithdrawal={numerator:'2',denominator:'1'};
+  args.blockfrostCompleteConway.drepVotingThresholds.treasuryWithdrawal={numerator:'2',denominator:'1'};
+  assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/treasuryWithdrawal.*between 0 and 1/);
+});
+test('matching incomplete governance groups are rejected even when both sources omit same field',()=>{
+  const args=fixture();
+  delete args.ogmiosCompleteConway.poolVotingThresholds.securityVotingThreshold;
+  delete args.blockfrostCompleteConway.poolVotingThresholds.securityVotingThreshold;
+  assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/securityVotingThreshold.*normalized rational object/);
+});
+test('matching zero execution-unit budgets do not qualify for Conway snapshot',()=>{
+  const args=fixture();
+  args.ogmiosCompleteConway.maxBlockExUnits.memory='0';
+  args.blockfrostCompleteConway.maxBlockExUnits.memory='0';
+  assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/maxBlockExUnits.memory.*supported ledger integer range/);
+});
+test('valid offset RFC3339 system start remains accepted without assuming UTC string formatting',()=>{
+  const args=fixture();
+  args.ogmiosCompleteConway.systemStart='2022-06-20T17:00:00-07:00';
+  args.blockfrostCompleteConway.systemStart='2022-06-20T17:00:00-07:00';
+  const report=createCardanoPreprodExtendedConwaySnapshot(args);
+  assert.equal(report.parameters.completeConway.systemStart,'2022-06-20T17:00:00-07:00');
+  assert.equal(report.parameters.completeConwayAgreement.submissionAuthorized,false);
+});
