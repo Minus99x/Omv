@@ -3,6 +3,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve, relative, isAbsolute, join } from 'node:path';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
+import { verifyCardanoPreprodAppliedValidatorIdentity } from '../src/chains/cardano/live-validator-identity.js';
 
 const DIGESTS = Object.freeze({
   appliedValidatorIdentity: ['identitySha256','validatorIdentitySha256'],
@@ -70,7 +71,19 @@ export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
   for (const [key,[digestField,manifestKey]] of Object.entries(DIGESTS)) {
     const path=safeJoin(root,manifest.files?.[key]);
     const doc=await readJson(path);
-    const sha=selfDigest(doc,digestField);
+    // The original Aiken generator appends a provenance object AFTER
+    // createCardanoPreprodAppliedValidatorIdentity hashes its signed core.
+    // Verify identity with the first-party cryptographic verifier rather than
+    // hashing provenance as though it were part of that committed core.
+    if (key === 'appliedValidatorIdentity') {
+      const verified=verifyCardanoPreprodAppliedValidatorIdentity(doc);
+      if (!verified.valid) throw new Error(
+        'Applied validator identity verification failed: '+verified.errors.join('; ')
+      );
+    }
+    const sha=key === 'appliedValidatorIdentity'
+      ? selfDigest(Object.fromEntries(Object.entries(doc).filter(([k])=>k!=='provenance')),digestField)
+      : selfDigest(doc,digestField);
     const bound=manifest.identities?.[manifestKey];
     if (typeof bound !== 'string' || sha!==bound.toLowerCase()) {
       throw new Error(key+' digest is not bound to the captured manifest identity.');
@@ -101,6 +114,8 @@ export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
     manifestSha256,
     checkedBoundArtifactCount:Object.keys(DIGESTS).length,
     boundArtifactDigestsValid:true,
+    validatorIdentityAppliedCodeAndAddressVerified:true,
+    validatorIdentitySupplementalAikenProvenanceBoundByIdentitySha256:false,
     unsignedCandidateSha256:artifacts.finalUnsignedCandidate.candidateSha256,
     unsignedPreflightSha256:preflight.preflightSha256,
     protocolSnapshotTwoSourceClaimPresent:true,
@@ -112,7 +127,7 @@ export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
     transactionSubmissionPerformed:false,
     transactionSubmissionAuthorized:false,
     supportClaimAuthorized:false,
-    limitation:'Offline self-digest/integrity verification only. Existing v1 manifest does not bind the WHOLE protocol snapshot bytes; provider truth, transaction freshness and full Conway phase one remain unproven.',
+    limitation:'Offline self-digest/integrity verification only. Supplemental Aiken provenance is outside the validator identity digest; the v1 manifest does not bind the WHOLE protocol snapshot bytes. Provider truth, transaction freshness and full Conway phase one remain unproven.',
     nextGate:'Independently reverify the fresh protocol/UTxO environment. No signing or submission.'
   });
 }
