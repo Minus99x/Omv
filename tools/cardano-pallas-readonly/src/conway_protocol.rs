@@ -274,4 +274,84 @@ mod tests{
         assert!(conway_params_from_verified_snapshot(&snapshot).is_err());
     }
 
+    fn complete_test_snapshot() -> Value {
+        let half=json!({"numerator":"1","denominator":"2"});
+        let pool=json!({
+            "motionNoConfidence":half,"committeeNormal":half,"committeeNoConfidence":half,
+            "hardForkInitiation":half,"securityVotingThreshold":half
+        });
+        let drep=json!({
+            "motionNoConfidence":half,"committeeNormal":half,"committeeNoConfidence":half,
+            "updateConstitution":half,"hardForkInitiation":half,
+            "ppNetworkGroup":half,"ppEconomicGroup":half,"ppTechnicalGroup":half,
+            "ppGovernanceGroup":half,"treasuryWithdrawal":half
+        });
+        let complete=json!({
+            "systemStart":"2022-06-21T00:00:00Z",
+            "epochLength":432000,"slotLength":1,
+            "maxBlockBodySize":90112,"maxBlockHeaderSize":1100,
+            "keyDeposit":"2000000","poolDeposit":"500000000",
+            "desiredNumberOfStakePools":500,"minPoolCost":"340000000",
+            "maxBlockExUnits":{"memory":"62000000","steps":"40000000000"},
+            "maximumEpoch":18,"poolPledgeInfluence":half,
+            "expansionRate":half,"treasuryGrowthRate":half,
+            "poolVotingThresholds":pool,"drepVotingThresholds":drep,
+            "minCommitteeSize":1,"committeeTermLimit":100,
+            "governanceActionValidityPeriod":100,
+            "governanceActionDeposit":"100000000000",
+            "drepDeposit":"500000000","drepInactivityPeriod":20,
+            "minFeeRefScriptCostPerByte":half,
+            "plutusV1CostModel":vec![0;166],
+            "plutusV2CostModel":vec![0;175]
+        });
+        let agreed=hex::encode(Sha256::digest(serde_json::to_vec(&complete).unwrap()));
+        json!({
+            "network":"preprod","networkId":0,
+            "source":{"independentSourceCount":2},
+            "promotion":{"independentlyConfirmed":true},
+            "tip":{"blockHash":"abababababababababababababababababababababababababababababababab","slot":80000000},
+            "parameters":{
+                "era":"Conway","protocolVersion":"10.0",
+                "minFeeA":"44","minFeeB":"155381","maxTxSize":16384,"maxValueSize":5000,
+                "coinsPerUtxoByte":"4310",
+                "priceMemory":{"numerator":"577","denominator":"10000"},
+                "priceSteps":{"numerator":"721","denominator":"10000000"},
+                "maxTxExUnits":{"memory":"14000000","steps":"10000000000"},
+                "collateralPercentage":"150","maxCollateralInputs":3,
+                "plutusV3CostModel":vec![0;350],
+                "completeConway":complete,
+                "completeConwayAgreement":{
+                    "independentSourceCount":2,"ogmiosSha256":agreed,
+                    "blockfrostSha256":agreed,
+                    "acquiredStableTipHash":"abababababababababababababababababababababababababababababababab",
+                    "acquiredStableTipSlot":80000000
+                }
+            }
+        })
+    }
+    #[test]
+    fn builds_native_pallas_conway_parameters_when_every_field_is_correlated() {
+        let source=complete_test_snapshot();
+        assert!(missing_conway_parameter_fields(&source).is_empty());
+        let params=conway_params_from_verified_snapshot(&source).unwrap();
+        assert_eq!(params.minfee_a,44);
+        assert_eq!(params.ada_per_utxo_byte,4310);
+        assert_eq!(params.max_tx_ex_units.mem,14000000);
+        assert_eq!(params.cost_models_for_script_languages.plutus_v3.as_ref().unwrap().len(),350);
+    }
+    #[test]
+    fn rejects_divergent_second_provider_digest_even_when_every_field_exists() {
+        let mut source=complete_test_snapshot();
+        source["parameters"]["completeConwayAgreement"]["blockfrostSha256"] = json!("0".repeat(64));
+        assert!(conway_params_from_verified_snapshot(&source)
+            .unwrap_err().contains("provider disagreement"));
+    }
+    #[test]
+    fn rejects_extended_parameters_from_different_tip_slot() {
+        let mut source=complete_test_snapshot();
+        source["parameters"]["completeConwayAgreement"]["acquiredStableTipSlot"] = json!(80000001);
+        assert!(conway_params_from_verified_snapshot(&source)
+            .unwrap_err().contains("bound stable tip"));
+    }
+
 }
