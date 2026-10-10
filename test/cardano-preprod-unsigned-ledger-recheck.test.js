@@ -123,6 +123,10 @@ test('Cardano invalidHereafter TTL is exclusive at the exact slot boundary',()=>
   assert.equal(atExpiry.candidateStillWithinValidity,false);
   assert.equal(atExpiry.validityUpperBoundExclusive,true);
   assert.match(atExpiry.nextGate,/validity expired/);
+  // The lower-bound fixture needs a capture tip earlier than both test slots;
+  // otherwise the stale-tip guard (correctly) rejects the comparison first.
+  source.capturedBinding.stableTip.slot=lowerSlot-2;
+  source.capturedSnapshot.tip.slot=lowerSlot-2;
   source.currentTip.slot=lowerSlot;
   assert.equal(compareCardanoPreprodCapturedLedger(source).candidateStillWithinValidity,true);
   source.currentTip.slot=lowerSlot-1;
