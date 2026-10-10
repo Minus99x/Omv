@@ -229,9 +229,6 @@ fn inspect(request_json: &str) -> Result<Value, String> {
     {
         return Err("Malformed transaction or request digest".to_owned());
     }
-    verify_request_sha256(&request, request_sha)?;
-    verify_snapshot_sha256(&request)?;
-    verify_ledger_snapshot_sha256(&request)?;
     if tx_hex.len() % 2 != 0 || tx_hex.len() > MAX_TRANSACTION_BYTES * 2 {
         return Err("Malformed or oversized signed transaction hex".to_owned());
     }
@@ -251,6 +248,10 @@ fn inspect(request_json: &str) -> Result<Value, String> {
     let conway: pallas_primitives::conway::Tx =
         pallas_codec::minicbor::decode(&tx_bytes)
             .map_err(|_| "Pallas rejected Conway transaction CBOR".to_owned())?;
+
+    verify_request_sha256(&request, request_sha)?;
+    verify_snapshot_sha256(&request)?;
+    verify_ledger_snapshot_sha256(&request)?;
 
     let tip_hash = required_string(&request, &["ledgerContext", "tip", "hash"])?;
     let tip_slot = request.pointer("/ledgerContext/tip/slot")
@@ -434,7 +435,8 @@ mod tests {
         });
         // Request digest must be the hash of the *other* fields, not an
         // arbitrary hash of a transaction or a caller's assertion.
-        assert!(inspect(&request.to_string()).unwrap_err().contains("request JSON commitment digest mismatch"));
+        assert!(verify_request_sha256(&request, request["requestSha256"].as_str().unwrap())
+            .unwrap_err().contains("request JSON commitment digest mismatch"));
         let core = request.as_object_mut().unwrap();
         core.remove("requestSha256");
         let digest = hex::encode(Sha256::digest(serde_json::to_vec(&request).unwrap()));
