@@ -727,16 +727,24 @@ mod tests {
         assert!(checked_collateral_conservation(2, 3, 0, 0, 150).is_err());
     }
     #[test]
-    fn refuses_non_ada_outputs_even_with_lovelace() {
+    fn preserves_ada_amount_in_beacon_state_but_rejects_assets_in_owner_change() {
         use std::collections::BTreeMap;
-        use pallas_primitives::conway::Value as V;
+        use pallas_primitives::conway::{Value as V, TransactionOutput, PostAlonzoTransactionOutput};
         let mut assets = BTreeMap::new();
         assets.insert(
             pallas_crypto::hash::Hash::<28>::from([7u8; 28]),
             BTreeMap::new()
         );
-        assert!(conway_value_ada(&V::Coin(10)).is_ok());
-        assert!(conway_value_ada(&V::Multiasset(10, assets)).is_err());
+        let state_value = V::Multiasset(10, assets.clone());
+        assert_eq!(conway_value_ada(&state_value).unwrap(), 10);
+        let illegal_change = TransactionOutput::PostAlonzo(PostAlonzoTransactionOutput {
+            address: vec![0u8;29].into(),
+            value: V::Multiasset(10, assets),
+            datum_option: None,
+            script_ref: None,
+        }.into());
+        assert!(assert_no_native_assets(&illegal_change, "owner change")
+            .unwrap_err().contains("native assets"));
     }
 
     #[test]
