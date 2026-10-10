@@ -179,7 +179,12 @@ export function createCardanoPreprodIndependentPhaseOneInput({
   }
   const lower = preSubmit.validity?.lowerSlot;
   const upper = preSubmit.validity?.upperSlot;
-  if (!Number.isSafeInteger(lower) || !Number.isSafeInteger(upper) || lower > upper || tip.slot < lower || tip.slot > upper || preSubmit.validity?.currentTipWithinInterval !== true) {
+  // The upper Cardano invalidHereafter slot is EXCLUSIVE. Reject malformed
+  // bounds, including empty windows, before preparing any signed-body input.
+  if (!Number.isSafeInteger(lower) || lower < 0 ||
+      !Number.isSafeInteger(upper) || upper <= lower ||
+      tip.slot < lower || tip.slot >= upper ||
+      preSubmit.validity?.currentTipWithinInterval !== true) {
     throw new Error('Signed transaction validity interval does not include the captured stable tip.');
   }
   const seed = reference(preSubmit.currentInputs?.seed, 'preSubmitEvidence.currentInputs.seed');
