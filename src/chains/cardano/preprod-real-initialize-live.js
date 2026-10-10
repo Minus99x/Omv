@@ -1,5 +1,6 @@
 import { hashCardanoEvidence } from './evidence-binding.js';
 import { createCardanoPreprodLiveProtocolSnapshot } from './live-protocol-parameters.js';
+import { createCardanoPreprodConwayReadinessReport } from './conway-provider-readiness.js';
 import { normalizeCardanoOgmiosEvaluation } from './ogmios-evaluation.js';
 import {
   createCardanoOgmiosUtxoByOutputReferencesParams,
@@ -136,6 +137,13 @@ export async function captureCardanoPreprodRealInitializeEvaluation({
       tipAfter,
       queriedUtxo
     });
+    const conwayParameterReadiness = createCardanoPreprodConwayReadinessReport({
+      ogmiosParameters,
+      blockfrostParameters,
+      protocolSnapshot,
+      tipBefore,
+      tipAfter
+    });
     if (utxoBindingEvidence.evidenceSha256 !== provisionalBinding.evidenceSha256) {
       throw new Error('Stable-tip real UTxO evidence changed while constructing the initialize candidate.');
     }
@@ -197,6 +205,7 @@ export async function captureCardanoPreprodRealInitializeEvaluation({
       utxoBindingPlanSha256: bindingPlan.planSha256,
       utxoBindingEvidenceSha256: utxoBindingEvidence.evidenceSha256,
       protocolSnapshot,
+      conwayParameterReadiness,
       evaluationCandidateSha256: evaluationCandidate.candidateSha256,
       evaluationResponse,
       normalizedEvaluation: evaluation,
@@ -224,6 +233,7 @@ export async function captureCardanoPreprodRealInitializeEvaluation({
       bindingPlan,
       utxoBindingEvidence,
       protocolSnapshot,
+      conwayParameterReadiness,
       evaluationCandidate,
       evaluationEvidence,
       finalUnsignedCandidate,
