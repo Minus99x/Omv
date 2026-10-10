@@ -93,3 +93,73 @@ test('refuses loss of integer precision in a provider response',()=>{
  const r=createCardanoPreprodConwayReadinessReport(f);
  assert.match(r.unresolved.keyDeposit.ogmios,/without truncation/);
 });
+
+function withConwayVoting(f) {
+  f.ogmiosParameters.stakePoolVotingThresholds={
+    noConfidence:'1/2',
+    constitutionalCommittee:{default:'3/5',stateOfNoConfidence:'7/10'},
+    hardForkInitiation:'2/5',
+    protocolParametersUpdate:{security:'1/4'}
+  };
+  f.ogmiosParameters.delegateRepresentativeVotingThresholds={
+    noConfidence:'1/2',
+    constitutionalCommittee:{default:'3/5',stateOfNoConfidence:'7/10'},
+    constitution:'2/5',
+    hardForkInitiation:'1/4',
+    protocolParametersUpdate:{
+      network:'1/10',economic:'1/5',technical:'3/10',governance:'4/5'
+    },
+    treasuryWithdrawals:'9/10'
+  };
+  Object.assign(f.blockfrostParameters,{
+    pvt_motion_no_confidence:0.5,pvt_committee_normal:0.6,
+    pvt_committee_no_confidence:0.7,pvt_hard_fork_initiation:0.4,
+    pvt_p_p_security_group:0.25,
+    dvt_motion_no_confidence:0.5,dvt_committee_normal:0.6,
+    dvt_committee_no_confidence:0.7,dvt_update_to_constitution:0.4,
+    dvt_hard_fork_initiation:0.25,dvt_p_p_network_group:0.1,
+    dvt_p_p_economic_group:0.2,dvt_p_p_technical_group:0.3,
+    dvt_p_p_gov_group:0.8,dvt_treasury_withdrawal:0.9
+  });
+  return f;
+}
+test('two complete Conway voting groups agree using actual Ogmios and Blockfrost field paths',()=>{
+  const report=createCardanoPreprodConwayReadinessReport(withConwayVoting(fixture()));
+  assert.equal(report.coveredParameterCount,15);
+  assert.equal(report.agreed.poolVotingThresholds.securityVotingThreshold.numerator,'1');
+  assert.equal(report.agreed.poolVotingThresholds.securityVotingThreshold.denominator,'4');
+  assert.equal(report.agreed.drepVotingThresholds.treasuryWithdrawal.numerator,'9');
+  assert.equal(report.agreed.drepVotingThresholds.ppGovernanceGroup.denominator,'5');
+  assert.equal(Object.hasOwn(report.unresolved,'poolVotingThresholds'),false);
+  assert.equal(Object.hasOwn(report.unresolved,'drepVotingThresholds'),false);
+  assert.equal(report.completeConwayParametersEstablished,false);
+  assert.equal(report.transactionSubmissionAuthorized,false);
+});
+test('different DRep threshold is explicit mismatch, never partial agreement',()=>{
+  const f=withConwayVoting(fixture());
+  f.blockfrostParameters.dvt_p_p_gov_group=0.7;
+  const report=createCardanoPreprodConwayReadinessReport(f);
+  assert.equal(Object.hasOwn(report.agreed,'drepVotingThresholds'),false);
+  assert.equal(report.mismatched.drepVotingThresholds.ogmios.ppGovernanceGroup.numerator,'4');
+  assert.equal(report.mismatched.drepVotingThresholds.blockfrost.ppGovernanceGroup.numerator,'7');
+  assert.equal(report.agreed.poolVotingThresholds.securityVotingThreshold.denominator,'4');
+});
+test('partial voting groups stay unresolved rather than being marked agreed',()=>{
+  const f=withConwayVoting(fixture());
+  delete f.blockfrostParameters.pvt_p_p_security_group;
+  delete f.ogmiosParameters.delegateRepresentativeVotingThresholds.constitution;
+  const report=createCardanoPreprodConwayReadinessReport(f);
+  assert.equal(Object.hasOwn(report.agreed,'poolVotingThresholds'),false);
+  assert.equal(Object.hasOwn(report.agreed,'drepVotingThresholds'),false);
+  assert.match(report.unresolved.poolVotingThresholds.blockfrost,/securityVotingThreshold/);
+  assert.match(report.unresolved.drepVotingThresholds.ogmios,/updateConstitution/);
+  assert.equal(report.completeConwayParametersEstablished,false);
+});
+test('out-of-range governance ratios fail closed rather than normalizing them',()=>{
+  const f=withConwayVoting(fixture());
+  f.blockfrostParameters.dvt_treasury_withdrawal=1.2;
+  const report=createCardanoPreprodConwayReadinessReport(f);
+  assert.match(report.unresolved.drepVotingThresholds.blockfrost,/exceeds voting threshold 1/);
+  assert.equal(Object.hasOwn(report.agreed,'drepVotingThresholds'),false);
+  assert.equal(report.transactionSubmissionAuthorized,false);
+});
