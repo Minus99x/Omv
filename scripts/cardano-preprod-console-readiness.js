@@ -41,7 +41,7 @@ function expectedDigest(object, field) {
 
 async function captureInfo(path) {
   const report = {
-    directory:path, captureManifestPresent:false, captureManifestDigestValid:false,
+    directory:path, captureDirectory:null, captureManifestPresent:false, captureManifestDigestValid:false,
     ownerWitnessPresent:false, ownerWitnessDigestValid:false,
     ownerWitnessSignaturePreviouslyRecorded:false,
     validityUpperSlot:null, estimatedValidityExpired:null,
@@ -49,11 +49,19 @@ async function captureInfo(path) {
     freshPhaseOneValidated:false, submissionAuthorized:false,
     issues:[]
   };
-  const manifestPath = join(path, 'capture-manifest.json');
-  if (!await exists(manifestPath)) {
-    report.issues.push('Capture manifest missing; not a usable signing evidence directory.');
+  // Guided capture writes the manifest to <session>/capture/ while the
+  // Lace owner witness is written to <session>/wallet-signing/. Direct
+  // capture output directories have a manifest at their own root.
+  const directManifest = join(path, 'capture-manifest.json');
+  const nestedManifest = join(path, 'capture', 'capture-manifest.json');
+  const manifestPath = await exists(directManifest) ? directManifest :
+    await exists(nestedManifest) ? nestedManifest : null;
+  if (!manifestPath) {
+    report.issues.push('Capture manifest absent at session root AND capture/capture-manifest.json; session may be incomplete.');
     return report;
   }
+  const captureDir = dirname(manifestPath);
+  report.captureDirectory = captureDir;
   try {
     const manifest = await getJson(manifestPath);
     report.captureManifestPresent = true;
@@ -65,9 +73,9 @@ async function captureInfo(path) {
     // Manifests are local evidence, not authority to read arbitrary files.
     // Even a self-consistent manifest digest cannot authorize path traversal.
     const relativeCandidate=manifest.files?.finalUnsignedCandidate;
-    const candidatePath=relativeCandidate ? resolve(path,relativeCandidate) : null;
+    const candidatePath=relativeCandidate ? resolve(captureDir,relativeCandidate) : null;
     if (candidatePath) {
-      const escape=relative(path,candidatePath);
+      const escape=relative(captureDir,candidatePath);
       if (isAbsolute(escape) || escape === '..' || escape.startsWith('..\\') || escape.startsWith('../')) {
         throw new Error('Capture manifest candidate path escapes the capture directory.');
       }
@@ -85,8 +93,16 @@ async function captureInfo(path) {
         if (report.estimatedValidityExpired) report.issues.push('Old initialize validity window expired; fresh capture and separate authorization required.');
       }
     }
-    const witnessPath=join(path,'wallet-signing','wallet-witness-evidence.json');
-    if (await exists(witnessPath)) {
+    const witnessCandidates = [
+      join(path, 'wallet-signing', 'wallet-witness-evidence.json'),
+      join(dirname(captureDir), 'wallet-signing', 'wallet-witness-evidence.json'),
+      join(captureDir, 'wallet-signing', 'wallet-witness-evidence.json')
+    ];
+    let witnessPath = null;
+    for (const candidate of witnessCandidates) {
+      if (await exists(candidate)) { witnessPath = candidate; break; }
+    }
+    if (witnessPath) {
       report.ownerWitnessPresent=true;
       const witness=await getJson(witnessPath);
       report.ownerWitnessDigestValid=expectedDigest(witness,'witnessEvidenceSha256');
@@ -102,9 +118,14 @@ async function captureInfo(path) {
     } else {
       report.issues.push('No owner witness JSON at wallet-signing/wallet-witness-evidence.json.');
     }
-    const entries = await readdir(path,{withFileTypes:true});
-    report.preSubmitFreshnessExisting = entries.some(entry =>
-      entry.isFile() && /pre.?submit.*\.json$/i.test(entry.name));
+    const scanned = [...new Set([path, captureDir, dirname(captureDir)])];
+    for (const directory of scanned) {
+      const entries = await readdir(directory, { withFileTypes: true });
+      if (entries.some(entry => entry.isFile() && /pre.?submit.*\.json$/i.test(entry.name))) {
+        report.preSubmitFreshnessExisting = true;
+        break;
+      }
+    }
   } catch (error) {
     report.issues.push('Could not inspect captured artifact: ' + error.message);
   }
@@ -161,7 +182,11 @@ if (args.includes('--help')||args.includes('-h')) {
       tools:{
         node:process.version,
         gitAvailable:Boolean(execRead('git',['--version'])),
-        npmAvailable:Boolean(execRead(process.platform==='win32'?'npm.cmd':'npm',['--version']))
+        // Node 24 on Windows may refuse child_process.spawnSync('npm.cmd')
+        // even though npm.cmd works normally in PowerShell. npm_execpath
+        // proves this command was invoked successfully by npm.
+        npmAvailable:Boolean(process.env.npm_execpath) ||
+          Boolean(execRead(process.platform==='win32'?'npm.cmd':'npm',['--version']))
       },
       providerEnvironment:{
         ogmiosUrlConfigured:envConfigured('OMEGAVAULT_OGMIOS_URL'),
