@@ -98,7 +98,8 @@ export function compareCardanoPreprodCapturedLedger({
   const sameParams=protocolValues(capturedSnapshot)===protocolValues(currentSnapshot);
   const sourceUtxosUnchanged=Object.values(result).every(v=>
     v.stillUnspent && v.addressAndLovelaceUnchanged && v.remainsPlainAdaOnly);
-  const candidateStillWithinValidity=currentTip.slot>=v.lowerSlot && currentTip.slot<=v.upperSlot;
+  // Cardano invalidHereafter is an EXCLUSIVE upper slot bound.
+  const candidateStillWithinValidity=currentTip.slot>=v.lowerSlot && currentTip.slot<v.upperSlot;
   return Object.freeze({
     schema:SCHEMA,
     ok:true,
@@ -106,14 +107,17 @@ export function compareCardanoPreprodCapturedLedger({
     capturedTip:boundTip,
     checkedTip:Object.freeze({hash:currentTip.hash,slot:currentTip.slot}),
     capturedUnsignedCandidateValidUntilSlot:v.upperSlot,
+    validityUpperBoundExclusive:true,
     seed:result.seed,
     collateral:result.collateral,
     originalUTxOsUnspentAndUnchanged:sourceUtxosUnchanged,
     independentlyCorroboratedProtocolValuesUnchanged:sameParams,
     candidateStillWithinValidity,
-    liveOgmiosAndBlockfrostReadsPerformed:true,
-    currentTwoSourceProtocolAgreement:true,
-    currentStableTipAndUTxOStateChecked:true,
+    // This pure comparator does not itself query a provider or prove stable-tip sampling.
+    // Only recheck() may promote these to true after real RPC/HTTP reads.
+    liveOgmiosAndBlockfrostReadsPerformed:false,
+    currentTwoSourceProtocolAgreement:false,
+    currentStableTipAndUTxOStateChecked:false,
     originalUnsignedCandidateReadyForSigning:false,
     newSigningAuthorizationRequired:true,
     completePhaseOneValidated:false,
@@ -170,6 +174,10 @@ async function recheck({capture,client,blockfrostProjectId,fetchImpl=globalThis.
         currentUtxos,
         currentSnapshot
       }),
+      // These attestations belong to the live orchestrator, not fixture comparisons.
+      liveOgmiosAndBlockfrostReadsPerformed:true,
+      currentTwoSourceProtocolAgreement:true,
+      currentStableTipAndUTxOStateChecked:true,
       stableTipAttempt:attempt
     });
   }
