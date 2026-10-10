@@ -170,6 +170,12 @@ test('full offline-to-provider recheck verifies saved artifacts before read-only
     assert.equal(report.liveOgmiosAndBlockfrostReadsPerformed,true);
     assert.equal(report.currentTwoSourceProtocolAgreement,true);
     assert.equal(report.currentStableTipAndUTxOStateChecked,true);
+    assert.equal(report.conwayPrerequisites.readOnlyDiagnostic,true);
+    assert.equal(report.conwayPrerequisites.completeConwayParametersEstablished,false);
+    assert.equal(report.conwayPrerequisites.completePhaseOneValidated,false);
+    assert.match(report.conwayPrerequisites.unresolved.systemStart,/genesis/);
+    assert.ok(Object.hasOwn(report.conwayPrerequisites.unresolved,'minFeeRefScriptCostPerByte'));
+    assert.deepEqual(report.conwayPrerequisites.mismatchedFieldNames,[]);
     assert.equal(report.walletSigningAuthorized,false);
     assert.equal(report.transactionSubmissionAuthorized,false);
     assert.deepEqual(reads.calls,[
@@ -215,5 +221,27 @@ test('provider protocol-parameter disagreement blocks live recheck',async()=>{
       blockfrostProjectId:'fixture-provider-id'
     }),/disagreement: minFeeA/);
     assert.equal(reads.calls.includes('blockfrost'),true);
+  });
+});
+
+test('reuses existing reads to report partial Conway overlap and a governance mismatch',async()=>{
+  await withinCapture(async({raw,root})=>{
+    // Supplemental fields are intentionally NOT enough for full Conway validation.
+    raw.ogmios.maxBlockBodySize={bytes:90112};
+    raw.blockfrost.max_block_size=90112;
+    raw.ogmios.desiredNumberOfStakePools=500;
+    raw.blockfrost.n_opt=501;
+    const reads=mockedReads(raw);
+    const report=await recheckCardanoPreprodCapturedLedger({
+      capture:root,client:reads.client,fetchImpl:reads.fetchImpl,
+      blockfrostProjectId:'fixture-provider-id'
+    });
+    assert.ok(report.conwayPrerequisites.agreedFieldNames.includes('maxBlockBodySize'));
+    assert.deepEqual(report.conwayPrerequisites.mismatchedFieldNames,['desiredNumberOfStakePools']);
+    assert.equal(report.conwayPrerequisites.completeConwayParametersEstablished,false);
+    assert.equal(report.completePhaseOneValidated,false);
+    assert.equal(report.transactionSubmissionAuthorized,false);
+    assert.equal(reads.calls.filter(method=>method==='blockfrost').length,1);
+    assert.equal(reads.calls.filter(method=>method==='queryLedgerState/protocolParameters').length,1);
   });
 });
