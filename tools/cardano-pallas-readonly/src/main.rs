@@ -9,6 +9,8 @@
 use std::io::{self, Read};
 use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
+use pallas_crypto::hash::Hasher;
+use pallas_primitives::{NetworkId, conway::Tx};
 
 const INPUT_SCHEMA: &str = "omegavault.cardano.preprod-independent-phase-one-input.v1";
 const MAX_REQUEST_BYTES: usize = 1024 * 1024;
@@ -25,6 +27,98 @@ fn required_string<'a>(value: &'a Value, path: &[&str]) -> Result<&'a str, Strin
         .as_str()
         .filter(|item| !item.is_empty())
         .ok_or_else(|| format!("Invalid {}", path.join(".")))
+}
+
+// These checks inspect the *decoded, unchanged* transaction rather than
+// trusting assertions copied from an earlier JavaScript preflight. They are
+// necessary prerequisites, NOT Cardano's complete Conway ledger rules.
+fn bind_input_ref(input: &pallas_primitives::TransactionInput, expected: &Value, role: &str) -> Result<(), String> {
+    let expected_hash = expected.pointer("/reference/transaction/id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("Missing {role} ledger input hash"))?;
+    let expected_index = expected.pointer("/reference/index")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| format!("Missing {role} ledger input index"))?;
+    if input.transaction_id.to_string() != expected_hash.to_ascii_lowercase() || input.index != expected_index {
+        return Err(format!("Decoded transaction {role} input does not match current ledger UTxO"));
+    }
+    Ok(())
+}
+
+fn check_signed_transaction_body(tx: &Tx<'_>, request: &Value, current_slot: u64) -> Result<String, String> {
+    if !tx.success {
+        return Err("Signed Conway transaction validity flag must be true".into());
+    }
+    let body = &tx.transaction_body;
+    if body.network_id != Some(NetworkId::Testnet) {
+        return Err("Decoded transaction does not explicitly bind Cardano testnet network id".into());
+    }
+    let body_hash = Hasher::<256>::hash(tx.transaction_body.raw_cbor()).to_string();
+    let requested_body_hash = required_string(request, &["signedTransaction", "bodyHash"])?;
+    if body_hash != requested_body_hash.to_ascii_lowercase() {
+        return Err("Pallas decoded transaction body hash differs from frozen signed body".into());
+    }
+    let validity = request.pointer("/ledgerContext/validity")
+        .ok_or_else(|| "Missing ledger transaction validity context".to_owned())?;
+    let lower = validity.get("lowerSlot").and_then(Value::as_u64)
+        .ok_or_else(|| "Missing lower validity slot".to_owned())?;
+    let upper = validity.get("upperSlot").and_then(Value::as_u64)
+        .ok_or_else(|| "Missing upper validity slot".to_owned())?;
+    if lower > upper || current_slot < lower || current_slot > upper
+        || body.validity_interval_start != Some(lower) || body.ttl != Some(upper)
+    {
+        return Err("Current ledger slot and decoded transaction validity interval disagree".into());
+    }
+    if body.inputs.len() != 1 || body.collateral.as_ref().map(|c| c.len()) != Some(1) {
+        return Err("Initialize must use exactly one spending input and one collateral input".into());
+    }
+    let seed = body.inputs.iter().next()
+        .ok_or_else(|| "Missing signed seed input".to_owned())?;
+    let collateral = body.collateral.as_ref().and_then(|c| c.iter().next())
+        .ok_or_else(|| "Missing signed collateral input".to_owned())?;
+    bind_input_ref(seed, request.pointer("/ledgerContext/utxos/seed")
+        .ok_or_else(|| "Missing complete seed UTxO".to_owned())?, "seed")?;
+    bind_input_ref(collateral, request.pointer("/ledgerContext/utxos/collateral")
+        .ok_or_else(|| "Missing complete collateral UTxO".to_owned())?, "collateral")?;
+    if seed == collateral {
+        return Err("Seed and collateral cannot refer to the same UTxO".into());
+    }
+    if body.required_signers.as_ref().map(|v| v.len()) != Some(1)
+        || tx.transaction_witness_set.vkeywitness.as_ref().map(|v| v.len()) != Some(1)
+    {
+        return Err("Initialize must bind one owner required signer and one key witness".into());
+    }
+    if body.outputs.len() != 2 || body.collateral_return.is_none() || body.total_collateral.is_none() {
+        return Err("Initialize is missing state/change or collateral return output".into());
+    }
+    if body.reference_inputs.is_some() || body.certificates.is_some() || body.withdrawals.is_some()
+        || body.voting_procedures.is_some() || body.proposal_procedures.is_some()
+        || body.donation.is_some() || body.treasury_value.is_some()
+    {
+        return Err("Initialize carries unexpected reference, governance or stake operations".into());
+    }
+    let snapshot = request.pointer("/ledgerContext/protocolSnapshot/parameters")
+        .ok_or_else(|| "Missing current protocol parameter snapshot".to_owned())?;
+    let max_tx_size = snapshot.get("maxTxSize").and_then(Value::as_u64)
+        .ok_or_else(|| "Missing max transaction size".to_owned())?;
+    let minimum_a = snapshot.get("minFeeA").and_then(Value::as_str)
+        .ok_or_else(|| "Missing current minFeeA".to_owned())?.parse::<u64>()
+        .map_err(|_| "Invalid minFeeA".to_owned())?;
+    let minimum_b = snapshot.get("minFeeB").and_then(Value::as_str)
+        .ok_or_else(|| "Missing current minFeeB".to_owned())?.parse::<u64>()
+        .map_err(|_| "Invalid minFeeB".to_owned())?;
+    let signed_bytes = required_string(request, &["signedTransaction", "cborHex"])?.len() / 2;
+    if signed_bytes as u64 > max_tx_size {
+        return Err("Pallas decoded transaction exceeds current maxTxSize".into());
+    }
+    let linear_floor = (signed_bytes as u64)
+        .checked_mul(minimum_a)
+        .and_then(|fee| fee.checked_add(minimum_b))
+        .ok_or_else(|| "Linear fee calculation overflow".to_owned())?;
+    if body.fee < linear_floor {
+        return Err("Signed fee is below independently recomputed linear minimum".into());
+    }
+    Ok(body_hash)
 }
 
 fn inspect(request_json: &str) -> Result<Value, String> {
@@ -66,7 +160,7 @@ fn inspect(request_json: &str) -> Result<Value, String> {
     // Decode the *actual* signed transaction bytes with a second, Rust-native
     // CBOR implementation, not the Node/Cardano serialization library.
     // The decode is structural only and cannot certify ledger validity.
-    let _conway: pallas_primitives::conway::Tx =
+    let conway: pallas_primitives::conway::Tx =
         pallas_codec::minicbor::decode(&tx_bytes)
             .map_err(|_| "Pallas rejected Conway transaction CBOR".to_owned())?;
 
@@ -87,6 +181,11 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         }
     }
 
+    if request.pointer("/signedTransaction/bytes").and_then(Value::as_u64) != Some(tx_bytes.len() as u64) {
+        return Err("Signed transaction declared byte length differs from actual bytes".into());
+    }
+    let verified_body_hash = check_signed_transaction_body(&conway, &request, tip_slot)?;
+
     // Deliberately NO success value, until we have independently reconstructed
     // full Conway ledger parameters and CertState from a current trusted source,
     // and actually run pallas_validate::phase1::validate_tx on these exact bytes.
@@ -99,6 +198,8 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         "tipHash": tip_hash.to_ascii_lowercase(),
         "tipSlot": tip_slot,
         "pallasConwayTransactionDecodePassed": true,
+        "pallasDecodedBodyHash": verified_body_hash,
+        "pallasExactSignedBodyInputAndValidityChecksPassed": true,
         "completePhaseOneValidated": false,
         "transactionSubmissionAuthorized": false,
         "transactionSubmissionPerformed": false,
