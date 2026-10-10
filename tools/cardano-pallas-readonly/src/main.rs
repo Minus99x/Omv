@@ -493,6 +493,32 @@ mod tests {
     }
 
     #[test]
+    fn accepts_shelley_preprod_utxo_controlled_by_required_owner() {
+        use pallas_addresses::{ShelleyAddress, ShelleyDelegationPart};
+        let signer = Hasher::<224>::hash(b"same-owner-payment-key");
+        let address = ShelleyAddress::new(
+            Network::Testnet,
+            ShelleyPaymentPart::Key(signer),
+            ShelleyDelegationPart::Null,
+        ).to_bech32().unwrap();
+        assert!(verify_owner_utxo_address(&address, &signer, "seed").is_ok());
+        let wrong = Hasher::<224>::hash(b"different-payment-key");
+        assert!(verify_owner_utxo_address(&address, &wrong, "seed")
+            .unwrap_err().contains("does not belong"));
+    }
+    #[test]
+    fn rejects_mainnet_address_as_preprod_owner_utxo() {
+        use pallas_addresses::{ShelleyAddress, ShelleyDelegationPart};
+        let signer = Hasher::<224>::hash(b"same-owner-payment-key");
+        let address = ShelleyAddress::new(
+            Network::Mainnet,
+            ShelleyPaymentPart::Key(signer),
+            ShelleyDelegationPart::Null,
+        ).to_bech32().unwrap();
+        assert!(verify_owner_utxo_address(&address, &signer, "seed")
+            .unwrap_err().contains("Shelley testnet"));
+    }
+    #[test]
     fn rejects_malformed_owner_seed_address() {
         let signer = Hasher::<224>::hash(b"valid-signer");
         let error = verify_owner_utxo_address("addr_test1invalid", &signer, "seed").unwrap_err();
