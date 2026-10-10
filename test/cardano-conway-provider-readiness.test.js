@@ -53,7 +53,7 @@ test('compares genuine two-source Conway overlap without manufacturing omitted g
  assert.equal(r.agreed.plutusV2CostModel.length,175);
  assert.match(r.unresolved.systemStart,/genesis/);
  assert.ok(Object.hasOwn(r.unresolved,'minFeeRefScriptCostPerByte'));
- assert.equal(r.coveredParameterCount,12);
+ assert.equal(r.coveredParameterCount,13);
  assert.equal(r.completeConwayParametersEstablished,false);
  assert.equal(r.completePhaseOneValidated,false);
  assert.equal(r.transactionSubmissionAuthorized,false);
