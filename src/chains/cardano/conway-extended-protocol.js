@@ -42,7 +42,7 @@ const DREP_THRESHOLDS=Object.freeze([
   'ppEconomicGroup','ppTechnicalGroup','ppGovernanceGroup','treasuryWithdrawal'
 ]);
 function checkedUnsigned(value, label, maximum=U64_MAX, positive=false) {
-  if (!((typeof value==='string' && /^(0|[1-9]\\d*)$/.test(value)) ||
+  if (!((typeof value==='string' && /^(0|[1-9]\d*)$/.test(value)) ||
         (typeof value==='number' && Number.isSafeInteger(value) && value>=0))) {
     throw new TypeError(label+' must be an exact non-negative integer.');
   }
@@ -62,7 +62,7 @@ function checkedFraction(value,label,unit=false) {
 }
 function checkedSystemStart(value,label) {
   if (typeof value!=='string') throw new TypeError(label+' must be an RFC3339 datetime.');
-  const match=/^(\\d{4})-(\\d{2})-(\\d{2})T(\\d{2}):(\\d{2}):(\\d{2})(?:\\.\\d+)?(Z|[+-]\\d{2}:\\d{2})$/.exec(value);
+  const match=/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-]\d{2}:\d{2})$/.exec(value);
   if (!match || !Number.isFinite(Date.parse(value))) {
     throw new TypeError(label+' must be a valid RFC3339 datetime.');
   }
