@@ -83,3 +83,21 @@ test('fails closed on tampered manifest rather than reporting a verified capture
     assert.equal(report.transactionSubmissionAuthorized,false);
   } finally {rmSync(root,{recursive:true,force:true});}
 });
+
+test('blocks manifest path traversal even when attacker recomputes the self-digest',()=>{
+  const {root,capture}=fixture();
+  try {
+    const path=join(capture,'capture-manifest.json');
+    const manifest=JSON.parse(readFileSync(path,'utf8'));
+    manifest.files.finalUnsignedCandidate='../../some-other-file.json';
+    delete manifest.manifestSha256;
+    manifest.manifestSha256=hashCardanoEvidence(manifest);
+    writeFileSync(path,JSON.stringify(manifest));
+    const result=command(['--capture',capture]);
+    assert.ok([0,2].includes(result.status),result.stderr);
+    const report=JSON.parse(result.stdout);
+    assert.equal(report.captures[0].captureManifestDigestValid,true);
+    assert.match(report.captures[0].issues.join(' '),/path escapes the capture directory/);
+    assert.equal(report.transactionSubmissionAuthorized,false);
+  } finally {rmSync(root,{recursive:true,force:true});}
+});
