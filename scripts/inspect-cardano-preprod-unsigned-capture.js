@@ -96,8 +96,26 @@ export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
       snapshot.promotion?.independentlyConfirmed !== true) {
     throw new Error('Captured protocol parameters do not contain independent Preprod confirmation.');
   }
+  // V1 manifests don't name a protocol-snapshot digest directly, but DO
+  // commit to evaluationEvidence.evidenceSha256. That sealed evidence embeds
+  // protocolSnapshot in its hashed core. Compare the entire documents before
+  // asserting that the snapshot is transitively bound to the manifest.
+  const evaluation=artifacts.evaluationEvidence;
+  if (!evaluation.protocolSnapshot ||
+      hashCardanoEvidence(evaluation.protocolSnapshot) !== hashCardanoEvidence(snapshot)) {
+    throw new Error('Standalone protocol snapshot differs from manifest-bound evaluation evidence.');
+  }
+  if (evaluation.validatorIdentitySha256 !== artifacts.appliedValidatorIdentity.identitySha256 ||
+      evaluation.utxoBindingPlanSha256 !== artifacts.utxoBindingPlan.planSha256 ||
+      evaluation.utxoBindingEvidenceSha256 !== artifacts.utxoBindingEvidence.evidenceSha256 ||
+      evaluation.evaluationCandidateSha256 !== artifacts.evaluationCandidate.candidateSha256 ||
+      evaluation.finalUnsignedCandidateSha256 !== artifacts.finalUnsignedCandidate.candidateSha256 ||
+      evaluation.unsignedPhaseOnePreflightSha256 !== artifacts.unsignedPhaseOnePreflight.preflightSha256) {
+    throw new Error('Manifest-bound evaluation evidence has a broken validator, UTxO, candidate or preflight reference.');
+  }
   const tip=artifacts.utxoBindingEvidence.stableTip;
-  if (!tip || tip.hash!==snapshot.tip?.blockHash || tip.slot!==snapshot.tip?.slot) {
+  if (!tip || tip.hash!==snapshot.tip?.blockHash || tip.slot!==snapshot.tip?.slot ||
+      evaluation.stableTip?.hash !== tip.hash || evaluation.stableTip?.slot !== tip.slot) {
     throw new Error('Captured protocol parameters disagree with the UTxO stable tip.');
   }
   const preflight=artifacts.unsignedPhaseOnePreflight;
@@ -119,7 +137,8 @@ export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
     unsignedCandidateSha256:artifacts.finalUnsignedCandidate.candidateSha256,
     unsignedPreflightSha256:preflight.preflightSha256,
     protocolSnapshotTwoSourceClaimPresent:true,
-    protocolSnapshotWholeDocumentDigestBoundToManifest:false,
+    protocolSnapshotWholeDocumentDigestBoundToManifest:true,
+    protocolSnapshotBindingPath:'manifestSha256 -> evaluationEvidenceSha256 -> embedded protocolSnapshot (canonical SHA-256 equality)',
     currentLedgerFreshnessEstablished:false,
     completePhaseOneValidated:false,
     walletSigningPerformed:false,
@@ -127,7 +146,7 @@ export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
     transactionSubmissionPerformed:false,
     transactionSubmissionAuthorized:false,
     supportClaimAuthorized:false,
-    limitation:'Offline self-digest/integrity verification only. Supplemental Aiken provenance is outside the validator identity digest; the v1 manifest does not bind the WHOLE protocol snapshot bytes. Provider truth, transaction freshness and full Conway phase one remain unproven.',
+    limitation:'Offline historical artifact-integrity verification only. The whole protocol snapshot is transitively bound to the V1 manifest via sealed evaluation evidence, but offline hashes alone do not prove that provider responses were authentic or current. Supplemental Aiken provenance remains outside the validator identity digest; current UTxO freshness and full Conway phase one are not proven.',
     nextGate:'Independently reverify the fresh protocol/UTxO environment. No signing or submission.'
   });
 }
