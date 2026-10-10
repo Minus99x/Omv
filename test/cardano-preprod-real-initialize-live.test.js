@@ -164,6 +164,13 @@ test('Cardano real initialize live orchestrator binds actual UTxOs, evaluates, a
   assert.equal(result.selected.seed.transaction.id, fixtureEvidence.parameters.seedTxId);
   assert.equal(result.utxoBindingEvidence.realUtxoReferencesExist, true);
   assert.equal(result.protocolSnapshot.promotion.independentlyConfirmed, true);
+  assert.equal(result.conwayParameterReadiness.completeConwayParametersEstablished, false);
+  assert.equal(result.conwayParameterReadiness.completePhaseOneValidated, false);
+  assert.equal(result.conwayParameterReadiness.transactionSubmissionAuthorized, false);
+  assert.equal(result.conwayParameterReadiness.tip.hash, tip.hash);
+  assert.match(result.conwayParameterReadiness.unresolved.systemStart, /genesis/);
+  assert.equal(result.evaluationEvidence.conwayParameterReadiness.reportSha256,
+    result.conwayParameterReadiness.reportSha256);
   assert.equal(result.evaluationCandidate.evaluation.evaluationSupplementalUtxoRequired, false);
   assert.equal(Object.hasOwn(result.evaluationCandidate.evaluation.request.params, 'additionalUtxo'), false);
   assert.equal(result.evaluationEvidence.normalizedEvaluation.budgets[0].validator, 'mint:0');
