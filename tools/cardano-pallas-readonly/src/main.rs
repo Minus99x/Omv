@@ -95,7 +95,7 @@ fn verify_owner_utxo_address(address: &str, owner_hash: &AddrKeyhash, role: &str
 fn conway_value_ada(value: &pallas_primitives::conway::Value) -> Result<u64, String> {
     match value {
         pallas_primitives::conway::Value::Coin(amount) => Ok(*amount),
-        pallas_primitives::conway::Value::Multiasset(amount, assets) if assets.is_empty() => Ok(*amount),
+        pallas_primitives::conway::Value::Multiasset(amount, _) => Ok(*amount),
         _ => Err("Unexpected native assets in initialize output".to_owned()),
     }
 }
@@ -105,7 +105,7 @@ fn output_ada(output: &pallas_primitives::conway::TransactionOutput<'_>) -> Resu
         pallas_primitives::conway::TransactionOutput::PostAlonzo(x) => conway_value_ada(&x.value),
         pallas_primitives::conway::TransactionOutput::Legacy(x) => match &x.amount {
             pallas_primitives::alonzo::Value::Coin(amount) => Ok(*amount),
-            pallas_primitives::alonzo::Value::Multiasset(amount, assets) if assets.is_empty() => Ok(*amount),
+            pallas_primitives::alonzo::Value::Multiasset(amount, _) => Ok(*amount),
             _ => Err("Unexpected native assets in legacy initialize output".to_owned()),
         }
     }
@@ -142,11 +142,88 @@ fn checked_collateral_conservation(input: u64, returned: u64, declared: u64, fee
     Ok(())
 }
 
-fn verify_ada_only_initialize_values(tx: &Tx<'_>, request: &Value) -> Result<(), String> {
+// Real OmegaVault initialize mints exactly one beacon NFT, locked in the
+// first state output. The seed and collateral UTxOs are ADA-only; rejecting
+// all outgoing assets would incorrectly reject the actual on-chain design.
+fn verify_single_state_beacon(
+    mint: &pallas_primitives::conway::Mint,
+    state_value: &pallas_primitives::conway::Value
+) -> Result<(), String> {
+    if mint.len() != 1 {
+        return Err("Initialize must mint exactly one beacon policy".into());
+    }
+    let (mint_policy, mint_assets) = mint.iter().next()
+        .ok_or_else(|| "Initialize missing beacon mint policy".to_owned())?;
+    if mint_assets.len() != 1 {
+        return Err("Initialize must mint exactly one beacon asset name".into());
+    }
+    let (mint_name, mint_amount) = mint_assets.iter().next()
+        .ok_or_else(|| "Initialize missing beacon mint asset".to_owned())?;
+    if i64::from(*mint_amount) != 1 {
+        return Err("Initialize must mint exactly one positive state beacon".into());
+    }
+    let output_assets = match state_value {
+        pallas_primitives::conway::Value::Multiasset(_, assets) => assets,
+        _ => return Err("Initialize state output missing minted beacon token".into())
+    };
+    if output_assets.len() != 1 {
+        return Err("Initialize state output must carry only the beacon policy".into());
+    }
+    let output_names = output_assets.get(mint_policy)
+        .ok_or_else(|| "Initialize state output beacon policy differs from minted policy".to_owned())?;
+    if output_names.len() != 1 {
+        return Err("Initialize state output must carry exactly one beacon asset".into());
+    }
+    let qty = output_names.get(mint_name)
+        .ok_or_else(|| "Initialize state output beacon asset name differs from minted name".to_owned())?;
+    if u64::from(*qty) != 1 {
+        return Err("Initialize state output beacon quantity must be exactly one".into());
+    }
+    Ok(())
+}
+
+fn assert_no_native_assets(output: &pallas_primitives::conway::TransactionOutput<'_>, role: &str) -> Result<(), String> {
+    match output {
+        pallas_primitives::conway::TransactionOutput::PostAlonzo(x) =>
+            match &x.value {
+                pallas_primitives::conway::Value::Coin(_) => Ok(()),
+                pallas_primitives::conway::Value::Multiasset(_, assets) if assets.is_empty() => Ok(()),
+                _ => Err(format!("Initialize {role} unexpectedly carries native assets"))
+            },
+        pallas_primitives::conway::TransactionOutput::Legacy(x) =>
+            match &x.amount {
+                pallas_primitives::alonzo::Value::Coin(_) => Ok(()),
+                pallas_primitives::alonzo::Value::Multiasset(_, assets) if assets.is_empty() => Ok(()),
+                _ => Err(format!("Initialize {role} unexpectedly carries native assets"))
+            }
+    }
+}
+
+fn verify_initialize_value_conservation(tx: &Tx<'_>, request: &Value) -> Result<(), String> {
     let body = &tx.transaction_body;
-    if body.mint.is_some() || body.withdrawals.is_some() || body.certificates.is_some()
+    if body.withdrawals.is_some() || body.certificates.is_some()
         || body.donation.is_some() || body.treasury_value.is_some() {
-        return Err("Initialize must not mint, withdraw, donate or carry certificates".into());
+        return Err("Initialize must not withdraw, donate or carry certificates".into());
+    }
+    let mint = body.mint.as_ref().ok_or_else(|| "Initialize missing required beacon mint".to_owned())?;
+    let state = body.outputs.first().ok_or_else(|| "Initialize missing vault state output".to_owned())?;
+    let change = body.outputs.get(1).ok_or_else(|| "Initialize missing owner change output".to_owned())?;
+    match state {
+        pallas_primitives::conway::TransactionOutput::PostAlonzo(x) => {
+            if !matches!(x.datum_option.as_deref(), Some(pallas_primitives::conway::DatumOption::Data(_))) {
+                return Err("Initialize state output missing inline protected vault datum".into());
+            }
+            verify_single_state_beacon(mint, &x.value)?;
+        }
+        _ => return Err("Initialize state output must use inline-datum Conway output".into())
+    }
+    assert_no_native_assets(change, "owner change output")?;
+    assert_no_native_assets(body.collateral_return.as_ref()
+        .ok_or_else(|| "Initialize missing collateral return".to_owned())?, "collateral return")?;
+    if body.script_data_hash.is_none()
+        || tx.transaction_witness_set.redeemer.is_none()
+        || tx.transaction_witness_set.plutus_v3_script.as_ref().map(|s| s.len()) != Some(1) {
+        return Err("Initialize missing beacon mint Plutus V3 script/redeemer/script-data hash".into());
     }
     let spend = precise_lovelace(request, "seed")?;
     let collateral = precise_lovelace(request, "collateral")?;
@@ -380,7 +457,7 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         return Err("Signed transaction declared byte length differs from actual bytes".into());
     }
     let verified_body_hash = check_signed_transaction_body(&conway, &request, tip_slot)?;
-    verify_ada_only_initialize_values(&conway, &request)?;
+    verify_initialize_value_conservation(&conway, &request)?;
     let spending = conway.transaction_body.inputs.iter().next()
         .ok_or_else(|| "Missing signed seed input for Pallas ledger UTxO assembly".to_owned())?;
     let collateral = conway.transaction_body.collateral.as_ref()
@@ -408,6 +485,7 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         "pallasOwnerWitnessSignatureAndRequiredSignerVerified": true,
         "pallasInputPaymentCredentialsBoundToOwner": true,
         "pallasInitializeAdaAndCollateralConservationChecked": true,
+        "pallasSingleStateBeaconMintAndOutputMatched": true,
         "pallasCompleteCurrentLedgerUtxosAssembled": true,
         "requestProtocolAndLedgerSnapshotDigestsVerified": true,
         "completePhaseOneValidated": false,
@@ -659,6 +737,38 @@ mod tests {
         );
         assert!(conway_value_ada(&V::Coin(10)).is_ok());
         assert!(conway_value_ada(&V::Multiasset(10, assets)).is_err());
+    }
+
+    #[test]
+    fn accepts_exactly_one_minted_beacon_at_state_output() {
+        use std::collections::BTreeMap;
+        use pallas_primitives::{NonZeroInt, PositiveCoin, conway::Value as V};
+        let policy = Hash::<28>::from([4u8; 28]);
+        let asset = pallas_primitives::AssetName::from(vec![0x4f,0x56]);
+        let mint = BTreeMap::from([(policy,BTreeMap::from([(asset.clone(),NonZeroInt::try_from(1).unwrap())]))]);
+        let output = V::Multiasset(5_000_000,BTreeMap::from([(policy,BTreeMap::from([(asset,PositiveCoin::try_from(1).unwrap())]))]));
+        assert!(verify_single_state_beacon(&mint,&output).is_ok());
+        assert_eq!(conway_value_ada(&output).unwrap(),5_000_000);
+    }
+    #[test]
+    fn rejects_unminted_or_wrong_beacon_quantity() {
+        use std::collections::BTreeMap;
+        use pallas_primitives::{NonZeroInt, PositiveCoin, conway::Value as V};
+        let policy = Hash::<28>::from([4u8; 28]);
+        let asset = pallas_primitives::AssetName::from(vec![0x4f,0x56]);
+        let output = V::Multiasset(5_000_000,BTreeMap::from([(policy,BTreeMap::from([(asset.clone(),PositiveCoin::try_from(1).unwrap())]))]));
+        let minted_two = BTreeMap::from([(policy,BTreeMap::from([(asset,NonZeroInt::try_from(2).unwrap())]))]);
+        assert!(verify_single_state_beacon(&minted_two,&output).unwrap_err().contains("exactly one positive"));
+    }
+    #[test]
+    fn rejects_beacon_policy_not_matching_the_state_output() {
+        use std::collections::BTreeMap;
+        use pallas_primitives::{NonZeroInt, PositiveCoin, conway::Value as V};
+        let policy = Hash::<28>::from([4u8; 28]);
+        let asset = pallas_primitives::AssetName::from(vec![0x4f,0x56]);
+        let output = V::Multiasset(5_000_000,BTreeMap::from([(policy,BTreeMap::from([(asset.clone(),PositiveCoin::try_from(1).unwrap())]))]));
+        let minted_elsewhere = BTreeMap::from([(Hash::<28>::from([5u8;28]),BTreeMap::from([(asset,NonZeroInt::try_from(1).unwrap())]))]);
+        assert!(verify_single_state_beacon(&minted_elsewhere,&output).unwrap_err().contains("policy differs"));
     }
 
 }
