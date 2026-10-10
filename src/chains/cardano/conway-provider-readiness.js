@@ -31,6 +31,30 @@ const MAPPING = Object.freeze({
   plutusV2CostModel: ['plutusCostModels.plutus:v2', 'cost_models_raw.PlutusV2', 'cost175']
 });
 
+// Exact Conway paths defined in Ogmios' TypeScript schema and Blockfrost's
+// epoch parameter response. Incomplete groups remain unresolved, never agreed.
+const VOTING_THRESHOLD_FIELDS = Object.freeze({
+  poolVotingThresholds: Object.freeze({
+    motionNoConfidence:['noConfidence','pvt_motion_no_confidence'],
+    committeeNormal:['constitutionalCommittee.default','pvt_committee_normal'],
+    committeeNoConfidence:['constitutionalCommittee.stateOfNoConfidence','pvt_committee_no_confidence'],
+    hardForkInitiation:['hardForkInitiation','pvt_hard_fork_initiation'],
+    securityVotingThreshold:['protocolParametersUpdate.security','pvt_p_p_security_group']
+  }),
+  drepVotingThresholds: Object.freeze({
+    motionNoConfidence:['noConfidence','dvt_motion_no_confidence'],
+    committeeNormal:['constitutionalCommittee.default','dvt_committee_normal'],
+    committeeNoConfidence:['constitutionalCommittee.stateOfNoConfidence','dvt_committee_no_confidence'],
+    updateConstitution:['constitution','dvt_update_to_constitution'],
+    hardForkInitiation:['hardForkInitiation','dvt_hard_fork_initiation'],
+    ppNetworkGroup:['protocolParametersUpdate.network','dvt_p_p_network_group'],
+    ppEconomicGroup:['protocolParametersUpdate.economic','dvt_p_p_economic_group'],
+    ppTechnicalGroup:['protocolParametersUpdate.technical','dvt_p_p_technical_group'],
+    ppGovernanceGroup:['protocolParametersUpdate.governance','dvt_p_p_gov_group'],
+    treasuryWithdrawal:['treasuryWithdrawals','dvt_treasury_withdrawal']
+  })
+});
+
 function getPath(data, path) {
   return path.split('.').reduce((value, key) => value?.[key], data);
 }
@@ -86,6 +110,26 @@ function normalize(value, kind, label) {
   }
   throw new TypeError('Unsupported parameter kind.');
 }
+function normalizeVotingGroup(source, name, fields, label) {
+  const isOgmios=label==='Ogmios';
+  const ogmiosKey=name==='poolVotingThresholds'
+    ? 'stakePoolVotingThresholds' : 'delegateRepresentativeVotingThresholds';
+  const root=isOgmios ? source?.[ogmiosKey] : source;
+  if (root==null || typeof root!=='object' || Array.isArray(root)) {
+    throw new TypeError(label+' '+name+' thresholds are missing or malformed.');
+  }
+  const normalized={};
+  for (const [key,[ogmiosPath,blockfrostField]] of Object.entries(fields)) {
+    const value=isOgmios ? getPath(root,ogmiosPath) : root[blockfrostField];
+    const fraction=rational(value,label+' '+name+'.'+key);
+    if (BigInt(fraction.numerator)>BigInt(fraction.denominator)) {
+      throw new RangeError(label+' '+name+'.'+key+' exceeds voting threshold 1.');
+    }
+    normalized[key]=fraction;
+  }
+  return Object.freeze(normalized);
+}
+
 function normalizeBudget(value, source) {
   return Object.freeze({
     memory: parseUnsigned(value?.memory ?? value?.mem, source + '.memory'),
@@ -136,6 +180,17 @@ export function createCardanoPreprodConwayReadinessReport({
     if (same(a,b)) agreed.maxBlockExUnits = a;
     else mismatched.maxBlockExUnits = Object.freeze({ogmios:a,blockfrost:b});
   } catch(error) { unresolved.maxBlockExUnits = error.message; }
+
+  for (const [name,fields] of Object.entries(VOTING_THRESHOLD_FIELDS)) {
+    let a,b,errorA=null,errorB=null;
+    try { a=normalizeVotingGroup(ogmios,name,fields,'Ogmios'); }
+    catch(error) {errorA=error.message;}
+    try { b=normalizeVotingGroup(blockfrost,name,fields,'Blockfrost'); }
+    catch(error) {errorB=error.message;}
+    if (errorA || errorB) unresolved[name]=Object.freeze({ogmios:errorA,blockfrost:errorB});
+    else if (!same(a,b)) mismatched[name]=Object.freeze({ogmios:a,blockfrost:b});
+    else agreed[name]=a;
+  }
 
   for (const name of REQUIRED) {
     if (!(name in agreed) && !(name in unresolved) && !(name in mismatched)) {
