@@ -141,6 +141,15 @@ pub fn conway_params_from_verified_snapshot(snapshot: &Value) -> Result<ConwayPr
     if uint(agreement,"independentSourceCount")? < 2 {
         return Err("Complete Conway parameters lack two independent provider confirmations".into());
     }
+    let source_tip=snapshot.pointer("/tip/blockHash").and_then(Value::as_str)
+        .ok_or("Missing independently observed tip hash for extended Conway agreement")?;
+    let source_slot=snapshot.pointer("/tip/slot").and_then(Value::as_u64)
+        .ok_or("Missing independently observed tip slot for extended Conway agreement")?;
+    let agreed_hash=required(agreement,"acquiredStableTipHash")?.as_str()
+        .ok_or("Missing stable tip hash in extended agreement")?;
+    if agreed_hash != source_tip || uint(agreement,"acquiredStableTipSlot")? != source_slot {
+        return Err("Extended Conway agreement was not acquired at the bound stable tip".into());
+    }
     let canonical=serde_json::to_vec(extra)
         .map_err(|_|"Could not canonicalize complete Conway parameters")?;
     let actual_digest=hex::encode(Sha256::digest(canonical));
