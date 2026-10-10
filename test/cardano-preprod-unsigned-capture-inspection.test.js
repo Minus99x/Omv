@@ -52,7 +52,9 @@ function fixture(){
       recoveryAppliedBlueprintSha256:'fe'.repeat(32)
     }
   };
+  docs.utxoBindingPlan=sealed(docs.utxoBindingPlan,'planSha256');
   docs.utxoBindingEvidence=sealed(docs.utxoBindingEvidence,'evidenceSha256');
+  docs.evaluationCandidate=sealed(docs.evaluationCandidate,'candidateSha256');
   docs.finalUnsignedCandidate=sealed(docs.finalUnsignedCandidate,'candidateSha256');
   docs.unsignedPhaseOnePreflight={
     ...docs.unsignedPhaseOnePreflight,
@@ -61,13 +63,25 @@ function fixture(){
     utxoBindingEvidenceSha256:docs.utxoBindingEvidence.evidenceSha256,
     checks:{walletWitnessesPresent:false,fullPhaseOneValidated:false}
   };
+  docs.unsignedPhaseOnePreflight=sealed(docs.unsignedPhaseOnePreflight,'preflightSha256');
+  const snapshot={network:'preprod',source:{independentSourceCount:2},promotion:{independentlyConfirmed:true},tip:{blockHash:tip.hash,slot:tip.slot}};
+  docs.evaluationEvidence=sealed({
+    ...docs.evaluationEvidence,
+    stableTip:tip,
+    validatorIdentitySha256:docs.appliedValidatorIdentity.identitySha256,
+    utxoBindingPlanSha256:docs.utxoBindingPlan.planSha256,
+    utxoBindingEvidenceSha256:docs.utxoBindingEvidence.evidenceSha256,
+    evaluationCandidateSha256:docs.evaluationCandidate.candidateSha256,
+    finalUnsignedCandidateSha256:docs.finalUnsignedCandidate.candidateSha256,
+    unsignedPhaseOnePreflightSha256:docs.unsignedPhaseOnePreflight.preflightSha256,
+    protocolSnapshot:snapshot
+  },'evidenceSha256');
   for (const [name,[digest,key]] of Object.entries(defs)){
     if (!docs[name][digest])docs[name]=sealed(docs[name],digest);
     files[name]=name+'.json';
     identities[key]=docs[name][digest];
     save(join(root,files[name]),docs[name]);
   }
-  const snapshot={network:'preprod',source:{independentSourceCount:2},promotion:{independentlyConfirmed:true},tip:{blockHash:tip.hash,slot:tip.slot}};
   files.protocolSnapshot='protocol.json';save(join(root,files.protocolSnapshot),snapshot);
   const manifest=sealed({
     schema:'omegavault.cardano.preprod-real-initialize-capture-manifest.v1',network:'preprod',
@@ -85,7 +99,8 @@ test('checks seven bound artifacts and expressly does not claim current ledger f
     const result=await inspectCardanoPreprodUnsignedCapture(root);
     assert.equal(result.ok,true);
     assert.equal(result.checkedBoundArtifactCount,7);
-    assert.equal(result.protocolSnapshotWholeDocumentDigestBoundToManifest,false);
+    assert.equal(result.protocolSnapshotWholeDocumentDigestBoundToManifest,true);
+    assert.match(result.protocolSnapshotBindingPath,/evaluationEvidenceSha256/);
     assert.equal(result.validatorIdentityAppliedCodeAndAddressVerified,true);
     assert.equal(result.validatorIdentitySupplementalAikenProvenanceBoundByIdentitySha256,false);
     assert.equal(result.completePhaseOneValidated,false);
@@ -104,13 +119,13 @@ test('rejects tampering of candidate bytes even if attacker recomputes its own d
     await assert.rejects(()=>inspectCardanoPreprodUnsignedCapture(root),/not bound to the captured manifest/);
   }finally{rmSync(root,{recursive:true,force:true});}
 });
-test('rejects altered protocol tip even though the v1 manifest does not bind its full body',async()=>{
+test('rejects altered protocol tip through whole-snapshot digest binding',async()=>{
   const {root,files}=fixture();
   try{
     const path=join(root,files.protocolSnapshot);
     const doc=JSON.parse(readFileSync(path,'utf8'));doc.tip.slot++;
     save(path,doc);
-    await assert.rejects(()=>inspectCardanoPreprodUnsignedCapture(root),/disagree with the UTxO stable tip/);
+    await assert.rejects(()=>inspectCardanoPreprodUnsignedCapture(root),/Standalone protocol snapshot differs from manifest-bound evaluation evidence/);
   }finally{rmSync(root,{recursive:true,force:true});}
 });
 test('blocks path traversal in capture file map',async()=>{
@@ -145,5 +160,27 @@ test('Aiken provenance is supplemental and not falsely treated as digest-sealed'
     const result=await inspectCardanoPreprodUnsignedCapture(root);
     assert.equal(result.ok,true);
     assert.equal(result.validatorIdentitySupplementalAikenProvenanceBoundByIdentitySha256,false);
+  }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+test('V1 snapshot is cryptographically sealed indirectly by evaluation-evidence hash',async()=>{
+  const {root,files}=fixture();
+  try{
+    const path=join(root,files.protocolSnapshot);
+    const snapshot=JSON.parse(readFileSync(path,'utf8'));
+    snapshot.captureExtra={unverified:'mutated while preserving same tip'};
+    save(path,snapshot);
+    await assert.rejects(()=>inspectCardanoPreprodUnsignedCapture(root),/Standalone protocol snapshot differs from manifest-bound evaluation evidence/);
+  }finally{rmSync(root,{recursive:true,force:true});}
+});
+test('rejects forged cross-artifact pointer even when evaluation evidence digest is recomputed',async()=>{
+  const {root,files}=fixture();
+  try{
+    const path=join(root,files.evaluationEvidence);
+    const evidence=JSON.parse(readFileSync(path,'utf8'));
+    evidence.finalUnsignedCandidateSha256='ee'.repeat(32);
+    delete evidence.evidenceSha256;
+    save(path,sealed(evidence,'evidenceSha256'));
+    await assert.rejects(()=>inspectCardanoPreprodUnsignedCapture(root),/not bound to the captured manifest/);
   }finally{rmSync(root,{recursive:true,force:true});}
 });
