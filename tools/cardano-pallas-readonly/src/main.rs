@@ -9,7 +9,9 @@
 use std::io::{self, Read};
 use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
-use pallas_crypto::hash::Hasher;
+use pallas_crypto::hash::{Hash, Hasher};
+use pallas_crypto::key::ed25519::{PublicKey, Signature};
+use pallas_primitives::{AddrKeyhash, alonzo::VKeyWitness};
 use pallas_primitives::{NetworkId, conway::Tx};
 
 const INPUT_SCHEMA: &str = "omegavault.cardano.preprod-independent-phase-one-input.v1";
@@ -41,6 +43,27 @@ fn bind_input_ref(input: &pallas_primitives::TransactionInput, expected: &Value,
         .ok_or_else(|| format!("Missing {role} ledger input index"))?;
     if input.transaction_id.to_string() != expected_hash.to_ascii_lowercase() || input.index != expected_index {
         return Err(format!("Decoded transaction {role} input does not match current ledger UTxO"));
+    }
+    Ok(())
+}
+
+// Cryptographic owner checks use Pallas independently from the JS/CIP-30
+// witness-verification implementation. No private key is ever needed here.
+fn verify_owner_vkey(
+    body_hash: &Hash<32>,
+    witness: &VKeyWitness,
+    required_signer: &AddrKeyhash,
+) -> Result<(), String> {
+    let public_key = PublicKey::try_from(witness.vkey.as_ref())
+        .map_err(|_| "Malformed owner public verification key".to_owned())?;
+    let signature = Signature::try_from(witness.signature.as_ref())
+        .map_err(|_| "Malformed owner Ed25519 signature".to_owned())?;
+    let actual_signer = Hasher::<224>::hash(witness.vkey.as_ref());
+    if &actual_signer != required_signer {
+        return Err("Owner witness key hash differs from required signer".into());
+    }
+    if !public_key.verify(body_hash.as_ref(), &signature) {
+        return Err("Pallas independent Ed25519 owner signature verification failed".into());
     }
     Ok(())
 }
@@ -88,6 +111,14 @@ fn check_signed_transaction_body(tx: &Tx<'_>, request: &Value, current_slot: u64
     {
         return Err("Initialize must bind one owner required signer and one key witness".into());
     }
+    let signer = body.required_signers.as_ref()
+        .and_then(|signers| signers.iter().next())
+        .ok_or_else(|| "Owner required signer missing from decoded transaction".to_owned())?;
+    let owner_witness = tx.transaction_witness_set.vkeywitness.as_ref()
+        .and_then(|witnesses| witnesses.iter().next())
+        .ok_or_else(|| "Owner key witness missing from decoded transaction".to_owned())?;
+    let calculated_body_hash = Hasher::<256>::hash(tx.transaction_body.raw_cbor());
+    verify_owner_vkey(&calculated_body_hash, owner_witness, signer)?;
     if body.outputs.len() != 2 || body.collateral_return.is_none() || body.total_collateral.is_none() {
         return Err("Initialize is missing state/change or collateral return output".into());
     }
@@ -200,6 +231,7 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         "pallasConwayTransactionDecodePassed": true,
         "pallasDecodedBodyHash": verified_body_hash,
         "pallasExactSignedBodyInputAndValidityChecksPassed": true,
+        "pallasOwnerWitnessSignatureAndRequiredSignerVerified": true,
         "completePhaseOneValidated": false,
         "transactionSubmissionAuthorized": false,
         "transactionSubmissionPerformed": false,
@@ -276,4 +308,60 @@ mod tests {
         });
         assert!(inspect(&request.to_string()).unwrap_err().contains("Pallas rejected"));
     }
+    #[test]
+    fn independently_checks_one_valid_owner_signature_without_wallet_access() {
+        // Deterministic test-only key. Production code NEVER creates or holds
+        // user signing keys and can only verify publicly supplied witnesses.
+        use pallas_crypto::key::ed25519::SecretKey;
+        let signing_key = SecretKey::from([9u8; 32]);
+        let pk = signing_key.public_key();
+        let body = Hasher::<256>::hash(b"preprod-test-body");
+        let witness = VKeyWitness {
+            vkey: pk.as_ref().to_vec().into(),
+            signature: signing_key.sign(body.as_ref()).as_ref().to_vec().into(),
+        };
+        let signer = Hasher::<224>::hash(pk.as_ref());
+        assert!(verify_owner_vkey(&body, &witness, &signer).is_ok());
+    }
+    #[test]
+    fn rejects_owner_witness_with_wrong_required_signer() {
+        use pallas_crypto::key::ed25519::SecretKey;
+        let signing_key = SecretKey::from([9u8; 32]);
+        let pk = signing_key.public_key();
+        let body = Hasher::<256>::hash(b"preprod-test-body");
+        let witness = VKeyWitness {
+            vkey: pk.as_ref().to_vec().into(),
+            signature: signing_key.sign(body.as_ref()).as_ref().to_vec().into(),
+        };
+        let wrong_signer = Hasher::<224>::hash(b"different-owner");
+        assert!(verify_owner_vkey(&body, &witness, &wrong_signer)
+            .unwrap_err().contains("required signer"));
+    }
+    #[test]
+    fn rejects_owner_signature_for_different_body() {
+        use pallas_crypto::key::ed25519::SecretKey;
+        let signing_key = SecretKey::from([9u8; 32]);
+        let pk = signing_key.public_key();
+        let original_body = Hasher::<256>::hash(b"first-body");
+        let changed_body = Hasher::<256>::hash(b"second-body");
+        let witness = VKeyWitness {
+            vkey: pk.as_ref().to_vec().into(),
+            signature: signing_key.sign(original_body.as_ref()).as_ref().to_vec().into(),
+        };
+        let signer = Hasher::<224>::hash(pk.as_ref());
+        assert!(verify_owner_vkey(&changed_body, &witness, &signer)
+            .unwrap_err().contains("signature verification failed"));
+    }
+    #[test]
+    fn rejects_malformed_owner_public_key() {
+        let body = Hasher::<256>::hash(b"test-body");
+        let witness = VKeyWitness {
+            vkey: vec![0u8; 31].into(),
+            signature: vec![0u8; 64].into(),
+        };
+        let signer = Hasher::<224>::hash(b"owner");
+        assert!(verify_owner_vkey(&body, &witness, &signer)
+            .unwrap_err().contains("Malformed owner public"));
+    }
+
 }
