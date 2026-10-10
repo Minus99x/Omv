@@ -149,7 +149,9 @@ if (!captureArg || !witnessArg || !outputArg) {
     }
 
     if (!evidence) throw new Error(`Could not bracket the initialize pre-submit checks by one stable Preprod tip after ${retries} attempts.`);
-    await writeFile(output, `${JSON.stringify(evidence, null, 2)}\n`);
+    // Append-only evidence: never overwrite an existing file, including a
+    // file created between the earlier existence check and this write.
+    await writeFile(output, `${JSON.stringify(evidence, null, 2)}\n`, { flag: 'wx' });
     client.close();
 
     process.stdout.write(`${JSON.stringify({
