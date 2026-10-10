@@ -48,7 +48,11 @@ test('rechecks still-unspent exact old UTxOs at a new stable independently corro
   assert.equal(result.originalUTxOsUnspentAndUnchanged,true);
   assert.equal(result.independentlyCorroboratedProtocolValuesUnchanged,true);
   assert.equal(result.candidateStillWithinValidity,true);
-  assert.equal(result.currentStableTipAndUTxOStateChecked,true);
+  // A fixture-only comparison must never masquerade as fresh live-chain proof.
+  assert.equal(result.currentStableTipAndUTxOStateChecked,false);
+  assert.equal(result.liveOgmiosAndBlockfrostReadsPerformed,false);
+  assert.equal(result.currentTwoSourceProtocolAgreement,false);
+  assert.equal(result.validityUpperBoundExclusive,true);
   assert.equal(result.completePhaseOneValidated,false);
   assert.equal(result.originalUnsignedCandidateReadyForSigning,false);
   assert.equal(result.walletSigningAuthorized,false);
@@ -107,4 +111,20 @@ test('rejects unexpected or duplicate UTxO response references',()=>{
   source.currentUtxos.pop();
   source.currentUtxos.push({transaction:{id:'ff'.repeat(32)},index:0,address:'x',value:{ada:{lovelace:'1'}}});
   assert.throws(()=>compareCardanoPreprodCapturedLedger(source),/unexpected UTxO reference/);
+});
+
+test('Cardano invalidHereafter TTL is exclusive at the exact slot boundary',()=>{
+  const source=fixture();
+  const {lowerSlot,upperSlot}=source.capturedCandidate.validity;
+  source.currentTip.slot=upperSlot-1;
+  assert.equal(compareCardanoPreprodCapturedLedger(source).candidateStillWithinValidity,true);
+  source.currentTip.slot=upperSlot;
+  const atExpiry=compareCardanoPreprodCapturedLedger(source);
+  assert.equal(atExpiry.candidateStillWithinValidity,false);
+  assert.equal(atExpiry.validityUpperBoundExclusive,true);
+  assert.match(atExpiry.nextGate,/validity expired/);
+  source.currentTip.slot=lowerSlot;
+  assert.equal(compareCardanoPreprodCapturedLedger(source).candidateStillWithinValidity,true);
+  source.currentTip.slot=lowerSlot-1;
+  assert.equal(compareCardanoPreprodCapturedLedger(source).candidateStillWithinValidity,false);
 });
