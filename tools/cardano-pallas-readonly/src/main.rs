@@ -86,6 +86,84 @@ fn verify_owner_utxo_address(address: &str, owner_hash: &AddrKeyhash, role: &str
     }
 }
 
+// Pallas-native ADA conservation for the intentionally constrained OmegaVault
+// initialize profile. No minting, withdrawals, certs, or governance movements
+// are permitted. Collateral is accounted for separately on script failure.
+fn conway_value_ada(value: &pallas_primitives::conway::Value) -> Result<u64, String> {
+    match value {
+        pallas_primitives::conway::Value::Coin(amount) => Ok(*amount),
+        pallas_primitives::conway::Value::Multiasset(amount, assets) if assets.is_empty() => Ok(*amount),
+        _ => Err("Unexpected native assets in initialize output".to_owned()),
+    }
+}
+
+fn output_ada(output: &pallas_primitives::conway::TransactionOutput<'_>) -> Result<u64, String> {
+    match output {
+        pallas_primitives::conway::TransactionOutput::PostAlonzo(x) => conway_value_ada(&x.value),
+        pallas_primitives::conway::TransactionOutput::Legacy(x) => match &x.amount {
+            pallas_primitives::alonzo::Value::Coin(amount) => Ok(*amount),
+            pallas_primitives::alonzo::Value::Multiasset(amount, assets) if assets.is_empty() => Ok(*amount),
+            _ => Err("Unexpected native assets in legacy initialize output".to_owned()),
+        }
+    }
+}
+
+fn precise_lovelace(request: &Value, role: &str) -> Result<u64, String> {
+    let path = format!("/ledgerContext/utxos/{role}/value/ada/lovelace");
+    request.pointer(&path)
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("Missing {role} lovelace from full ledger snapshot"))?
+        .parse::<u64>()
+        .map_err(|_| format!("Invalid or overflowing {role} lovelace"))
+}
+
+fn checked_ada_conservation(spend: u64, outputs: &[u64], fee: u64) -> Result<(), String> {
+    let output_sum = outputs.iter().try_fold(0u64, |sum, amount| sum.checked_add(*amount))
+        .ok_or_else(|| "Signed output ADA sum overflow".to_owned())?;
+    if output_sum.checked_add(fee) != Some(spend) {
+        return Err("Pallas independently detected initialize ADA preservation-of-value mismatch".into());
+    }
+    Ok(())
+}
+
+fn checked_collateral_conservation(input: u64, returned: u64, declared: u64, fee: u64, percent: u64) -> Result<(), String> {
+    let paid = input.checked_sub(returned)
+        .ok_or_else(|| "Collateral return exceeds current collateral input".to_owned())?;
+    let required = fee.checked_mul(percent)
+        .and_then(|value| value.checked_add(99))
+        .map(|value| value / 100)
+        .ok_or_else(|| "Collateral minimum calculation overflow".to_owned())?;
+    if paid != declared || paid < required {
+        return Err("Pallas independently detected collateral amount/percentage mismatch".into());
+    }
+    Ok(())
+}
+
+fn verify_ada_only_initialize_values(tx: &Tx<'_>, request: &Value) -> Result<(), String> {
+    let body = &tx.transaction_body;
+    if body.mint.is_some() || body.withdrawals.is_some() || body.certificates.is_some()
+        || body.donation.is_some() || body.treasury_value.is_some() {
+        return Err("Initialize must not mint, withdraw, donate or carry certificates".into());
+    }
+    let spend = precise_lovelace(request, "seed")?;
+    let collateral = precise_lovelace(request, "collateral")?;
+    let output_amounts = body.outputs.iter().map(output_ada).collect::<Result<Vec<_>,_>>()?;
+    checked_ada_conservation(spend, &output_amounts, body.fee)?;
+    let returned = output_ada(body.collateral_return.as_ref()
+        .ok_or_else(|| "Initialize missing collateral return output".to_owned())?)?;
+    let declared = body.total_collateral
+        .ok_or_else(|| "Initialize missing declared total collateral".to_owned())?;
+    let collateral_pct = request.pointer("/ledgerContext/protocolSnapshot/parameters/collateralPercentage")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "Missing live collateralPercentage".to_owned())?
+        .parse::<u64>()
+        .map_err(|_| "Invalid live collateralPercentage".to_owned())?;
+    if collateral_pct < 100 || collateral_pct > 1000 {
+        return Err("Live collateralPercentage outside supported bounds".into());
+    }
+    checked_collateral_conservation(collateral, returned, declared, body.fee, collateral_pct)
+}
+
 fn check_signed_transaction_body(tx: &Tx<'_>, request: &Value, current_slot: u64) -> Result<String, String> {
     if !tx.success {
         return Err("Signed Conway transaction validity flag must be true".into());
@@ -299,6 +377,7 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         return Err("Signed transaction declared byte length differs from actual bytes".into());
     }
     let verified_body_hash = check_signed_transaction_body(&conway, &request, tip_slot)?;
+    verify_ada_only_initialize_values(&conway, &request)?;
 
     // Deliberately NO success value, until we have independently reconstructed
     // full Conway ledger parameters and CertState from a current trusted source,
@@ -316,6 +395,7 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         "pallasExactSignedBodyInputAndValidityChecksPassed": true,
         "pallasOwnerWitnessSignatureAndRequiredSignerVerified": true,
         "pallasInputPaymentCredentialsBoundToOwner": true,
+        "pallasInitializeAdaAndCollateralConservationChecked": true,
         "requestProtocolAndLedgerSnapshotDigestsVerified": true,
         "completePhaseOneValidated": false,
         "transactionSubmissionAuthorized": false,
@@ -529,6 +609,43 @@ mod tests {
         let signer = Hasher::<224>::hash(b"valid-signer");
         let error = verify_owner_utxo_address("addr1", &signer, "seed").unwrap_err();
         assert!(error.contains("bech32 address"));
+    }
+
+    #[test]
+    fn accepts_precise_ada_conservation() {
+        assert!(checked_ada_conservation(20_000_000, &[13_000_000, 6_800_000], 200_000).is_ok());
+    }
+    #[test]
+    fn rejects_inflated_initialize_output_values() {
+        assert!(checked_ada_conservation(20_000_000, &[13_000_001, 6_800_000], 200_000)
+            .unwrap_err().contains("preservation-of-value"));
+    }
+    #[test]
+    fn rejects_arithmetic_overflow_in_ada_outputs() {
+        assert!(checked_ada_conservation(u64::MAX, &[u64::MAX, 1], 0)
+            .unwrap_err().contains("overflow"));
+    }
+    #[test]
+    fn checks_exact_collateral_return_and_required_amount() {
+        assert!(checked_collateral_conservation(5_000_000, 4_700_000, 300_000, 200_000, 150).is_ok());
+        assert!(checked_collateral_conservation(5_000_000, 4_700_001, 300_000, 200_000, 150).is_err());
+        assert!(checked_collateral_conservation(5_000_000, 4_800_000, 200_000, 200_000, 150).is_err());
+    }
+    #[test]
+    fn rejects_collateral_return_exceeding_ledger_input() {
+        assert!(checked_collateral_conservation(2, 3, 0, 0, 150).is_err());
+    }
+    #[test]
+    fn refuses_non_ada_outputs_even_with_lovelace() {
+        use std::collections::BTreeMap;
+        use pallas_primitives::conway::Value as V;
+        let mut assets = BTreeMap::new();
+        assets.insert(
+            pallas_crypto::hash::Hash::<28>::from([7u8; 28]),
+            BTreeMap::new()
+        );
+        assert!(conway_value_ada(&V::Coin(10)).is_ok());
+        assert!(conway_value_ada(&V::Multiasset(10, assets)).is_err());
     }
 
 }
