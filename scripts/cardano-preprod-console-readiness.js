@@ -2,7 +2,7 @@
 // console session. No provider calls, no signature, no transaction submission.
 import { access, readdir, readFile, stat } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, relative, isAbsolute } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { CARDANO_PREPROD_SLOT_ANCHOR, CARDANO_PREPROD_TIME_ANCHOR_MS } from '../src/chains/cardano/transaction-body.js';
@@ -62,8 +62,16 @@ async function captureInfo(path) {
       report.issues.push('Capture manifest SHA-256 does not reproduce; treat artifact as untrusted.');
       return report;
     }
-    const candidatePath = manifest.files?.finalUnsignedCandidate
-      ? resolve(path,manifest.files.finalUnsignedCandidate) : null;
+    // Manifests are local evidence, not authority to read arbitrary files.
+    // Even a self-consistent manifest digest cannot authorize path traversal.
+    const relativeCandidate=manifest.files?.finalUnsignedCandidate;
+    const candidatePath=relativeCandidate ? resolve(path,relativeCandidate) : null;
+    if (candidatePath) {
+      const escape=relative(path,candidatePath);
+      if (isAbsolute(escape) || escape === '..' || escape.startsWith('..\\') || escape.startsWith('../')) {
+        throw new Error('Capture manifest candidate path escapes the capture directory.');
+      }
+    }
     if (candidatePath && await exists(candidatePath)) {
       const candidate = await getJson(candidatePath);
       const upperSlot = candidate.validity?.upperSlot;
