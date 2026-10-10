@@ -18,6 +18,7 @@ import {
   fetchCardanoBlockfrostPreprodProtocolParameters
 } from '../src/chains/cardano/preprod-live-capture.js';
 import { createCardanoPreprodLiveProtocolSnapshot } from '../src/chains/cardano/live-protocol-parameters.js';
+import { createCardanoPreprodConwayReadinessReport } from '../src/chains/cardano/conway-provider-readiness.js';
 
 const MAX_STABLE_RETRIES = 4;
 const NETWORK = 'preprod';
@@ -165,6 +166,22 @@ async function recheck({capture,client,blockfrostProjectId,fetchImpl=globalThis.
     const currentSnapshot=createCardanoPreprodLiveProtocolSnapshot({
       ogmiosParameters,blockfrostParameters,epoch,tip:before,blockHeight
     });
+    // Reuse the SAME authenticated provider reads and unchanged tip; avoid
+    // extra workstation diagnostics just to discover missing Conway inputs.
+    // This is a parameter-coverage report, NOT full ledger validation.
+    const conwayReadiness=createCardanoPreprodConwayReadinessReport({
+      ogmiosParameters,blockfrostParameters,
+      tipBefore:before,tipAfter:after,protocolSnapshot:currentSnapshot
+    });
+    const conwayPrerequisites=Object.freeze({
+      requiredFieldCount:conwayReadiness.requiredParameterCount,
+      agreedFieldNames:Object.freeze(Object.keys(conwayReadiness.agreed).sort()),
+      unresolved:conwayReadiness.unresolved,
+      mismatchedFieldNames:Object.freeze(Object.keys(conwayReadiness.mismatched).sort()),
+      completeConwayParametersEstablished:false,
+      completePhaseOneValidated:false,
+      readOnlyDiagnostic:true
+    });
     return Object.freeze({
       ...compareCardanoPreprodCapturedLedger({
         capturedBinding:sourceBinding,
@@ -178,6 +195,7 @@ async function recheck({capture,client,blockfrostProjectId,fetchImpl=globalThis.
       liveOgmiosAndBlockfrostReadsPerformed:true,
       currentTwoSourceProtocolAgreement:true,
       currentStableTipAndUTxOStateChecked:true,
+      conwayPrerequisites,
       stableTipAttempt:attempt
     });
   }
