@@ -54,9 +54,9 @@ fn verify_owner_vkey(
     witness: &VKeyWitness,
     required_signer: &AddrKeyhash,
 ) -> Result<(), String> {
-    let public_key = PublicKey::try_from(witness.vkey.as_ref())
+    let public_key = PublicKey::try_from(witness.vkey.as_slice())
         .map_err(|_| "Malformed owner public verification key".to_owned())?;
-    let signature = Signature::try_from(witness.signature.as_ref())
+    let signature = Signature::try_from(witness.signature.as_slice())
         .map_err(|_| "Malformed owner Ed25519 signature".to_owned())?;
     let actual_signer = Hasher::<224>::hash(witness.vkey.as_ref());
     if &actual_signer != required_signer {
