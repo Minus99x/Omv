@@ -76,6 +76,12 @@ jobs:
       - name: Focused Cardano campaign workstation launch gate
         run: npm run test:cardano-campaign-workstation-launch
 
+      # This is a public-source provenance check, NOT a current ledger or
+      # transaction-phase-one proof. It needs no keys or workstation files.
+      - name: Verify official Preprod genesis byte hashes and timing
+        run: node scripts/verify-cardano-preprod-public-genesis.js
+        timeout-minutes: 2
+
       - name: Full test suite
         run: npm test
 
