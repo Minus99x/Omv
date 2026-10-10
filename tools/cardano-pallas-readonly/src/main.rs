@@ -152,6 +152,60 @@ fn check_signed_transaction_body(tx: &Tx<'_>, request: &Value, current_slot: u64
     Ok(body_hash)
 }
 
+// JavaScript hashCardanoEvidence sorts each object key before JSON SHA-256.
+// serde_json's default Map is also BTreeMap-ordered; this routine verifies the
+// cross-language request commitment, not merely the presence of a 64-char hash.
+// Objects contain JSON only (no JS BigInt runtime values).
+fn verify_sha256_json(value: &Value, expected: &str, label: &str) -> Result<(), String> {
+    let encoded = serde_json::to_vec(value)
+        .map_err(|_| format!("Unable to canonicalize {label} JSON"))?;
+    let digest = hex::encode(Sha256::digest(encoded));
+    if digest != expected.to_ascii_lowercase() {
+        return Err(format!("{label} JSON commitment digest mismatch"));
+    }
+    Ok(())
+}
+
+fn verify_request_sha256(request: &Value, expected: &str) -> Result<(), String> {
+    let source = request.as_object()
+        .ok_or_else(|| "Independent phase-one input must be a JSON object".to_owned())?;
+    let mut core = source.clone();
+    core.remove("requestSha256");
+    verify_sha256_json(&Value::Object(core), expected, "Independent phase-one request")
+}
+
+fn verify_snapshot_sha256(request: &Value) -> Result<(), String> {
+    let snapshot = request.pointer("/ledgerContext/protocolSnapshot")
+        .ok_or_else(|| "Missing current ledger protocol snapshot".to_owned())?;
+    let expected = required_string(request, &["sources", "currentProtocolSnapshotSha256"])?;
+    verify_sha256_json(snapshot, expected, "Current protocol snapshot")?;
+    let source_tip = snapshot.pointer("/tip/blockHash").and_then(Value::as_str)
+        .ok_or_else(|| "Protocol snapshot lacks bound tip hash".to_owned())?;
+    let source_slot = snapshot.pointer("/tip/slot").and_then(Value::as_u64)
+        .ok_or_else(|| "Protocol snapshot lacks bound tip slot".to_owned())?;
+    let current_tip = required_string(request, &["ledgerContext", "tip", "hash"])?;
+    let current_slot = request.pointer("/ledgerContext/tip/slot").and_then(Value::as_u64)
+        .ok_or_else(|| "Missing current ledger slot".to_owned())?;
+    if source_tip.to_ascii_lowercase() != current_tip.to_ascii_lowercase() || source_slot != current_slot {
+        return Err("Protocol snapshot and current tip identity differ".to_owned());
+    }
+    Ok(())
+}
+
+fn verify_ledger_snapshot_sha256(request: &Value) -> Result<(), String> {
+    let current_tip = request.pointer("/ledgerContext/tip")
+        .ok_or_else(|| "Missing current ledger tip".to_owned())?;
+    let utxos = request.pointer("/ledgerContext/utxos")
+        .ok_or_else(|| "Missing full current UTxO observations".to_owned())?;
+    let full_snapshot = json!({
+        "source": "read-only-ogmios-queryLedgerState/utxo",
+        "tip": current_tip,
+        "utxos": utxos
+    });
+    let expected = required_string(request, &["sources", "ledgerInputSnapshotSha256"])?;
+    verify_sha256_json(&full_snapshot, expected, "Full ledger input snapshot")
+}
+
 fn inspect(request_json: &str) -> Result<Value, String> {
     let request: Value = serde_json::from_str(request_json)
         .map_err(|_| "Request is not valid JSON".to_owned())?;
@@ -175,6 +229,9 @@ fn inspect(request_json: &str) -> Result<Value, String> {
     {
         return Err("Malformed transaction or request digest".to_owned());
     }
+    verify_request_sha256(&request, request_sha)?;
+    verify_snapshot_sha256(&request)?;
+    verify_ledger_snapshot_sha256(&request)?;
     if tx_hex.len() % 2 != 0 || tx_hex.len() > MAX_TRANSACTION_BYTES * 2 {
         return Err("Malformed or oversized signed transaction hex".to_owned());
     }
@@ -232,6 +289,7 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         "pallasDecodedBodyHash": verified_body_hash,
         "pallasExactSignedBodyInputAndValidityChecksPassed": true,
         "pallasOwnerWitnessSignatureAndRequiredSignerVerified": true,
+        "requestProtocolAndLedgerSnapshotDigestsVerified": true,
         "completePhaseOneValidated": false,
         "transactionSubmissionAuthorized": false,
         "transactionSubmissionPerformed": false,
@@ -362,6 +420,48 @@ mod tests {
         let signer = Hasher::<224>::hash(b"owner");
         assert!(verify_owner_vkey(&body, &witness, &signer)
             .unwrap_err().contains("Malformed owner public"));
+    }
+
+    #[test]
+    fn rejects_changed_cross_language_request_digest() {
+        let mut request = json!({
+            "schema": INPUT_SCHEMA, "network": "preprod", "action": "initialize",
+            "completePhaseOneValidated": false,
+            "transactionSubmissionAuthorized": false,
+            "transactionSubmissionPerformed": false,
+            "requestSha256": "b".repeat(64),
+            "signedTransaction": { "sha256": "a".repeat(64), "cborHex": "00" }
+        });
+        // Request digest must be the hash of the *other* fields, not an
+        // arbitrary hash of a transaction or a caller's assertion.
+        assert!(inspect(&request.to_string()).unwrap_err().contains("request JSON commitment digest mismatch"));
+        let core = request.as_object_mut().unwrap();
+        core.remove("requestSha256");
+        let digest = hex::encode(Sha256::digest(serde_json::to_vec(&request).unwrap()));
+        request["requestSha256"] = Value::String(digest);
+        assert!(verify_request_sha256(&request, request["requestSha256"].as_str().unwrap()).is_ok());
+    }
+    #[test]
+    fn rejects_current_protocol_snapshot_digest_drift() {
+        let request = json!({
+            "ledgerContext": {
+                "protocolSnapshot": {"tip": {"blockHash":"ab", "slot":5}},
+                "tip": {"hash": "ab", "slot": 5}
+            },
+            "sources": {"currentProtocolSnapshotSha256": "f".repeat(64)}
+        });
+        assert!(verify_snapshot_sha256(&request).unwrap_err().contains("commitment digest mismatch"));
+    }
+    #[test]
+    fn rejects_mutated_ledger_utxo_snapshot() {
+        let request = json!({
+            "ledgerContext": {
+                "tip": {"hash": "ab", "slot": 5},
+                "utxos": {"seed": {"value":{"ada":{"lovelace":"999"}}}, "collateral":{}}
+            },
+            "sources": {"ledgerInputSnapshotSha256": "f".repeat(64)}
+        });
+        assert!(verify_ledger_snapshot_sha256(&request).unwrap_err().contains("commitment digest mismatch"));
     }
 
 }
