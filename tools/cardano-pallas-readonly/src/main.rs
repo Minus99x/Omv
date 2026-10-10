@@ -6,6 +6,9 @@
 //! invoke pallas_validate::phase1::validate_tx. Until then this executable
 //! never returns a passing phase-one verdict or submission authorization.
 
+mod ledger_utxos;
+use ledger_utxos::assemble_conway_initialize_utxos;
+
 use std::io::{self, Read};
 use sha2::{Digest, Sha256};
 use serde_json::{json, Value};
@@ -378,6 +381,15 @@ fn inspect(request_json: &str) -> Result<Value, String> {
     }
     let verified_body_hash = check_signed_transaction_body(&conway, &request, tip_slot)?;
     verify_ada_only_initialize_values(&conway, &request)?;
+    let spending = conway.transaction_body.inputs.iter().next()
+        .ok_or_else(|| "Missing signed seed input for Pallas ledger UTxO assembly".to_owned())?;
+    let collateral = conway.transaction_body.collateral.as_ref()
+        .and_then(|set| set.iter().next())
+        .ok_or_else(|| "Missing signed collateral input for Pallas ledger UTxO assembly".to_owned())?;
+    let current_ledger_utxos = assemble_conway_initialize_utxos(spending, collateral, &request)?;
+    if current_ledger_utxos.len() != 2 {
+        return Err("Pallas ledger UTxO assembly did not preserve both inputs".into());
+    }
 
     // Deliberately NO success value, until we have independently reconstructed
     // full Conway ledger parameters and CertState from a current trusted source,
@@ -396,6 +408,7 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         "pallasOwnerWitnessSignatureAndRequiredSignerVerified": true,
         "pallasInputPaymentCredentialsBoundToOwner": true,
         "pallasInitializeAdaAndCollateralConservationChecked": true,
+        "pallasCompleteCurrentLedgerUtxosAssembled": true,
         "requestProtocolAndLedgerSnapshotDigestsVerified": true,
         "completePhaseOneValidated": false,
         "transactionSubmissionAuthorized": false,
