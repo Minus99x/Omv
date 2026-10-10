@@ -28,4 +28,6 @@ jobs:
         run: |
           grep -q '"completePhaseOneValidated": false' tools/cardano-pallas-readonly/src/main.rs
           grep -q '"transactionSubmissionAuthorized": false' tools/cardano-pallas-readonly/src/main.rs
-          grep -q 'Pallas phase-one validation has not run' tools/cardano-pallas-readonly/src/main.rs
+          grep -q '"transactionSubmissionPerformed": false' tools/cardano-pallas-readonly/src/main.rs
+          grep -q 'this inspection is never fresh ledger attestation or authorization to sign/submit' tools/cardano-pallas-readonly/src/main.rs
+          grep -q 'pallas_validate::phase1::conway::validate_conway_tx' tools/cardano-pallas-readonly/src/main.rs
