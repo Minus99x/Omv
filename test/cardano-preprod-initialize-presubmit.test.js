@@ -356,3 +356,16 @@ test('Cardano pre-submit CLI normalizes the configured Ogmios endpoint to WebSoc
   assert.match(source, /normalizeCardanoOgmiosWebSocketUrl/);
   assert.match(source, /url:\s*normalizeCardanoOgmiosWebSocketUrl\(ogmiosUrl\)/);
 });
+
+test('Cardano pre-submit treats invalidHereafter upper slot as already expired',()=>{
+  const input=fixture();
+  const tip={hash:'ee'.repeat(32),slot:input.unsignedCandidate.validity.upperSlot};
+  const currentProtocolSnapshot=currentProtocolSnapshotAt(tip);
+  const currentParameters=normalizeCardanoProtocolParameterSnapshot(currentProtocolSnapshot);
+  assert.throws(
+    ()=>createCardanoPreprodInitializePreSubmitEvidence({
+      ...input,recoveryConfig,currentTip:tip,currentProtocolSnapshot,currentParameters
+    }),
+    /validity interval has expired/
+  );
+});
