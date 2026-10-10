@@ -12,6 +12,7 @@ use serde_json::{json, Value};
 use pallas_crypto::hash::{Hash, Hasher};
 use pallas_crypto::key::ed25519::{PublicKey, Signature};
 use pallas_primitives::{AddrKeyhash, alonzo::VKeyWitness};
+use pallas_addresses::{Address, Network, ShelleyPaymentPart};
 use pallas_primitives::{NetworkId, conway::Tx};
 
 const INPUT_SCHEMA: &str = "omegavault.cardano.preprod-independent-phase-one-input.v1";
@@ -68,6 +69,23 @@ fn verify_owner_vkey(
     Ok(())
 }
 
+// Both initialize inputs must remain spendable by the exact same owner
+// payment verification key. This is independent of the earlier JS preflight.
+// Shelley stake credentials may differ; payment credentials may not.
+fn verify_owner_utxo_address(address: &str, owner_hash: &AddrKeyhash, role: &str) -> Result<(), String> {
+    let decoded = Address::from_bech32(address)
+        .map_err(|_| format!("{role} is not a valid Cardano bech32 address"))?;
+    match decoded {
+        Address::Shelley(shelley) if shelley.network() == Network::Testnet => {
+            match shelley.payment() {
+                ShelleyPaymentPart::Key(observed) if observed == owner_hash => Ok(()),
+                _ => Err(format!("{role} payment credential does not belong to required owner")),
+            }
+        }
+        _ => Err(format!("{role} is not an owner-controlled Shelley testnet address")),
+    }
+}
+
 fn check_signed_transaction_body(tx: &Tx<'_>, request: &Value, current_slot: u64) -> Result<String, String> {
     if !tx.success {
         return Err("Signed Conway transaction validity flag must be true".into());
@@ -119,6 +137,13 @@ fn check_signed_transaction_body(tx: &Tx<'_>, request: &Value, current_slot: u64
         .ok_or_else(|| "Owner key witness missing from decoded transaction".to_owned())?;
     let calculated_body_hash = Hasher::<256>::hash(tx.transaction_body.raw_cbor());
     verify_owner_vkey(&calculated_body_hash, owner_witness, signer)?;
+    for role in ["seed", "collateral"] {
+        let path = format!("/ledgerContext/utxos/{role}/address");
+        let address = request.pointer(&path)
+            .and_then(Value::as_str)
+            .ok_or_else(|| format!("Missing {role} Cardano UTxO address"))?;
+        verify_owner_utxo_address(address, signer, role)?;
+    }
     if body.outputs.len() != 2 || body.collateral_return.is_none() || body.total_collateral.is_none() {
         return Err("Initialize is missing state/change or collateral return output".into());
     }
@@ -290,6 +315,7 @@ fn inspect(request_json: &str) -> Result<Value, String> {
         "pallasDecodedBodyHash": verified_body_hash,
         "pallasExactSignedBodyInputAndValidityChecksPassed": true,
         "pallasOwnerWitnessSignatureAndRequiredSignerVerified": true,
+        "pallasInputPaymentCredentialsBoundToOwner": true,
         "requestProtocolAndLedgerSnapshotDigestsVerified": true,
         "completePhaseOneValidated": false,
         "transactionSubmissionAuthorized": false,
@@ -464,6 +490,19 @@ mod tests {
             "sources": {"ledgerInputSnapshotSha256": "f".repeat(64)}
         });
         assert!(verify_ledger_snapshot_sha256(&request).unwrap_err().contains("commitment digest mismatch"));
+    }
+
+    #[test]
+    fn rejects_malformed_owner_seed_address() {
+        let signer = Hasher::<224>::hash(b"valid-signer");
+        let error = verify_owner_utxo_address("addr_test1invalid", &signer, "seed").unwrap_err();
+        assert!(error.contains("bech32 address"));
+    }
+    #[test]
+    fn rejects_non_shelley_owner_address() {
+        let signer = Hasher::<224>::hash(b"valid-signer");
+        let error = verify_owner_utxo_address("addr1", &signer, "seed").unwrap_err();
+        assert!(error.contains("bech32 address"));
     }
 
 }
