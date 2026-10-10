@@ -4,6 +4,7 @@ import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
+import { createCardanoPreprodAppliedValidatorIdentity } from '../src/chains/cardano/live-validator-identity.js';
 import { inspectCardanoPreprodUnsignedCapture } from '../scripts/inspect-cardano-preprod-unsigned-capture.js';
 
 const defs={
@@ -34,7 +35,23 @@ function fixture(){
     docs[name]=body;
   }
   // Produce exact cross-references before sealing the rest.
-  docs.appliedValidatorIdentity=sealed(docs.appliedValidatorIdentity,'identitySha256');
+  // Reproduce the ACTUAL Aiken generator contract: derive deterministic
+  // Plutus script hashes, seal that core, then append unsealed provenance.
+  docs.appliedValidatorIdentity={
+    ...createCardanoPreprodAppliedValidatorIdentity({
+      seedReference:{transaction:{id:'cd'.repeat(32)},index:0},
+      assetNameHex:'4f56',
+      sourceBlueprintSha256:'ab'.repeat(32),
+      beaconCompiledCode:'4e4d01000033222220051200120011',
+      recoveryCompiledCode:'4e4d01000033222220051200120022'
+    }),
+    provenance:{
+      aikenVersion:'fixture-test-only',
+      sourceBlueprint:'validators/cardano/plutus.json',
+      beaconAppliedBlueprintSha256:'ef'.repeat(32),
+      recoveryAppliedBlueprintSha256:'fe'.repeat(32)
+    }
+  };
   docs.utxoBindingEvidence=sealed(docs.utxoBindingEvidence,'evidenceSha256');
   docs.finalUnsignedCandidate=sealed(docs.finalUnsignedCandidate,'candidateSha256');
   docs.unsignedPhaseOnePreflight={
@@ -69,6 +86,8 @@ test('checks seven bound artifacts and expressly does not claim current ledger f
     assert.equal(result.ok,true);
     assert.equal(result.checkedBoundArtifactCount,7);
     assert.equal(result.protocolSnapshotWholeDocumentDigestBoundToManifest,false);
+    assert.equal(result.validatorIdentityAppliedCodeAndAddressVerified,true);
+    assert.equal(result.validatorIdentitySupplementalAikenProvenanceBoundByIdentitySha256,false);
     assert.equal(result.completePhaseOneValidated,false);
     assert.equal(result.walletSigningAuthorized,false);
     assert.equal(result.transactionSubmissionAuthorized,false);
@@ -103,5 +122,28 @@ test('blocks path traversal in capture file map',async()=>{
     delete m.manifestSha256;
     save(p,sealed(m,'manifestSha256'));
     await assert.rejects(()=>inspectCardanoPreprodUnsignedCapture(root),/escapes the capture directory/);
+  }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+test('rejects changed on-chain identity policy while preserving the pre-provenance digest',async()=>{
+  const {root,files}=fixture();
+  try{
+    const path=join(root,files.appliedValidatorIdentity);
+    const doc=JSON.parse(readFileSync(path,'utf8'));
+    doc.stateBeacon.policyId='aa'.repeat(28);
+    save(path,doc);
+    await assert.rejects(()=>inspectCardanoPreprodUnsignedCapture(root),/Applied validator identity verification failed/);
+  }finally{rmSync(root,{recursive:true,force:true});}
+});
+test('Aiken provenance is supplemental and not falsely treated as digest-sealed',async()=>{
+  const {root,files}=fixture();
+  try{
+    const path=join(root,files.appliedValidatorIdentity);
+    const doc=JSON.parse(readFileSync(path,'utf8'));
+    doc.provenance.aikenVersion='unbound-provenance-edited';
+    save(path,doc);
+    const result=await inspectCardanoPreprodUnsignedCapture(root);
+    assert.equal(result.ok,true);
+    assert.equal(result.validatorIdentitySupplementalAikenProvenanceBoundByIdentitySha256,false);
   }finally{rmSync(root,{recursive:true,force:true});}
 });
