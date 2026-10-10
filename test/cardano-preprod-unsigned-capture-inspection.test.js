@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { createCardanoPreprodAppliedValidatorIdentity } from '../src/chains/cardano/live-validator-identity.js';
-import { inspectCardanoPreprodUnsignedCapture } from '../scripts/inspect-cardano-preprod-unsigned-capture.js';
+import { inspectCardanoPreprodUnsignedCapture, loadVerifiedCardanoPreprodUnsignedCapture } from '../scripts/inspect-cardano-preprod-unsigned-capture.js';
 
 const defs={
   appliedValidatorIdentity:['identitySha256','validatorIdentitySha256'],
@@ -183,4 +183,37 @@ test('rejects forged cross-artifact pointer even when evaluation evidence digest
     save(path,sealed(evidence,'evidenceSha256'));
     await assert.rejects(()=>inspectCardanoPreprodUnsignedCapture(root),/not bound to the captured manifest/);
   }finally{rmSync(root,{recursive:true,force:true});}
+});
+
+test('loads immutable verified documents and never exposes modified disk evidence',async()=>{
+  const {root,files}=fixture();
+  try {
+    const verified=await loadVerifiedCardanoPreprodUnsignedCapture(root);
+    assert.equal(verified.report.ok,true);
+    assert.equal(verified.report.checkedBoundArtifactCount,7);
+    assert.equal(verified.documents.protocolSnapshot.tip.slot,135973880);
+    assert.equal(verified.documents.finalUnsignedCandidate.transaction.keyWitnessCount,0);
+    assert.equal(Object.isFrozen(verified),true);
+    assert.equal(Object.isFrozen(verified.documents),true);
+    assert.equal(Object.isFrozen(verified.documents.protocolSnapshot.tip),true);
+    assert.equal(Object.isFrozen(verified.documents.finalUnsignedCandidate.transaction),true);
+    assert.throws(()=>{
+      verified.documents.finalUnsignedCandidate.transaction.keyWitnessCount=1;
+    },TypeError);
+    assert.throws(()=>{
+      verified.documents.protocolSnapshot.tip.slot=1;
+    },TypeError);
+
+    // Simulate modification after inspection: existing trusted objects must
+    // retain their verified bytes, while any fresh inspection fails closed.
+    const p=join(root,files.finalUnsignedCandidate);
+    const changed=JSON.parse(readFileSync(p,'utf8'));
+    changed.transaction.keyWitnessCount=1;
+    save(p,changed);
+    assert.equal(verified.documents.finalUnsignedCandidate.transaction.keyWitnessCount,0);
+    await assert.rejects(
+      ()=>loadVerifiedCardanoPreprodUnsignedCapture(root),
+      /candidateSha256 does not reproduce/
+    );
+  } finally { rmSync(root,{recursive:true,force:true}); }
 });
