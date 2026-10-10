@@ -33,11 +33,17 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
     } catch (error) {
       if (error.code !== 'ENOENT') throw error;
     }
-    const [witnessEvidence, signedTransactionCborHex, preSubmitEvidence] = await Promise.all([
+    // The Lace guided flow stores exact signed CBOR *inside* the witness JSON.
+    // Do not depend on an invented extra .cbor filename or treat binary CBOR
+    // as UTF-8 text. The embedded bytes are already witness-digest-bound.
+    const [witnessEvidence, preSubmitEvidence] = await Promise.all([
       readFile(join(signing, 'wallet-witness-evidence.json'), 'utf8').then(JSON.parse),
-      readFile(join(signing, 'initialize-signed-transaction.cbor'), 'utf8').then(x => x.trim()),
       readFile(presubmit, 'utf8').then(JSON.parse)
     ]);
+    const signedTransactionCborHex = witnessEvidence.signedTransactionCborHex;
+    if (typeof signedTransactionCborHex !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(signedTransactionCborHex)) {
+      throw new Error('wallet-witness-evidence.json lacks verified signedTransactionCborHex; no independent input created.');
+    }
     const args = { witnessEvidence, signedTransactionCborHex, preSubmitEvidence };
     const request = createCardanoPreprodIndependentPhaseOneInput(args);
     const verification = verifyCardanoPreprodIndependentPhaseOneInput({ input: request, ...args });
