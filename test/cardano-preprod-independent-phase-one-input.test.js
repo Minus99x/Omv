@@ -162,3 +162,22 @@ test('includes full current input values for the independent ledger implementati
  assert.deepEqual(input.ledgerContext.utxos.collateral.value,{ada:{lovelace:'5000000'}});
  assert.equal(input.completePhaseOneValidated,false);
 });
+
+test('independent phase-one input rejects exact exclusive invalidHereafter slot',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.validity.upperSlot=x.preSubmitEvidence.currentTip.slot;
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/validity interval does not include/);
+});
+test('independent phase-one input rejects an empty validity interval',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.validity.lowerSlot=x.preSubmitEvidence.validity.upperSlot;
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/validity interval does not include/);
+});
+test('independent phase-one input rejects a negative lower validity slot',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.validity.lowerSlot=-1;
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/validity interval does not include/);
+});
