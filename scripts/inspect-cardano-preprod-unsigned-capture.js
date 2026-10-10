@@ -60,7 +60,17 @@ function locked(manifest, artifacts) {
     throw new Error('Unsigned preflight crossed its witness or phase-one boundary.');
   }
 }
-export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
+// The offline inspector and network recheck MUST consume one identical set
+// of parsed, digest-verified artifacts. Reopening JSON files after validation
+// would introduce a verify-then-reread (TOCTOU) evidence gap.
+function deepFreezeJson(value) {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) deepFreezeJson(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+export async function loadVerifiedCardanoPreprodUnsignedCapture(captureRoot) {
   const root=resolve(captureRoot);
   const manifest=await readJson(join(root,'capture-manifest.json'));
   if (manifest.schema!=='omegavault.cardano.preprod-real-initialize-capture-manifest.v1') {
@@ -125,7 +135,7 @@ export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
     throw new Error('Unsigned preflight no longer binds the saved candidate, validator and UTxOs.');
   }
   locked(manifest,artifacts);
-  return Object.freeze({
+  const report=Object.freeze({
     schema:'omegavault.cardano.preprod-unsigned-capture-inspection.v1',
     ok:true,
     capturedTip:{hash:tip.hash,slot:tip.slot},
@@ -149,6 +159,19 @@ export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
     limitation:'Offline historical artifact-integrity verification only. The whole protocol snapshot is transitively bound to the V1 manifest via sealed evaluation evidence, but offline hashes alone do not prove that provider responses were authentic or current. Supplemental Aiken provenance remains outside the validator identity digest; current UTxO freshness and full Conway phase one are not proven.',
     nextGate:'Independently reverify the fresh protocol/UTxO environment. No signing or submission.'
   });
+  return Object.freeze({
+    report,
+    // Only publish the three authenticated documents required for read-only
+    // freshness comparison; never re-read paths provided by the manifest.
+    documents:Object.freeze({
+      utxoBindingEvidence:deepFreezeJson(artifacts.utxoBindingEvidence),
+      finalUnsignedCandidate:deepFreezeJson(artifacts.finalUnsignedCandidate),
+      protocolSnapshot:deepFreezeJson(snapshot)
+    })
+  });
+}
+export async function inspectCardanoPreprodUnsignedCapture(captureRoot) {
+  return (await loadVerifiedCardanoPreprodUnsignedCapture(captureRoot)).report;
 }
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
   process.stdout.write('Usage: node scripts/inspect-cardano-preprod-unsigned-capture.js --capture <capture-directory>\nRead-only, offline; no wallet or network operation.\n');
