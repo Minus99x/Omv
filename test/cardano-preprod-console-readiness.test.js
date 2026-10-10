@@ -101,3 +101,35 @@ test('blocks manifest path traversal even when attacker recomputes the self-dige
     assert.equal(report.transactionSubmissionAuthorized,false);
   } finally {rmSync(root,{recursive:true,force:true});}
 });
+
+test('recognizes the real guided layout: session/capture and sibling wallet-signing',()=>{
+  const {root,capture}=fixture();
+  try {
+    const nested = join(capture,'capture');
+    mkdirSync(nested);
+    // The guided flow creates capture metadata beneath the capture/
+    // subdirectory and the wallet witness beside that directory.
+    for (const name of ['unsigned.json','capture-manifest.json']) {
+      const source=join(capture,name);
+      writeFileSync(join(nested,name),readFileSync(source));
+      rmSync(source);
+    }
+    const result=command(['--evidence-root',root],{
+      npm_execpath:'C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js'
+    });
+    assert.ok([0,2].includes(result.status),result.stderr);
+    const report=JSON.parse(result.stdout);
+    assert.equal(report.captureCount,1);
+    assert.equal(report.captures[0].directory,capture);
+    assert.equal(report.captures[0].captureDirectory,nested);
+    assert.equal(report.captures[0].captureManifestPresent,true);
+    assert.equal(report.captures[0].captureManifestDigestValid,true);
+    assert.equal(report.captures[0].ownerWitnessPresent,true);
+    assert.equal(report.captures[0].ownerWitnessDigestValid,true);
+    assert.equal(report.captures[0].signedTransactionExists,true);
+    assert.equal(report.captures[0].estimatedValidityExpired,true);
+    assert.equal(report.tools.npmAvailable,true);
+    assert.equal(report.transactionSubmissionAuthorized,false);
+    assert.equal(report.completeSignedCurrentLedgerPhaseOneValidated,false);
+  } finally {rmSync(root,{recursive:true,force:true});}
+});
