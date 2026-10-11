@@ -26,8 +26,19 @@ function checkedEra(value,index) {
   const end=value?.end==null?null:bound(value.end,label+'.end');
   const epochLength=nonNegative(value?.parameters?.epochLength,label+'.parameters.epochLength',true);
   const slotLengthMs=nonNegative(value?.parameters?.slotLength?.milliseconds,label+'.parameters.slotLength.milliseconds',true);
-  if (end && (end.slot<=start.slot || end.epoch<start.epoch || end.seconds<=start.seconds))
-    throw new Error(label+' has non-increasing era bounds.');
+  if (end) {
+    if (end.slot<=start.slot || end.epoch<start.epoch || end.seconds<=start.seconds)
+      throw new Error(label+' has non-increasing era bounds.');
+    // A coincident slot boundary is not enough: confirm the era's declared
+    // elapsed slot time and whole-epoch count. Use BigInt to avoid rounding.
+    const slots=BigInt(end.slot)-BigInt(start.slot);
+    const actualMs=(BigInt(end.seconds)-BigInt(start.seconds))*1000n;
+    if (slots*BigInt(slotLengthMs)!==actualMs)
+      throw new Error(label+' boundary time disagrees with slot length.');
+    if (slots%BigInt(epochLength)!==0n ||
+        slots/BigInt(epochLength)!==BigInt(end.epoch-start.epoch))
+      throw new Error(label+' boundary epochs disagree with slot count.');
+  }
   return Object.freeze({start,end,epochLength,slotLengthMs});
 }
 function checkedGenesis(report) {
@@ -53,6 +64,7 @@ export function reconcileCardanoPreprodEraTiming({
 }) {
   checkedGenesis(genesisReport);
   if (typeof networkStartTime!=='string' ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(networkStartTime) ||
       !Number.isFinite(Date.parse(networkStartTime)) ||
       Date.parse(networkStartTime)!==Date.parse(genesisReport.timing.systemStart)) {
     throw new Error('Authenticated Ogmios network start time disagrees with pinned public Preprod genesis.');
@@ -77,13 +89,18 @@ export function reconcileCardanoPreprodEraTiming({
   const active=eras.filter(e=>stableTip.slot>=e.start.slot && (!e.end || stableTip.slot<e.end.slot));
   if (active.length!==1) throw new Error('Stable tip is not in exactly one current Ogmios era interval.');
   const era=active[0];
+  // Valid era arithmetic requires exact slot-to-epoch mapping at the current tip.
   const predictedEpoch=era.start.epoch+Math.floor((stableTip.slot-era.start.slot)/era.epochLength);
   if (!Number.isSafeInteger(predictedEpoch)||predictedEpoch!==epoch)
     throw new Error('Two-provider observed epoch disagrees with Ogmios era slotting.');
-  const slotTime=Date.parse(genesisReport.timing.systemStart)+
-    era.start.seconds*1000+(stableTip.slot-era.start.slot)*era.slotLengthMs;
-  if (!Number.isSafeInteger(slotTime)||!Number.isFinite(new Date(slotTime).getTime()))
+  const slotTimeMs=BigInt(Date.parse(genesisReport.timing.systemStart))+
+    BigInt(era.start.seconds)*1000n+
+    (BigInt(stableTip.slot)-BigInt(era.start.slot))*BigInt(era.slotLengthMs);
+  if (slotTimeMs>BigInt(Number.MAX_SAFE_INTEGER) ||
+      slotTimeMs<BigInt(-8640000000000000) ||
+      slotTimeMs>8640000000000000n)
     throw new Error('Stable-tip slot time cannot be safely derived from Ogmios era summaries.');
+  const slotTime=Number(slotTimeMs);
   const core=Object.freeze({
     schema:'omegavault.cardano.preprod-era-timing-reconciliation.v1',
     network:'preprod',
