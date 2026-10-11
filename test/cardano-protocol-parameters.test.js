@@ -39,3 +39,19 @@ test('Cardano collateral rounds upward and rejects token-bearing or excess input
   assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: '216495', parameters, collateralIsAdaOnly: false }), /ADA only/);
   assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: '216495', parameters, collateralInputCount: 4 }), /protocol limits/);
 });
+
+
+test('Cardano gate does not double-count duplicate provider evidence', () => {
+  const singleProvider = Object.freeze({ ...parameters, sourceCount: 1, independentlyConfirmed: true });
+  const gate = createCardanoProtocolParameterGate([singleProvider, singleProvider]);
+  assert.equal(gate.independentSourceCount, 1);
+  assert.equal(gate.liveConstructionReady, false);
+  assert.match(gate.reason, /two independent/);
+});
+
+test('Cardano gate explains missing independent confirmation', () => {
+  const unconfirmed = Object.freeze({ ...parameters, sourceCount: 2, independentlyConfirmed: false });
+  const gate = createCardanoProtocolParameterGate([unconfirmed]);
+  assert.equal(gate.liveConstructionReady, false);
+  assert.match(gate.reason, /confirmation/);
+});
