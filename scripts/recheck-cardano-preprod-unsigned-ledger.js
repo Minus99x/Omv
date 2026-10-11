@@ -18,6 +18,8 @@ import {
 } from '../src/chains/cardano/preprod-live-capture.js';
 import { createCardanoPreprodLiveProtocolSnapshot } from '../src/chains/cardano/live-protocol-parameters.js';
 import { createCardanoPreprodConwayReadinessReport } from '../src/chains/cardano/conway-provider-readiness.js';
+import { reconcileCardanoPreprodEraTiming } from '../src/chains/cardano/preprod-era-timing-reconciliation.js';
+import { checkCardanoPreprodPublicGenesis } from './verify-cardano-preprod-public-genesis.js';
 
 const MAX_STABLE_RETRIES = 4;
 const NETWORK = 'preprod';
@@ -133,7 +135,10 @@ export function compareCardanoPreprodCapturedLedger({
     authorityBoundary:'Read-only snapshot comparison at a stable tip. This is NOT complete independent Conway phase-one validation, a future freshness promise, or approval to sign or submit.'
   });
 }
-async function recheck({capture,client,blockfrostProjectId,fetchImpl=globalThis.fetch,retries=MAX_STABLE_RETRIES}) {
+async function recheck({
+  capture,client,blockfrostProjectId,fetchImpl=globalThis.fetch,
+  retries=MAX_STABLE_RETRIES,verifyEraTiming=false,genesisCheck=checkCardanoPreprodPublicGenesis
+}) {
   if (!Number.isSafeInteger(retries)||retries<1||retries>MAX_STABLE_RETRIES) throw new Error('Invalid stable-tip retry count.');
   // Must pass all offline checks first, including manifest transitively
   // digest-binding the COMPLETE saved protocol snapshot.
@@ -143,6 +148,13 @@ async function recheck({capture,client,blockfrostProjectId,fetchImpl=globalThis.
   const sourceBinding=documents.utxoBindingEvidence;
   const candidate=documents.finalUnsignedCandidate;
   const capturedSnapshot=documents.protocolSnapshot;
+  if (typeof verifyEraTiming!=='boolean' ||
+      (verifyEraTiming && typeof genesisCheck!=='function')) {
+    throw new TypeError('Optional genesis/era-timing verification requires a read-only genesis verifier.');
+  }
+  // Public raw-genesis verification is opt-in and only attempted after
+  // complete offline capture integrity checks. No secrets or wallet access.
+  const genesisReport=verifyEraTiming?await genesisCheck():null;
   const roles=sourceBinding.roles;
   const params=createCardanoOgmiosUtxoByOutputReferencesParams([
     roles.seed.reference,roles.collateral.reference
@@ -160,6 +172,8 @@ async function recheck({capture,client,blockfrostProjectId,fetchImpl=globalThis.
     const blockfrostParameters=await fetchCardanoBlockfrostPreprodProtocolParameters({
       projectId:blockfrostProjectId,fetchImpl
     });
+    const nodeStartResponse=verifyEraTiming?await client.rpc('queryNetwork/startTime'):null;
+    const eraSummariesResponse=verifyEraTiming?await client.rpc('queryLedgerState/eraSummaries'):null;
     const after=parseCardanoOgmiosTipResponse(await client.rpc('queryNetwork/tip'));
     if (!stable(before,after)) continue;
     const currentSnapshot=createCardanoPreprodLiveProtocolSnapshot({
@@ -172,6 +186,13 @@ async function recheck({capture,client,blockfrostProjectId,fetchImpl=globalThis.
       ogmiosParameters,blockfrostParameters,
       tipBefore:before,tipAfter:after,protocolSnapshot:currentSnapshot
     });
+    const eraTiming=verifyEraTiming?reconcileCardanoPreprodEraTiming({
+      genesisReport,
+      networkStartTime:nodeStartResponse?.result,
+      eraSummaries:eraSummariesResponse?.result,
+      stableTip:before,
+      observedEpoch:epoch
+    }):null;
     const conwayPrerequisites=Object.freeze({
       requiredFieldCount:conwayReadiness.requiredParameterCount,
       agreedFieldNames:Object.freeze(Object.keys(conwayReadiness.agreed).sort()),
@@ -195,6 +216,7 @@ async function recheck({capture,client,blockfrostProjectId,fetchImpl=globalThis.
       currentTwoSourceProtocolAgreement:true,
       currentStableTipAndUTxOStateChecked:true,
       conwayPrerequisites,
+      ...(verifyEraTiming?{eraTiming}:{}),
       stableTipAttempt:attempt
     });
   }
@@ -205,7 +227,7 @@ export { recheck as recheckCardanoPreprodCapturedLedger };
 const cli=process.argv[1] ? resolve(process.argv[1])===fileURLToPath(import.meta.url) : false;
 if (cli) {
   if (process.argv.includes('--help')||process.argv.includes('-h')) {
-    process.stdout.write('Usage: node scripts/recheck-cardano-preprod-unsigned-ledger.js --capture <existing-unsigned-capture>\nRead-only authenticated Ogmios and Blockfrost lookups. NO signing, writing, or submission.\n');
+    process.stdout.write('Usage: node scripts/recheck-cardano-preprod-unsigned-ledger.js --capture <existing-unsigned-capture> [--verify-era-timing]\nRead-only authenticated Ogmios and Blockfrost lookups. NO signing, writing, or submission.\n');
   } else {
     const flag=process.argv.indexOf('--capture');
     const capture=flag<0?null:process.argv[flag+1];
@@ -222,7 +244,10 @@ if (cli) {
           apiKey:process.env.OMEGAVAULT_OGMIOS_API_KEY??null,
           apiKeyHeader:process.env.OMEGAVAULT_OGMIOS_API_KEY_HEADER??'dmtr-api-key'
         });
-        const report=await recheck({capture,client,blockfrostProjectId:process.env.BLOCKFROST_PROJECT_ID});
+        const report=await recheck({
+          capture,client,blockfrostProjectId:process.env.BLOCKFROST_PROJECT_ID,
+          verifyEraTiming:process.argv.includes('--verify-era-timing')
+        });
         process.stdout.write(JSON.stringify(report,null,2)+'\n');
         if (!report.originalUTxOsUnspentAndUnchanged ||
             !report.independentlyCorroboratedProtocolValuesUnchanged ||
