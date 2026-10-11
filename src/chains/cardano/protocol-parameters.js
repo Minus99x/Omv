@@ -3,6 +3,12 @@ import { createHash } from 'node:crypto';
 const UINT = /^\d+$/;
 
 function uint(value, label) {
+  if (typeof value === 'number' && !Number.isSafeInteger(value)) {
+    throw new RangeError(`${label} must be a safe integer when supplied as a number; use a decimal string for larger values.`);
+  }
+  if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'bigint') {
+    throw new TypeError(`${label} must be an unsigned integer.`);
+  }
   if (!UINT.test(String(value))) throw new TypeError(`${label} must be an unsigned integer.`);
   return BigInt(value);
 }
