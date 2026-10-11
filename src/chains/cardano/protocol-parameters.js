@@ -61,7 +61,13 @@ export function createCardanoProtocolParameterGate(snapshots) {
   }
   const first = snapshots[0];
   const fields = ['epoch', 'protocolVersion', 'minFeeA', 'minFeeB', 'maxTxSize', 'maxValueSize', 'coinsPerUtxoByte', 'collateralPercentage', 'maxCollateralInputs', 'plutusV3CostModelSha256'];
-  const matching = snapshots.every(snapshot => fields.every(field => String(snapshot[field]) === String(first[field])));
+  const matching = snapshots.every(snapshot => fields.every(field => String(snapshot[field]) === String(first[field])) &&
+    snapshot.maxTxExUnits?.memory === first.maxTxExUnits?.memory &&
+    snapshot.maxTxExUnits?.steps === first.maxTxExUnits?.steps &&
+    snapshot.priceMemory?.numerator === first.priceMemory?.numerator &&
+    snapshot.priceMemory?.denominator === first.priceMemory?.denominator &&
+    snapshot.priceSteps?.numerator === first.priceSteps?.numerator &&
+    snapshot.priceSteps?.denominator === first.priceSteps?.denominator);
   // Snapshots do not carry per-provider identities. Summing their counts would
   // allow the same provider evidence to be counted twice by passing duplicates.
   // Use the largest independently attested count, never additive counts.
