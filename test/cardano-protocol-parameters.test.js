@@ -63,3 +63,16 @@ test('Cardano gate fails closed on invalid independent-source counts', () => {
     assert.throws(() => createCardanoProtocolParameterGate([malformed]), /positive independent source count/);
   }
 });
+
+
+test('Cardano gate rejects conflicting execution budgets and prices', () => {
+  const baseline = { ...parameters, sourceCount: 2, independentlyConfirmed: true };
+  const alteredBudget = { ...baseline, maxTxExUnits: { ...baseline.maxTxExUnits, memory: baseline.maxTxExUnits.memory + 1n } };
+  const alteredPrice = { ...baseline, priceSteps: { ...baseline.priceSteps, numerator: baseline.priceSteps.numerator + 1n } };
+  for (const altered of [alteredBudget, alteredPrice]) {
+    const gate = createCardanoProtocolParameterGate([baseline, altered]);
+    assert.equal(gate.matching, false);
+    assert.equal(gate.liveConstructionReady, false);
+    assert.match(gate.reason, /disagree/);
+  }
+});
