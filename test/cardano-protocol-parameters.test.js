@@ -85,3 +85,14 @@ test('Cardano snapshot rejects protocol limits outside the safe integer range', 
     assert.throws(() => normalizeCardanoProtocolParameterSnapshot(malformed), /safe integer range/);
   }
 });
+
+
+test('Cardano arithmetic rejects imprecise numeric inputs before BigInt conversion', () => {
+  for (const value of [Number.MAX_SAFE_INTEGER + 1, Infinity, NaN]) {
+    assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: value, parameters }), /safe integer/);
+  }
+  for (const value of [true, null, {}, 1.5, -1]) {
+    assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: value, parameters }), /unsigned integer/);
+  }
+  assert.equal(calculateCardanoRequiredCollateral({ feeLovelace: '9007199254740993', parameters }).requiredCollateral, '13510798882111490');
+});
