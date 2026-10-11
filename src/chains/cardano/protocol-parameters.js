@@ -13,6 +13,12 @@ function positive(value, label) {
   return result;
 }
 
+function safePositiveInteger(value, label) {
+  const number = positive(value, label);
+  if (number > BigInt(Number.MAX_SAFE_INTEGER)) throw new RangeError(`${label} exceeds the safe integer range.`);
+  return Number(number);
+}
+
 function ceilDiv(numerator, denominator) {
   return (numerator + denominator - 1n) / denominator;
 }
@@ -36,14 +42,14 @@ export function normalizeCardanoProtocolParameterSnapshot(snapshot) {
     protocolVersion: params.protocolVersion,
     minFeeA: positive(params.minFeeA, 'minFeeA'),
     minFeeB: positive(params.minFeeB, 'minFeeB'),
-    maxTxSize: Number(positive(params.maxTxSize, 'maxTxSize')),
-    maxValueSize: params.maxValueSize == null ? null : Number(positive(params.maxValueSize, 'maxValueSize')),
+    maxTxSize: safePositiveInteger(params.maxTxSize, 'maxTxSize'),
+    maxValueSize: params.maxValueSize == null ? null : safePositiveInteger(params.maxValueSize, 'maxValueSize'),
     coinsPerUtxoByte: positive(params.coinsPerUtxoByte, 'coinsPerUtxoByte'),
     priceMemory: { numerator: positive(params.priceMemory.numerator, 'priceMemory.numerator'), denominator: positive(params.priceMemory.denominator, 'priceMemory.denominator') },
     priceSteps: { numerator: positive(params.priceSteps.numerator, 'priceSteps.numerator'), denominator: positive(params.priceSteps.denominator, 'priceSteps.denominator') },
     maxTxExUnits: { memory: positive(params.maxTxExUnits.memory, 'maxTxExUnits.memory'), steps: positive(params.maxTxExUnits.steps, 'maxTxExUnits.steps') },
     collateralPercentage: positive(params.collateralPercentage, 'collateralPercentage'),
-    maxCollateralInputs: Number(positive(params.maxCollateralInputs, 'maxCollateralInputs')),
+    maxCollateralInputs: safePositiveInteger(params.maxCollateralInputs, 'maxCollateralInputs'),
     plutusV3CostModel: Object.freeze([...params.plutusV3CostModel]),
     plutusV3CostModelSha256: params.plutusV3CostModelSha256,
     sourceCount: snapshot.source.independentSourceCount,
