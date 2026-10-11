@@ -54,6 +54,11 @@ export function normalizeCardanoProtocolParameterSnapshot(snapshot) {
 
 export function createCardanoProtocolParameterGate(snapshots) {
   if (!Array.isArray(snapshots) || snapshots.length < 1) throw new TypeError('At least one normalized snapshot is required.');
+  for (const snapshot of snapshots) {
+    if (!snapshot || !Number.isSafeInteger(snapshot.sourceCount) || snapshot.sourceCount < 1) {
+      throw new TypeError('Each Cardano protocol snapshot requires a positive independent source count.');
+    }
+  }
   const first = snapshots[0];
   const fields = ['epoch', 'protocolVersion', 'minFeeA', 'minFeeB', 'maxTxSize', 'maxValueSize', 'coinsPerUtxoByte', 'collateralPercentage', 'maxCollateralInputs', 'plutusV3CostModelSha256'];
   const matching = snapshots.every(snapshot => fields.every(field => String(snapshot[field]) === String(first[field])));
