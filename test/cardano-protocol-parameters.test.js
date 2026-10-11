@@ -96,3 +96,18 @@ test('Cardano arithmetic rejects imprecise numeric inputs before BigInt conversi
   }
   assert.equal(calculateCardanoRequiredCollateral({ feeLovelace: '9007199254740993', parameters }).requiredCollateral, '13510798882111490');
 });
+
+
+test('Cardano snapshot rejects unsafe provenance counts and malformed tip epochs', () => {
+  const cases = [
+    snapshot => { snapshot.source.independentSourceCount = Number.MAX_SAFE_INTEGER + 1; },
+    snapshot => { delete snapshot.tip; },
+    snapshot => { snapshot.tip.epoch = Number.MAX_SAFE_INTEGER + 1; },
+    snapshot => { snapshot.parameters.epoch = Number.MAX_SAFE_INTEGER + 1; }
+  ];
+  for (const mutate of cases) {
+    const malformed = structuredClone(evidence);
+    mutate(malformed);
+    assert.throws(() => normalizeCardanoProtocolParameterSnapshot(malformed), /provenance|epoch/);
+  }
+});
