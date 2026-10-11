@@ -57,12 +57,18 @@ export function createCardanoProtocolParameterGate(snapshots) {
   const first = snapshots[0];
   const fields = ['epoch', 'protocolVersion', 'minFeeA', 'minFeeB', 'maxTxSize', 'maxValueSize', 'coinsPerUtxoByte', 'collateralPercentage', 'maxCollateralInputs', 'plutusV3CostModelSha256'];
   const matching = snapshots.every(snapshot => fields.every(field => String(snapshot[field]) === String(first[field])));
-  const sourceCount = snapshots.reduce((total, snapshot) => total + snapshot.sourceCount, 0);
+  // Snapshots do not carry per-provider identities. Summing their counts would
+  // allow the same provider evidence to be counted twice by passing duplicates.
+  // Use the largest independently attested count, never additive counts.
+  const sourceCount = Math.max(...snapshots.map(snapshot => snapshot.sourceCount));
+  const confirmed = snapshots.every(snapshot => snapshot.independentlyConfirmed);
   return Object.freeze({
     matching,
     independentSourceCount: sourceCount,
-    liveConstructionReady: matching && sourceCount >= 2 && snapshots.every(snapshot => snapshot.independentlyConfirmed),
-    reason: sourceCount < 2 ? 'At least two independent current Preprod sources are required.' : matching ? null : 'Protocol-parameter sources disagree.'
+    liveConstructionReady: matching && sourceCount >= 2 && confirmed,
+    reason: sourceCount < 2 ? 'At least two independent current Preprod sources are required.' :
+      !matching ? 'Protocol-parameter sources disagree.' :
+      !confirmed ? 'Independent protocol-parameter confirmation is required.' : null
   });
 }
 
