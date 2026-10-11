@@ -94,7 +94,10 @@ test('rejects malformed tip or a tip outside any reported era interval',()=>{
   x.stableTip.hash='xyz';
   assert.throws(()=>reconcileCardanoPreprodEraTiming(x),/authenticated ledger tip/);
   const y=input();
-  y.eraSummaries[1].end=bound(864120,3);
+  // This must be a mathematically sound end of the known era, so the
+  // out-of-coverage guard is tested rather than boundary arithmetic.
+  y.eraSummaries[1].end=bound(1296000,3);
+  y.stableTip.slot=1296001;
   assert.throws(()=>reconcileCardanoPreprodEraTiming(y),/not in exactly one/);
 });
 test('does not accept a genesis report which authorizes signing or submission',()=>{
@@ -104,4 +107,45 @@ test('does not accept a genesis report which authorizes signing or submission',(
     Object.fromEntries(Object.entries(x.genesisReport).filter(([k])=>k!=='reportSha256'))
   );
   assert.throws(()=>reconcileCardanoPreprodEraTiming(x),/Authentic pinned Preprod public genesis/);
+});
+
+test('rejects mutually matching but physically impossible era boundary seconds',()=>{
+  const x=input();
+  x.eraSummaries[0].end.time.seconds=864001;
+  x.eraSummaries[1].start.time.seconds=864001;
+  assert.throws(()=>reconcileCardanoPreprodEraTiming(x),/boundary time disagrees with slot length/);
+});
+test('rejects era boundary epochs that contradict elapsed slots',()=>{
+  const x=input();
+  x.eraSummaries[0].end.epoch=3;
+  x.eraSummaries[1].start.epoch=3;
+  x.observedEpoch=3;
+  assert.throws(()=>reconcileCardanoPreprodEraTiming(x),/boundary epochs disagree with slot count/);
+});
+test('rejects fractional epoch boundaries even when reported epoch number agrees',()=>{
+  const x=input();
+  x.eraSummaries[0].end=bound(863999,2);
+  x.eraSummaries[1].start=bound(863999,2);
+  assert.throws(()=>reconcileCardanoPreprodEraTiming(x),/boundary epochs disagree with slot count/);
+});
+test('rejects node network start that omits time or UTC offset',()=>{
+  const x=input();
+  x.networkStartTime='2022-06-01';
+  assert.throws(()=>reconcileCardanoPreprodEraTiming(x),/network start time disagrees/);
+});
+test('accepts internally consistent Byron-style slotting followed by Shelley timing',()=>{
+  const x=input();
+  x.eraSummaries=[
+    {start:bound(0,0,0),end:bound(4492800,208,89856000),
+      parameters:{epochLength:21600,slotLength:{milliseconds:20000}}},
+    {start:bound(4492800,208,89856000),
+      parameters:{epochLength:432000,slotLength:{milliseconds:1000}}}
+  ];
+  x.stableTip.slot=4492801;
+  x.observedEpoch=208;
+  const report=reconcileCardanoPreprodEraTiming(x);
+  assert.equal(report.currentEpoch,208);
+  assert.equal(report.currentEraSlotLengthMilliseconds,1000);
+  assert.equal(report.derivedCurrentSlotStartUtc,new Date(Date.parse(startTime)+89856001000).toISOString());
+  assert.equal(report.completePhaseOneValidated,false);
 });
