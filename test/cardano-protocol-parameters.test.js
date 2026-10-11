@@ -76,3 +76,12 @@ test('Cardano gate rejects conflicting execution budgets and prices', () => {
     assert.match(gate.reason, /disagree/);
   }
 });
+
+
+test('Cardano snapshot rejects protocol limits outside the safe integer range', () => {
+  for (const field of ['maxTxSize', 'maxValueSize', 'maxCollateralInputs']) {
+    const malformed = structuredClone(evidence);
+    malformed.parameters[field] = '9007199254740993';
+    assert.throws(() => normalizeCardanoProtocolParameterSnapshot(malformed), /safe integer range/);
+  }
+});
