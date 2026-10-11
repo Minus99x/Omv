@@ -35,10 +35,10 @@ function costModelDigest(model) {
 
 export function normalizeCardanoProtocolParameterSnapshot(snapshot) {
   if (!snapshot || snapshot.network !== 'preprod' || snapshot.networkId !== 0) throw new TypeError('A Preprod network-id 0 snapshot is required.');
-  if (!snapshot.source || !Number.isInteger(snapshot.source.independentSourceCount) || snapshot.source.independentSourceCount < 1) throw new TypeError('Snapshot provenance is required.');
+  if (!snapshot.source || !Number.isSafeInteger(snapshot.source.independentSourceCount) || snapshot.source.independentSourceCount < 1) throw new TypeError('Snapshot provenance is required.');
   const params = snapshot.parameters;
   if (!params || params.era !== 'Conway' || !/^\d+\.\d+$/.test(params.protocolVersion)) throw new TypeError('Conway protocol-version metadata is required.');
-  if (!Number.isInteger(params.epoch) || params.epoch < 0 || params.epoch !== snapshot.tip.epoch) throw new TypeError('Protocol-parameter epoch must match the captured tip epoch.');
+  if (!Number.isSafeInteger(params.epoch) || params.epoch < 0 || !snapshot.tip || !Number.isSafeInteger(snapshot.tip.epoch) || params.epoch !== snapshot.tip.epoch) throw new TypeError('Protocol-parameter epoch must match the captured tip epoch.');
   if (!Array.isArray(params.plutusV3CostModel) || params.plutusV3CostModel.length !== 350 || params.plutusV3CostModel.some(value => !Number.isSafeInteger(value))) throw new TypeError('A complete 350-entry Plutus V3 cost model is required.');
   if (costModelDigest(params.plutusV3CostModel) !== params.plutusV3CostModelSha256) throw new Error('Plutus V3 cost-model digest mismatch.');
 
