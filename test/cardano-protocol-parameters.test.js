@@ -55,3 +55,11 @@ test('Cardano gate explains missing independent confirmation', () => {
   assert.equal(gate.liveConstructionReady, false);
   assert.match(gate.reason, /confirmation/);
 });
+
+
+test('Cardano gate fails closed on invalid independent-source counts', () => {
+  for (const sourceCount of [undefined, null, 0, -1, 1.5, NaN, Infinity, '2']) {
+    const malformed = { ...parameters, sourceCount, independentlyConfirmed: true };
+    assert.throws(() => createCardanoProtocolParameterGate([malformed]), /positive independent source count/);
+  }
+});
