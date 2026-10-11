@@ -7,6 +7,7 @@ import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { createCardanoPreprodAppliedValidatorIdentity } from '../src/chains/cardano/live-validator-identity.js';
 import { createCardanoPreprodLiveProtocolSnapshot } from '../src/chains/cardano/live-protocol-parameters.js';
 import { recheckCardanoPreprodCapturedLedger } from '../scripts/recheck-cardano-preprod-unsigned-ledger.js';
+import { PREPROD_SHELLEY_GENESIS_HASH, PREPROD_CONWAY_GENESIS_HASH } from '../src/chains/cardano/preprod-genesis-timing.js';
 
 const tip={hash:'ab'.repeat(32),slot:135973880};
 const newTip={hash:'cd'.repeat(32),slot:135973980};
@@ -137,6 +138,18 @@ function mockedReads(raw, tips=[newTip,newTip]){
         ]};
       }
       if(method==='queryLedgerState/epoch')return {result:{epoch:400}};
+      if(method==='queryNetwork/startTime')return {result:'2022-06-01T00:00:00Z'};
+      if(method==='queryLedgerState/eraSummaries')return {result:[
+        {
+          start:{slot:0,epoch:0,time:{seconds:0}},
+          end:{slot:135972800,epoch:400,time:{seconds:135972800}},
+          parameters:{epochLength:339932,slotLength:{milliseconds:1000},safeZone:100}
+        },
+        {
+          start:{slot:135972800,epoch:400,time:{seconds:135972800}},
+          parameters:{epochLength:432000,slotLength:{milliseconds:1000},safeZone:100}
+        }
+      ]};
       if(method==='queryNetwork/blockHeight')return {result:{height:6000000}};
       if(method==='queryLedgerState/protocolParameters')return {result:raw.ogmios};
       throw new Error('Unexpected read-only method: '+method);
@@ -243,5 +256,60 @@ test('reuses existing reads to report partial Conway overlap and a governance mi
     assert.equal(report.transactionSubmissionAuthorized,false);
     assert.equal(reads.calls.filter(method=>method==='blockfrost').length,1);
     assert.equal(reads.calls.filter(method=>method==='queryLedgerState/protocolParameters').length,1);
+  });
+});
+
+function fakeVerifiedPublishedGenesis() {
+  // Unit-injected fixture only. Production calls the cryptographic
+  // checkCardanoPreprodPublicGenesis fetch/verification function.
+  const core={
+    schema:'omegavault.cardano.preprod-public-genesis-timing.v1',
+    network:'preprod',
+    genesis:{shelleyBlake2b256:PREPROD_SHELLEY_GENESIS_HASH,
+      conwayBlake2b256:PREPROD_CONWAY_GENESIS_HASH,rawGenesisBytesVerified:true},
+    timing:{systemStart:'2022-06-01T00:00:00Z',epochLength:432000,slotLength:1},
+    authenticPublishedGenesisProvenanceChecked:true,
+    completePhaseOneValidated:false,
+    transactionSubmissionAuthorized:false
+  };
+  return {...core,reportSha256:hashCardanoEvidence(core)};
+}
+test('opt-in genesis timing reconciliation uses authentic read-only era RPCs at unchanged tip',async()=>{
+  await withinCapture(async({raw,root})=>{
+    const reads=mockedReads(raw);
+    let genesisCalls=0;
+    const report=await recheckCardanoPreprodCapturedLedger({
+      capture:root,client:reads.client,fetchImpl:reads.fetchImpl,
+      blockfrostProjectId:'fixture-provider-id',verifyEraTiming:true,
+      genesisCheck:async()=>{genesisCalls++;return fakeVerifiedPublishedGenesis();}
+    });
+    assert.equal(genesisCalls,1);
+    assert.equal(report.eraTiming.observedNodeGenesisStartAgreesWithPublicGenesis,true);
+    assert.equal(report.eraTiming.observedEpochAgreesWithEraSummaries,true);
+    assert.equal(report.eraTiming.currentEpoch,400);
+    assert.equal(report.eraTiming.independentlyVerifiedCurrentEraTiming,false);
+    assert.equal(report.eraTiming.completePhaseOneValidated,false);
+    assert.equal(report.transactionSubmissionAuthorized,false);
+    assert.deepEqual(reads.calls,[
+      'queryNetwork/tip','queryLedgerState/utxo','queryLedgerState/epoch',
+      'queryNetwork/blockHeight','queryLedgerState/protocolParameters',
+      'blockfrost','queryNetwork/startTime','queryLedgerState/eraSummaries',
+      'queryNetwork/tip'
+    ]);
+  });
+});
+test('opt-in era reconciliation stops if node start time conflicts with verified genesis',async()=>{
+  await withinCapture(async({raw,root})=>{
+    const reads=mockedReads(raw);
+    const original=reads.client.rpc;
+    reads.client.rpc=async(method,...args)=>
+      method==='queryNetwork/startTime'
+        ? {result:'2022-06-02T00:00:00Z'}
+        : original(method,...args);
+    await assert.rejects(()=>recheckCardanoPreprodCapturedLedger({
+      capture:root,client:reads.client,fetchImpl:reads.fetchImpl,
+      blockfrostProjectId:'fixture-provider-id',verifyEraTiming:true,
+      genesisCheck:async()=>fakeVerifiedPublishedGenesis()
+    }),/network start time disagrees/);
   });
 });
