@@ -91,7 +91,7 @@ export function createCardanoProtocolParameterGate(snapshots) {
   // allow the same provider evidence to be counted twice by passing duplicates.
   // Use the largest independently attested count, never additive counts.
   const sourceCount = Math.max(...snapshots.map(snapshot => snapshot.sourceCount));
-  const confirmed = snapshots.every(snapshot => snapshot.independentlyConfirmed);
+  const confirmed = snapshots.every(snapshot => snapshot.independentlyConfirmed === true);
   return Object.freeze({
     matching,
     independentSourceCount: sourceCount,
