@@ -49,6 +49,9 @@ test('Cardano Preprod session CLI binds complete stable-tip evaluation captures 
   const protocol = JSON.parse(fs.readFileSync('docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', 'utf8'));
   protocol.source.independentSourceCount = 2;
   protocol.promotion.independentlyConfirmed = true;
+  // Public evaluation is permitted without separately authorizing live construction.
+  protocol.promotion.eligibleForLiveTransactionConstruction = false;
+  protocol.promotion.connectorLiveProof = false;
   const tipHash = protocol.tip.blockHash;
 
   const captures = {
@@ -98,6 +101,23 @@ test('Cardano Preprod session CLI binds complete stable-tip evaluation captures 
   assert.equal(evidence.liveActions.walletSigningAuthorized, false);
   assert.equal(evidence.liveActions.transactionSubmissionAuthorized, false);
   assert.match(evidence.resultSha256, /^[0-9a-f]{64}$/);
+  assert.equal(evidence.liveActions.walletSigningAuthorized, false);
+  assert.equal(evidence.liveActions.transactionSubmissionAuthorized, false);
+
+  // Reuse the same coherent evaluation but remove independent provider
+  // evidence: the capture must fail closed rather than treating flags as proof.
+  const protocolFile = path.join(dir, manifest.files.protocolParameters);
+  for (const weaken of [
+    input => { input.source.independentSourceCount = 1; },
+    input => { input.promotion.independentlyConfirmed = false; }
+  ]) {
+    const unconfirmed = structuredClone(protocol);
+    weaken(unconfirmed);
+    fs.writeFileSync(protocolFile, `${JSON.stringify(unconfirmed, null, 2)}\n`);
+    const rejected = run(['scripts/verify-cardano-preprod-session.js', '--session', dir]);
+    assert.equal(rejected.status, 2);
+    assert.match(rejected.stderr, /independently confirmed by at least two sources/);
+  }
 
   fs.rmSync(dir, { recursive: true, force: true });
 });
