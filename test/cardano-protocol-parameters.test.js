@@ -277,7 +277,13 @@ test('Cardano readiness gate validates actual Plutus V3 coefficients, not merely
     eligibleForLiveTransactionConstruction: true,
     connectorLiveProof: true
   };
-  const valid = createCardanoProtocolParameterGate([baseline, baseline]);
+  const historical = createCardanoProtocolParameterGate([baseline, baseline]);
+  assert.equal(historical.matching, true);
+  assert.equal(historical.liveConstructionReady, false);
+  assert.match(historical.reason, /maxValueSize/);
+
+  const current = { ...baseline, maxValueSize: 5000 };
+  const valid = createCardanoProtocolParameterGate([current, current]);
   assert.equal(valid.matching, true);
   assert.equal(valid.liveConstructionReady, true);
 
@@ -291,8 +297,8 @@ test('Cardano readiness gate validates actual Plutus V3 coefficients, not merely
     snapshot => { snapshot.plutusV3CostModel = [...baseline.plutusV3CostModel]; snapshot.plutusV3CostModel[0] = NaN; }
   ];
   for (const mutate of mutations) {
-    const left = { ...baseline };
-    const right = { ...baseline };
+    const left = { ...current };
+    const right = { ...current };
     mutate(left);
     mutate(right);
     const gate = createCardanoProtocolParameterGate([left, right]);
