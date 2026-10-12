@@ -228,3 +228,43 @@ test('Cardano readiness gate rejects malformed normalized numeric fields even wi
     assert.match(gate.reason, /Complete Conway/);
   }
 });
+
+test('Cardano snapshot bounds hostile decimal integer strings before BigInt parsing', () => {
+  const huge = '9'.repeat(100000);
+  for (const field of ['minFeeA', 'minFeeB', 'maxTxSize', 'maxValueSize', 'coinsPerUtxoByte',
+    'collateralPercentage', 'maxCollateralInputs']) {
+    const malformed = structuredClone(evidence);
+    malformed.parameters[field] = huge;
+    assert.throws(() => normalizeCardanoProtocolParameterSnapshot(malformed), /integer precision exceeds the supported limit/);
+  }
+  for (const [parent, field] of [
+    ['priceMemory', 'numerator'],
+    ['priceMemory', 'denominator'],
+    ['priceSteps', 'numerator'],
+    ['priceSteps', 'denominator'],
+    ['maxTxExUnits', 'memory'],
+    ['maxTxExUnits', 'steps']
+  ]) {
+    const malformed = structuredClone(evidence);
+    malformed.parameters[parent][field] = huge;
+    assert.throws(() => normalizeCardanoProtocolParameterSnapshot(malformed), /integer precision exceeds the supported limit/);
+  }
+});
+
+test('Cardano execution fee and collateral arithmetic bound hostile unsigned integer inputs', () => {
+  const huge = '9'.repeat(100000);
+  for (const value of [huge, '0'.repeat(100001)]) {
+    assert.throws(() => calculateCardanoExecutionFee({
+      memory: value, steps: 1, parameters
+    }), /integer precision exceeds the supported limit/);
+    assert.throws(() => calculateCardanoExecutionFee({
+      memory: 1, steps: value, parameters
+    }), /integer precision exceeds the supported limit/);
+    assert.throws(() => calculateCardanoRequiredCollateral({
+      feeLovelace: value, parameters
+    }), /integer precision exceeds the supported limit/);
+  }
+  assert.equal(calculateCardanoRequiredCollateral({
+    feeLovelace: '9'.repeat(1000), parameters
+  }).requiredCollateral, ((BigInt('9'.repeat(1000)) * 150n + 99n) / 100n).toString());
+});
