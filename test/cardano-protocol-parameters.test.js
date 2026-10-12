@@ -91,9 +91,10 @@ test('Cardano arithmetic rejects imprecise numeric inputs before BigInt conversi
   for (const value of [Number.MAX_SAFE_INTEGER + 1, Infinity, NaN]) {
     assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: value, parameters }), /safe integer/);
   }
-  for (const value of [true, null, {}, 1.5, -1]) {
+  for (const value of [true, null, {}, -1]) {
     assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: value, parameters }), /unsigned integer/);
   }
+  assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: 1.5, parameters }), /safe integer/);
   assert.equal(calculateCardanoRequiredCollateral({ feeLovelace: '9007199254740993', parameters }).requiredCollateral, '13510798882111490');
 });
 
