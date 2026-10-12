@@ -209,6 +209,29 @@ export function createCardanoPreprodIndependentPhaseOneInput({
   if (seed.reference.transaction.id === collateral.reference.transaction.id && seed.reference.index === collateral.reference.index) {
     throw new Error('Seed and collateral must be distinct current UTxOs.');
   }
+  // Compare the signed ledger input references and Cardano's half-open slot
+  // interval directly with the fresh UTxO/validity commitments. Matching
+  // document digests alone cannot prove those describe the signed body.
+  const signedBody = signedTransaction.body();
+  const signedInputs = signedBody.inputs();
+  const signedCollateral = signedBody.collateral();
+  const inputMatches = (input, expected) =>
+    input.transaction_id().to_hex() === expected.reference.transaction.id &&
+    Number(input.index()) === expected.reference.index;
+  if (signedInputs.len() !== 1 || !inputMatches(signedInputs.get(0), seed)) {
+    throw new Error('Signed initialize seed input does not match the current ledger UTxO commitment.');
+  }
+  if (signedCollateral?.len() !== 1 || !inputMatches(signedCollateral.get(0), collateral)) {
+    throw new Error('Signed initialize collateral input does not match the current ledger UTxO commitment.');
+  }
+  if (signedBody.validity_start_interval_bignum()?.to_str() !== String(lower) ||
+      signedBody.ttl_bignum()?.to_str() !== String(upper)) {
+    throw new Error('Signed initialize validity slots do not match the current pre-submit commitment.');
+  }
+  if (signedTransaction.is_valid() !== true ||
+      signedBody.network_id()?.kind() !== Cardano.NetworkId.testnet().kind()) {
+    throw new Error('Signed initialize transaction has invalid validity flag or network id.');
+  }
   const ledgerSnapshot = object(preSubmit.ledgerInputSnapshot, 'preSubmitEvidence.ledgerInputSnapshot');
   const ledgerSnapshotDigest = hex32(preSubmit.ledgerInputSnapshotSha256, 'preSubmitEvidence.ledgerInputSnapshotSha256');
   if (hashCardanoEvidence(ledgerSnapshot) !== ledgerSnapshotDigest) {
