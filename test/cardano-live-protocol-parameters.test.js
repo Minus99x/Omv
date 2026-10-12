@@ -178,3 +178,21 @@ test('live Cardano execution prices reject oversized decimal text before parsing
     }), /decimal precision exceeds the supported limit/);
   }
 });
+
+test('live Cardano cost models reject oversized coefficient strings from either provider', () => {
+  for (const oversized of ['9'.repeat(100000), '-' + '9'.repeat(100000)]) {
+    const changedOgmios = ogmios();
+    changedOgmios.plutusCostModels['plutus:v3'] = [...model];
+    changedOgmios.plutusCostModels['plutus:v3'][0] = oversized;
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: changedOgmios, blockfrostParameters: blockfrost(), epoch: 400, tip
+    }), /350-entry Plutus V3 cost model/);
+
+    const changedBlockfrost = blockfrost();
+    changedBlockfrost.cost_models_raw.PlutusV3 = [...model];
+    changedBlockfrost.cost_models_raw.PlutusV3[0] = oversized;
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: ogmios(), blockfrostParameters: changedBlockfrost, epoch: 400, tip
+    }), /350-entry Plutus V3 cost model/);
+  }
+});
