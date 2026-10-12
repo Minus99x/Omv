@@ -163,7 +163,9 @@ export function createCardanoPreprodLiveProtocolSnapshot({
   capturedAt = new Date().toISOString()
 }) {
   const currentEpoch = safeInteger(epoch?.epoch ?? epoch, 'Ogmios epoch');
-  const hash = String(tip?.hash ?? tip?.id ?? '').toLowerCase();
+  const rawHash = tip?.hash ?? tip?.id;
+  if (typeof rawHash !== 'string') throw new TypeError('Ogmios stable tip hash must be 32-byte hex.');
+  const hash = rawHash.toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(hash)) throw new TypeError('Ogmios stable tip hash must be 32-byte hex.');
   const slot = safeInteger(tip?.slot, 'Ogmios tip slot');
 
