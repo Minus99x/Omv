@@ -133,3 +133,12 @@ test('live Cardano execution prices bound hostile decimal exponents and mantissa
     }), /supported limit/);
   }
 });
+
+test('live Cardano stable tip hash rejects non-string coercion', () => {
+  for (const hash of [null, 123, true, { toString: () => 'ab'.repeat(32) }]) {
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: ogmios(), blockfrostParameters: blockfrost(), epoch: 400,
+      tip: { hash, slot: tip.slot }
+    }), /stable tip hash/);
+  }
+});
