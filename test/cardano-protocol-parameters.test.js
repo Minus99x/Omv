@@ -139,3 +139,11 @@ test('Cardano collateral rejects unsafe input counts', () => {
     assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: '1000000', parameters, collateralInputCount }), /protocol limits/);
   }
 });
+
+
+test('Cardano collateral requires explicit boolean ADA-only attestation', () => {
+  for (const collateralIsAdaOnly of ['false', 'true', 1, {}, [], null, false]) {
+    assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: '1000000', parameters, collateralIsAdaOnly }), /ADA only/);
+  }
+  assert.equal(calculateCardanoRequiredCollateral({ feeLovelace: '1000000', parameters, collateralIsAdaOnly: true }).collateralIsAdaOnly, true);
+});
