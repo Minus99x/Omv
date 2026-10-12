@@ -178,3 +178,26 @@ test('Cardano live readiness preserves explicit construction and connector restr
     assert.equal(createCardanoProtocolParameterGate([normalizeCardanoProtocolParameterSnapshot(modified)]).liveConstructionReady, false);
   }
 });
+
+test('Cardano readiness gate rejects null execution prices and budgets even when snapshots agree', () => {
+  const baseline = { ...parameters, sourceCount: 2, independentlyConfirmed: true,
+    eligibleForLiveTransactionConstruction: true, connectorLiveProof: true };
+  const mutations = [
+    snapshot => { snapshot.priceMemory = { ...baseline.priceMemory, numerator: null }; },
+    snapshot => { snapshot.priceMemory = { ...baseline.priceMemory, denominator: null }; },
+    snapshot => { snapshot.priceSteps = { ...baseline.priceSteps, numerator: null }; },
+    snapshot => { snapshot.priceSteps = { ...baseline.priceSteps, denominator: null }; },
+    snapshot => { snapshot.maxTxExUnits = { ...baseline.maxTxExUnits, memory: null }; },
+    snapshot => { snapshot.maxTxExUnits = { ...baseline.maxTxExUnits, steps: null }; }
+  ];
+  for (const mutate of mutations) {
+    const left = { ...baseline };
+    const right = { ...baseline };
+    mutate(left);
+    mutate(right);
+    const gate = createCardanoProtocolParameterGate([left, right]);
+    assert.equal(gate.matching, false);
+    assert.equal(gate.liveConstructionReady, false);
+    assert.match(gate.reason, /Complete Conway/);
+  }
+});
