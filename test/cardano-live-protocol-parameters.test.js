@@ -142,3 +142,11 @@ test('live Cardano stable tip hash rejects non-string coercion', () => {
     }), /stable tip hash/);
   }
 });
+
+test('live Cardano snapshots reject malformed capture timestamps', () => {
+  for (const capturedAt of [null, 123, 'not-a-date', '2026-10-05T00:00:00+00:00', '2026-02-30T00:00:00.000Z']) {
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: ogmios(), blockfrostParameters: blockfrost(), epoch: 400, tip, capturedAt
+    }), /capture timestamp/);
+  }
+});
