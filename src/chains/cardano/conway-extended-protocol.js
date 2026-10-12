@@ -46,6 +46,11 @@ function checkedUnsigned(value, label, maximum=U64_MAX, positive=false) {
         (typeof value==='number' && Number.isSafeInteger(value) && value>=0))) {
     throw new TypeError(label+' must be an exact non-negative integer.');
   }
+  // A ledger u64 fits in 20 decimal digits; reject oversized strings
+  // before allocating a potentially huge BigInt from provider data.
+  if (String(value).length>20) {
+    throw new RangeError(label+' is outside the supported ledger integer range.');
+  }
   const integer=BigInt(value);
   if (integer>maximum || (positive && integer===0n)) {
     throw new RangeError(label+' is outside the supported ledger integer range.');
