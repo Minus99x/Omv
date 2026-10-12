@@ -157,3 +157,24 @@ test('Cardano gate rejects truthy nonboolean independent confirmations', () => {
     assert.match(gate.reason, /confirmation/);
   }
 });
+
+
+test('Cardano live readiness preserves explicit construction and connector restrictions', () => {
+  const snapshot = structuredClone(evidence);
+  snapshot.source.independentSourceCount = 2;
+  snapshot.promotion.independentlyConfirmed = true;
+  snapshot.promotion.eligibleForLiveTransactionConstruction = false;
+  snapshot.promotion.connectorLiveProof = false;
+  const normalized = normalizeCardanoProtocolParameterSnapshot(snapshot);
+  assert.equal(normalized.eligibleForLiveTransactionConstruction, false);
+  assert.equal(normalized.connectorLiveProof, false);
+  const blocked = createCardanoProtocolParameterGate([normalized]);
+  assert.equal(blocked.liveConstructionReady, false);
+  assert.match(blocked.reason, /eligibility and connector proof/);
+  for (const [eligibility, proof] of [[true, false], [false, true], ['true', true], [true, 'true']]) {
+    const modified = structuredClone(snapshot);
+    modified.promotion.eligibleForLiveTransactionConstruction = eligibility;
+    modified.promotion.connectorLiveProof = proof;
+    assert.equal(createCardanoProtocolParameterGate([normalizeCardanoProtocolParameterSnapshot(modified)]).liveConstructionReady, false);
+  }
+});
