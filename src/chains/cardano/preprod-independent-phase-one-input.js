@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
+import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from './evidence-binding.js';
 
 const HEX_32 = /^[0-9a-f]{64}$/i;
@@ -165,7 +167,22 @@ export function createCardanoPreprodIndependentPhaseOneInput({
     throw new Error('Signed transaction digest is inconsistent across witness and live pre-submit evidence.');
   }
   if (signedHex.length / 2 !== preSubmit.signedTransaction?.bytes) throw new Error('Signed transaction byte length no longer matches pre-submit evidence.');
-  const bodyHash = hex32(witness.transactionBodyHash, 'witnessEvidence.transactionBodyHash');
+  // Reparse the exact signed bytes and independently derive the transaction
+  // body hash. Evidence digests are integrity commitments, not proof that
+  // the supplied body hash is correct for the CBOR they describe.
+  let signedTransaction;
+  try {
+    signedTransaction = Cardano.Transaction.from_hex(signedHex);
+  } catch {
+    throw new Error('Signed transaction CBOR cannot be decoded for independent phase-one input.');
+  }
+  if (signedTransaction.to_hex().toLowerCase() !== signedHex) {
+    throw new Error('Signed transaction CBOR is not an exact canonical round trip.');
+  }
+  const bodyHash = Buffer.from(blake2b(signedTransaction.body().to_bytes(), { dkLen: 32 })).toString('hex');
+  if (bodyHash !== hex32(witness.transactionBodyHash, 'witnessEvidence.transactionBodyHash')) {
+    throw new Error('Signed transaction body hash does not match witnessed CBOR.');
+  }
   const tip = object(preSubmit.currentTip, 'preSubmitEvidence.currentTip');
   const tipHash = hex32(tip.hash, 'preSubmitEvidence.currentTip.hash');
   if (!Number.isSafeInteger(tip.slot) || tip.slot < 0) throw new Error('Current tip slot must be a non-negative safe integer.');
