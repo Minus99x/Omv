@@ -1,10 +1,33 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
+import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { createCardanoPreprodIndependentPhaseOneInput, verifyCardanoPreprodIndependentPhaseOneInput } from '../src/chains/cardano/preprod-independent-phase-one-input.js';
 const h=(c)=>c.repeat(64);
-const signed='deadbeef01';
+function serializedFixtureTransaction() {
+  const inputs=Cardano.TransactionInputs.new();
+  inputs.add(Cardano.TransactionInput.new(
+    Cardano.TransactionHash.from_hex(h('a')), 0
+  ));
+  const outputs=Cardano.TransactionOutputs.new();
+  const address=Cardano.EnterpriseAddress.new(
+    0, Cardano.Credential.from_keyhash(Cardano.Ed25519KeyHash.from_hex('3'.repeat(56)))
+  ).to_address();
+  outputs.add(Cardano.TransactionOutput.new(
+    address, Cardano.Value.new(Cardano.BigNum.from_str('3000000'))
+  ));
+  const body=Cardano.TransactionBody.new_tx_body(
+    inputs, outputs, Cardano.BigNum.from_str('200000')
+  );
+  const signed=Cardano.Transaction.new(body, Cardano.TransactionWitnessSet.new()).to_hex();
+  return Object.freeze({
+    signed,
+    bodyHash:Buffer.from(blake2b(body.to_bytes(), {dkLen:32})).toString('hex')
+  });
+}
+const {signed,bodyHash}=serializedFixtureTransaction();
 const sha=createHash('sha256').update(Buffer.from(signed,'hex')).digest('hex');
 const actions={transactionSubmissionAuthorized:false,transactionSubmissionPerformed:false,liveValueMovementAuthorized:false,publicNetworkRecoveryProven:false,supportClaimAuthorized:false};
 const checks=Object.fromEntries([
@@ -19,7 +42,7 @@ function fixture() {
  const witness={
    schema:'omegavault.cardano.preprod-initialize-wallet-witness-evidence.v1',network:'preprod',action:'initialize',
    unsignedCandidateSha256:h('a'),unsignedPreflightSha256:h('b'),validatorIdentitySha256:h('c'),utxoBindingEvidenceSha256:h('d'),
-   transactionBodyHash:h('e'),signedTransactionCborHex:signed,signedTransactionSha256:sha,
+   transactionBodyHash:bodyHash,signedTransactionCborHex:signed,signedTransactionSha256:sha,
    checks:{exactWalletProducedSignedBytesPreserved:true,signedTransactionCanonicalRoundTripExact:true,exactUnsignedBodyPreserved:true,auxiliaryDataPreserved:true,nonWalletWitnessesPreserved:true,exactOwnerKeyWitnessCount:true,ownerPaymentKeyHashMatched:true,ownerSignatureCryptographicallyValid:true,walletWitnessesValidated:true,completePhaseOneValidated:false},liveActions:{...actions}
  };
  witness.witnessEvidenceSha256=hashCardanoEvidence(witness);
@@ -33,7 +56,7 @@ function fixture() {
    unsignedPreflightSha256:witness.unsignedPreflightSha256,
    validatorIdentitySha256:witness.validatorIdentitySha256,
    utxoBindingEvidenceSha256:witness.utxoBindingEvidenceSha256,
-   signedTransaction:{sha256:sha,bytes:5},
+   signedTransaction:{sha256:sha,bytes:signed.length/2},
    currentProtocolSnapshot:snapshot,currentProtocolSnapshotSha256:hashCardanoEvidence(snapshot),
    currentProtocolParametersSha256:h('a'),currentTip:tip,
    validity:{lowerSlot:9990,upperSlot:10010,currentTipWithinInterval:true},
@@ -180,4 +203,28 @@ test('independent phase-one input rejects a negative lower validity slot',()=>{
  x.preSubmitEvidence.validity.lowerSlot=-1;
  resign(x.preSubmitEvidence,'preSubmitSha256');
  assert.throws(()=>create(x),/validity interval does not include/);
+});
+
+test('independent phase-one input rehashes the real signed CBOR body rather than trusting coherent forged evidence',()=>{
+ const x=fixture();
+ x.witnessEvidence.transactionBodyHash=h('e');
+ resign(x.witnessEvidence,'witnessEvidenceSha256');
+ x.preSubmitEvidence.witnessEvidenceSha256=x.witnessEvidence.witnessEvidenceSha256;
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/body hash does not match witnessed CBOR/);
+});
+
+test('independent phase-one input rejects non-transaction CBOR even with consistent self-digests',()=>{
+ const x=fixture();
+ const malformed='deadbeef01';
+ const digest=createHash('sha256').update(Buffer.from(malformed,'hex')).digest('hex');
+ x.signedTransactionCborHex=malformed;
+ x.witnessEvidence.signedTransactionCborHex=malformed;
+ x.witnessEvidence.signedTransactionSha256=digest;
+ resign(x.witnessEvidence,'witnessEvidenceSha256');
+ x.preSubmitEvidence.witnessEvidenceSha256=x.witnessEvidence.witnessEvidenceSha256;
+ x.preSubmitEvidence.signedTransaction.sha256=digest;
+ x.preSubmitEvidence.signedTransaction.bytes=malformed.length/2;
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/Signed transaction CBOR cannot be decoded/);
 });
