@@ -126,8 +126,8 @@ export function createCardanoProtocolParameterGate(snapshots) {
       !complete ? 'Complete Conway protocol-parameter snapshots are required.' :
       !matching ? 'Protocol-parameter sources disagree.' :
       !confirmed ? 'Independent protocol-parameter confirmation is required.' :
-      !hasMaxValueSize ? 'Current maxValueSize evidence is required for live transaction construction.' :
-      !authorized ? 'Explicit live construction eligibility and connector proof are required.' : null
+      !authorized ? 'Explicit live construction eligibility and connector proof are required.' :
+      !hasMaxValueSize ? 'Current maxValueSize evidence is required for live transaction construction.' : null
   });
 }
 
