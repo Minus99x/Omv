@@ -47,6 +47,9 @@ function rational(value, label) {
   if (typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))) {
     throw new TypeError(`${label} must be a finite decimal or rational.`);
   }
+  if (typeof value === 'string' && value.length > 1100) {
+    throw new TypeError(`${label} decimal precision exceeds the supported limit.`);
+  }
   let text = String(value).trim().toLowerCase();
   if (!/^(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/.test(text)) throw new TypeError(`${label} must be a decimal or rational.`);
   const [mantissa, exponentText = '0'] = text.split('e');
