@@ -92,3 +92,23 @@ test('current Preprod protocol snapshot fails closed across an epoch disagreemen
     ogmiosParameters: ogmios(), blockfrostParameters: blockfrost(), epoch: 401, tip
   }), /do not agree on the current Preprod epoch/);
 });
+
+test('live Cardano provider parsers reject coerced and imprecise integer inputs', () => {
+  const cases = [
+    p => { p.min_fee_a = true; },
+    p => { p.min_fee_a = '44.0'; },
+    p => { p.min_fee_b = Number.MAX_SAFE_INTEGER + 1; },
+    p => { p.max_tx_size = '1e4'; },
+    p => { p.max_collateral_inputs = '3.5'; },
+    p => { p.cost_models_raw.PlutusV3 = [...model]; p.cost_models_raw.PlutusV3[0] = '1.5'; },
+    p => { p.cost_models_raw.PlutusV3 = [...model]; p.cost_models_raw.PlutusV3[0] = true; },
+    p => { p.cost_models_raw.PlutusV3 = [...model]; p.cost_models_raw.PlutusV3[0] = Number.MAX_SAFE_INTEGER + 1; }
+  ];
+  for (const mutate of cases) {
+    const malformed = blockfrost();
+    mutate(malformed);
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: ogmios(), blockfrostParameters: malformed, epoch: 400, tip
+    }));
+  }
+});
