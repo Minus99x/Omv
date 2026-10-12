@@ -160,3 +160,11 @@ test('live Cardano rational execution prices reject oversized numerator and deno
     }), /rational precision exceeds the supported limit/);
   }
 });
+
+test('live Cardano epoch provider rejects objects without an explicit epoch', () => {
+  for (const epoch of [{}, { slot: 400 }, { epoch: undefined }]) {
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: ogmios(), blockfrostParameters: blockfrost(), epoch, tip
+    }), /epoch response must include an epoch/);
+  }
+});
