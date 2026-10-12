@@ -97,6 +97,7 @@ export function createCardanoProtocolParameterGate(snapshots) {
     independentSourceCount: sourceCount,
     liveConstructionReady: matching && sourceCount >= 2 && confirmed,
     reason: sourceCount < 2 ? 'At least two independent current Preprod sources are required.' :
+      !complete ? 'Complete Conway protocol-parameter snapshots are required.' :
       !matching ? 'Protocol-parameter sources disagree.' :
       !confirmed ? 'Independent protocol-parameter confirmation is required.' : null
   });
