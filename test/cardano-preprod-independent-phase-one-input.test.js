@@ -9,7 +9,11 @@ const h=(c)=>c.repeat(64);
 function serializedFixtureTransaction() {
   const inputs=Cardano.TransactionInputs.new();
   inputs.add(Cardano.TransactionInput.new(
-    Cardano.TransactionHash.from_hex(h('a')), 0
+    Cardano.TransactionHash.from_hex(h('1')), 0
+  ));
+  const collateral=Cardano.TransactionInputs.new();
+  collateral.add(Cardano.TransactionInput.new(
+    Cardano.TransactionHash.from_hex(h('2')), 1
   ));
   const outputs=Cardano.TransactionOutputs.new();
   const address=Cardano.EnterpriseAddress.new(
@@ -21,6 +25,10 @@ function serializedFixtureTransaction() {
   const body=Cardano.TransactionBody.new_tx_body(
     inputs, outputs, Cardano.BigNum.from_str('200000')
   );
+  body.set_collateral(collateral);
+  body.set_validity_start_interval_bignum(Cardano.BigNum.from_str('9990'));
+  body.set_ttl_bignum(Cardano.BigNum.from_str('10010'));
+  body.set_network_id(Cardano.NetworkId.testnet());
   // A deterministic test-only owner signature keeps this fixture genuinely
   // signed without involving a connected wallet or any real credentials.
   const privateKey=Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({length:32},()=>9));
@@ -237,4 +245,38 @@ test('independent phase-one input rejects non-transaction CBOR even with consist
  x.preSubmitEvidence.signedTransaction.bytes=malformed.length/2;
  resign(x.preSubmitEvidence,'preSubmitSha256');
  assert.throws(()=>create(x),/Signed transaction CBOR cannot be decoded/);
+});
+
+test('rejects a signed seed input that differs from re-digested fresh UTxO evidence',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.currentInputs.seed.reference.transaction.id=h('3');
+ x.preSubmitEvidence.ledgerInputSnapshot.utxos.seed.reference.transaction.id=h('3');
+ x.preSubmitEvidence.ledgerInputSnapshotSha256=hashCardanoEvidence(x.preSubmitEvidence.ledgerInputSnapshot);
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/Signed initialize seed input does not match/);
+});
+
+test('rejects a signed collateral input that differs from re-digested fresh UTxO evidence',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.currentInputs.collateral.reference.index=2;
+ x.preSubmitEvidence.ledgerInputSnapshot.utxos.collateral.reference.index=2;
+ x.preSubmitEvidence.ledgerInputSnapshotSha256=hashCardanoEvidence(x.preSubmitEvidence.ledgerInputSnapshot);
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/Signed initialize collateral input does not match/);
+});
+
+test('rejects validity slots that do not match the serialized signed transaction',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.validity.lowerSlot=9989;
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/Signed initialize validity slots do not match/);
+});
+
+test('accepts the real signed seed, collateral and half-open validity commitments',()=>{
+ const x=fixture();
+ const out=create(x);
+ assert.equal(out.ledgerContext.utxoCommitments.seed.reference.transaction.id,h('1'));
+ assert.equal(out.ledgerContext.utxoCommitments.collateral.reference.index,1);
+ assert.deepEqual(out.ledgerContext.validity,{lowerSlot:9990,upperSlot:10010});
+ assert.equal(out.completePhaseOneValidated,false);
 });
