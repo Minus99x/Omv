@@ -182,7 +182,12 @@ export function evaluateCardanoPreprodCaptureSession({
 
   const normalizedParameters = normalizeCardanoProtocolParameterSnapshot(protocolParameterSnapshot);
   const parameterGate = createCardanoProtocolParameterGate([normalizedParameters]);
-  if (!parameterGate.liveConstructionReady) {
+  // Synchronized script evaluation requires agreeing, independently confirmed
+  // parameters. It is NOT live transaction construction: eligibility and
+  // connector-live proof remain separate gates and are not granted here.
+  if (!parameterGate.matching ||
+      parameterGate.independentSourceCount < manifest.readinessRules.minimumIndependentProtocolParameterSources ||
+      !normalizedParameters.independentlyConfirmed) {
     throw new Error('Current Cardano Preprod protocol parameters must be independently confirmed by at least two sources before the capture session is accepted.');
   }
 
