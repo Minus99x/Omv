@@ -72,8 +72,15 @@ export function createCardanoProtocolParameterGate(snapshots) {
     }
   }
   const first = snapshots[0];
-  const fields = ['epoch', 'protocolVersion', 'minFeeA', 'minFeeB', 'maxTxSize', 'maxValueSize', 'coinsPerUtxoByte', 'collateralPercentage', 'maxCollateralInputs', 'plutusV3CostModelSha256'];
-  const matching = snapshots.every(snapshot => fields.every(field => String(snapshot[field]) === String(first[field])) &&
+  const fields = ['epoch', 'era', 'protocolVersion', 'minFeeA', 'minFeeB', 'maxTxSize', 'maxValueSize', 'coinsPerUtxoByte', 'collateralPercentage', 'maxCollateralInputs', 'plutusV3CostModelSha256'];
+  // A missing field must never match another missing field by string coercion.
+  // The gate consumes normalized snapshots, but still rejects malformed callers.
+  const complete = snapshots.every(snapshot => snapshot.era === 'Conway' &&
+    fields.every(field => snapshot[field] !== undefined && snapshot[field] !== null || field === 'maxValueSize' && snapshot[field] === null) &&
+    snapshot.maxTxExUnits?.memory !== undefined && snapshot.maxTxExUnits?.steps !== undefined &&
+    snapshot.priceMemory?.numerator !== undefined && snapshot.priceMemory?.denominator !== undefined &&
+    snapshot.priceSteps?.numerator !== undefined && snapshot.priceSteps?.denominator !== undefined);
+  const matching = complete && snapshots.every(snapshot => fields.every(field => String(snapshot[field]) === String(first[field])) &&
     snapshot.maxTxExUnits?.memory === first.maxTxExUnits?.memory &&
     snapshot.maxTxExUnits?.steps === first.maxTxExUnits?.steps &&
     snapshot.priceMemory?.numerator === first.priceMemory?.numerator &&
