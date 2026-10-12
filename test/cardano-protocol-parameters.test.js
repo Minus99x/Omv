@@ -201,3 +201,30 @@ test('Cardano readiness gate rejects null execution prices and budgets even when
     assert.match(gate.reason, /Complete Conway/);
   }
 });
+
+test('Cardano readiness gate rejects malformed normalized numeric fields even with unanimous authorization', () => {
+  const baseline = { ...parameters, sourceCount: 2, independentlyConfirmed: true,
+    eligibleForLiveTransactionConstruction: true, connectorLiveProof: true };
+  const mutations = [
+    snapshot => { snapshot.priceMemory = { ...baseline.priceMemory, numerator: 'garbage' }; },
+    snapshot => { snapshot.priceSteps = { ...baseline.priceSteps, denominator: 0n }; },
+    snapshot => { snapshot.maxTxExUnits = { ...baseline.maxTxExUnits, memory: -1n }; },
+    snapshot => { snapshot.minFeeA = '44'; },
+    snapshot => { snapshot.minFeeB = 0n; },
+    snapshot => { snapshot.maxTxSize = '16384'; },
+    snapshot => { snapshot.maxCollateralInputs = Infinity; },
+    snapshot => { snapshot.epoch = '316'; },
+    snapshot => { snapshot.protocolVersion = 'invalid'; },
+    snapshot => { snapshot.plutusV3CostModelSha256 = 'not-a-digest'; }
+  ];
+  for (const mutate of mutations) {
+    const left = { ...baseline };
+    const right = { ...baseline };
+    mutate(left);
+    mutate(right);
+    const gate = createCardanoProtocolParameterGate([left, right]);
+    assert.equal(gate.matching, false);
+    assert.equal(gate.liveConstructionReady, false);
+    assert.match(gate.reason, /Complete Conway/);
+  }
+});
