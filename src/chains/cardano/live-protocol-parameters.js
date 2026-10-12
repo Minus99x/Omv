@@ -169,10 +169,10 @@ export function createCardanoPreprodLiveProtocolSnapshot({
   blockHeight = null,
   capturedAt = new Date().toISOString()
 }) {
-  const currentEpoch = safeInteger(epoch?.epoch ?? epoch, 'Ogmios epoch');
   if (typeof epoch === 'object' && epoch !== null && epoch.epoch === undefined) {
     throw new TypeError('Ogmios epoch response must include an epoch.');
   }
+  const currentEpoch = safeInteger(epoch?.epoch ?? epoch, 'Ogmios epoch');
   const rawHash = tip?.hash ?? tip?.id;
   if (typeof rawHash !== 'string') throw new TypeError('Ogmios stable tip hash must be 32-byte hex.');
   const hash = rawHash.toLowerCase();
