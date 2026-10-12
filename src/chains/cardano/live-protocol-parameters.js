@@ -1,15 +1,19 @@
 import { createHash } from 'node:crypto';
 
 function integer(value, label) {
-  const n = typeof value === 'bigint' ? value : BigInt(String(value));
-  if (n < 0n) throw new TypeError(`${label} must be non-negative.`);
-  return n.toString();
+  if (!['string', 'number', 'bigint'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isSafeInteger(value)) ||
+      !/^\\d+$/.test(String(value))) {
+    throw new TypeError(`${label} must be a precise non-negative integer.`);
+  }
+  return BigInt(value).toString();
 }
 
 function safeInteger(value, label) {
-  const n = Number(value);
-  if (!Number.isSafeInteger(n) || n < 0) throw new TypeError(`${label} must be a non-negative safe integer.`);
-  return n;
+  const normalized = integer(value, label);
+  const n = BigInt(normalized);
+  if (n > BigInt(Number.MAX_SAFE_INTEGER)) throw new TypeError(`${label} must be a non-negative safe integer.`);
+  return Number(n);
 }
 
 function adaLovelace(value, label) {
@@ -58,7 +62,7 @@ function protocolVersionOgmios(value) {
 
 function plutusV3Ogmios(value) {
   const model = value?.['plutus:v3'] ?? value?.PlutusV3 ?? value?.plutusV3;
-  if (!Array.isArray(model) || model.length !== 350 || model.some(v => !Number.isSafeInteger(Number(v)))) {
+  if (!Array.isArray(model) || model.length !== 350 || model.some(v => !(typeof v === 'number' && Number.isSafeInteger(v) || typeof v === 'string' && /^-?\\d+$/.test(v) && BigInt(v) >= BigInt(Number.MIN_SAFE_INTEGER) && BigInt(v) <= BigInt(Number.MAX_SAFE_INTEGER)))) {
     throw new TypeError('Ogmios must provide a complete 350-entry Plutus V3 cost model.');
   }
   return model.map(Number);
@@ -67,7 +71,7 @@ function plutusV3Ogmios(value) {
 function plutusV3Blockfrost(value) {
   const raw = value?.cost_models_raw ?? value?.costModelsRaw;
   const model = raw?.PlutusV3 ?? raw?.['plutus:v3'] ?? raw?.plutusV3;
-  if (!Array.isArray(model) || model.length !== 350 || model.some(v => !Number.isSafeInteger(Number(v)))) {
+  if (!Array.isArray(model) || model.length !== 350 || model.some(v => !(typeof v === 'number' && Number.isSafeInteger(v) || typeof v === 'string' && /^-?\\d+$/.test(v) && BigInt(v) >= BigInt(Number.MIN_SAFE_INTEGER) && BigInt(v) <= BigInt(Number.MAX_SAFE_INTEGER)))) {
     throw new TypeError('Blockfrost must provide cost_models_raw with a complete 350-entry Plutus V3 cost model.');
   }
   return model.map(Number);
