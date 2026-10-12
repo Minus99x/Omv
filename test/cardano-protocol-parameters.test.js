@@ -131,3 +131,10 @@ test('Cardano gate rejects incomplete and wrong-era snapshots even when both agr
     assert.equal(gate.matching, false);
   }
 });
+
+
+test('Cardano collateral rejects unsafe input counts', () => {
+  for (const collateralInputCount of [Number.MAX_SAFE_INTEGER + 1, NaN, Infinity, 1.5, 0, -1]) {
+    assert.throws(() => calculateCardanoRequiredCollateral({ feeLovelace: '1000000', parameters, collateralInputCount }), /protocol limits/);
+  }
+});
