@@ -123,3 +123,13 @@ test('live Cardano execution prices reject implicit object, boolean, and nonfini
     }));
   }
 });
+
+test('live Cardano execution prices bound hostile decimal exponents and mantissas', () => {
+  for (const value of ['1e1000000000', '1e-1000000000', '1'.repeat(1001)]) {
+    const malformed = blockfrost();
+    malformed.price_mem = value;
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: ogmios(), blockfrostParameters: malformed, epoch: 400, tip
+    }), /supported limit/);
+  }
+});
