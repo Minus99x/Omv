@@ -111,3 +111,23 @@ test('Cardano snapshot rejects unsafe provenance counts and malformed tip epochs
     assert.throws(() => normalizeCardanoProtocolParameterSnapshot(malformed), /provenance|epoch/);
   }
 });
+
+
+test('Cardano gate rejects incomplete and wrong-era snapshots even when both agree', () => {
+  const baseline = { ...parameters, sourceCount: 2, independentlyConfirmed: true };
+  const mutations = [
+    snapshot => { delete snapshot.minFeeA; },
+    snapshot => { delete snapshot.priceMemory; },
+    snapshot => { delete snapshot.maxTxExUnits; },
+    snapshot => { snapshot.era = 'Babbage'; }
+  ];
+  for (const mutate of mutations) {
+    const left = { ...baseline };
+    const right = { ...baseline };
+    mutate(left);
+    mutate(right);
+    const gate = createCardanoProtocolParameterGate([left, right]);
+    assert.equal(gate.liveConstructionReady, false);
+    assert.equal(gate.matching, false);
+  }
+});
