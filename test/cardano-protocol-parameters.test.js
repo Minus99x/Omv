@@ -268,3 +268,36 @@ test('Cardano execution fee and collateral arithmetic bound hostile unsigned int
     feeLovelace: '9'.repeat(1000), parameters
   }).requiredCollateral, ((BigInt('9'.repeat(1000)) * 150n + 99n) / 100n).toString());
 });
+
+test('Cardano readiness gate validates actual Plutus V3 coefficients, not merely matching digest strings', () => {
+  const baseline = {
+    ...parameters,
+    sourceCount: 2,
+    independentlyConfirmed: true,
+    eligibleForLiveTransactionConstruction: true,
+    connectorLiveProof: true
+  };
+  const valid = createCardanoProtocolParameterGate([baseline, baseline]);
+  assert.equal(valid.matching, true);
+  assert.equal(valid.liveConstructionReady, true);
+
+  const mutations = [
+    snapshot => { delete snapshot.plutusV3CostModel; },
+    snapshot => { snapshot.plutusV3CostModel = []; },
+    snapshot => { snapshot.plutusV3CostModel = baseline.plutusV3CostModel.slice(1); },
+    snapshot => { snapshot.plutusV3CostModel = [...baseline.plutusV3CostModel]; snapshot.plutusV3CostModel[0] += 1; },
+    snapshot => { snapshot.plutusV3CostModel = [...baseline.plutusV3CostModel]; snapshot.plutusV3CostModel[0] = '100788'; },
+    snapshot => { snapshot.plutusV3CostModel = [...baseline.plutusV3CostModel]; snapshot.plutusV3CostModel[0] = Number.MAX_SAFE_INTEGER + 1; },
+    snapshot => { snapshot.plutusV3CostModel = [...baseline.plutusV3CostModel]; snapshot.plutusV3CostModel[0] = NaN; }
+  ];
+  for (const mutate of mutations) {
+    const left = { ...baseline };
+    const right = { ...baseline };
+    mutate(left);
+    mutate(right);
+    const gate = createCardanoProtocolParameterGate([left, right]);
+    assert.equal(gate.matching, false);
+    assert.equal(gate.liveConstructionReady, false);
+    assert.match(gate.reason, /Complete Conway/);
+  }
+});
