@@ -196,3 +196,19 @@ test('live Cardano cost models reject oversized coefficient strings from either 
     }), /350-entry Plutus V3 cost model/);
   }
 });
+
+test('live Cardano provider integers reject oversized decimal strings before BigInt parsing', () => {
+  const huge = '9'.repeat(100000);
+  for (const field of ['min_fee_a', 'min_fee_b', 'coins_per_utxo_size', 'max_tx_ex_steps']) {
+    const changed = blockfrost();
+    changed[field] = huge;
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: ogmios(), blockfrostParameters: changed, epoch: 400, tip
+    }), /integer precision exceeds the supported limit/);
+  }
+  const changedOgmios = ogmios();
+  changedOgmios.minFeeCoefficient = huge;
+  assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+    ogmiosParameters: changedOgmios, blockfrostParameters: blockfrost(), epoch: 400, tip
+  }), /integer precision exceeds the supported limit/);
+});
