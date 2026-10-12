@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 
 const UINT = /^\d+$/;
+const MAX_UINT_DIGITS = 1000;
 
 function uint(value, label) {
   if (typeof value === 'number' && !Number.isSafeInteger(value)) {
@@ -9,8 +10,14 @@ function uint(value, label) {
   if (typeof value !== 'string' && typeof value !== 'number' && typeof value !== 'bigint') {
     throw new TypeError(`${label} must be an unsigned integer.`);
   }
-  if (!UINT.test(String(value))) throw new TypeError(`${label} must be an unsigned integer.`);
-  return BigInt(value);
+  // Bound untrusted protocol fields and fee inputs before BigInt parsing.
+  // Keep the same precision ceiling as the live provider integer parser.
+  const decimal = String(value);
+  if (decimal.length > MAX_UINT_DIGITS) {
+    throw new RangeError(`${label} integer precision exceeds the supported limit.`);
+  }
+  if (!UINT.test(decimal)) throw new TypeError(`${label} must be an unsigned integer.`);
+  return BigInt(decimal);
 }
 
 function positive(value, label) {
