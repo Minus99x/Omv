@@ -112,3 +112,14 @@ test('live Cardano provider parsers reject coerced and imprecise integer inputs'
     }));
   }
 });
+
+
+test('live Cardano execution prices reject implicit object, boolean, and nonfinite coercion', () => {
+  for (const value of [true, false, {}, [], null, NaN, Infinity, -Infinity]) {
+    const malformed = blockfrost();
+    malformed.price_mem = value;
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: ogmios(), blockfrostParameters: malformed, epoch: 400, tip
+    }));
+  }
+});
