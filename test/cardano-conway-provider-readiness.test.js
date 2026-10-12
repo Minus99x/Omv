@@ -163,3 +163,24 @@ test('out-of-range governance ratios fail closed rather than normalizing them',(
   assert.equal(Object.hasOwn(report.agreed,'drepVotingThresholds'),false);
   assert.equal(report.transactionSubmissionAuthorized,false);
 });
+
+test('oversized provider integers remain unresolved without expensive BigInt conversion',()=> {
+  const f=fixture();
+  f.ogmiosParameters.stakeCredentialDeposit.ada.lovelace='9'.repeat(100000);
+  f.blockfrostParameters.max_block_ex_steps='9'.repeat(100000);
+  const report=createCardanoPreprodConwayReadinessReport(f);
+  assert.match(report.unresolved.keyDeposit.ogmios,/exceeds u64/);
+  assert.match(report.unresolved.maxBlockExUnits,/exceeds u64/);
+  assert.equal(report.agreed.keyDeposit,undefined);
+  assert.equal(report.agreed.maxBlockExUnits,undefined);
+  assert.equal(report.completeConwayParametersEstablished,false);
+});
+
+test('oversized Ogmios rational text cannot qualify as provider agreement',()=> {
+  const f=fixture();
+  f.ogmiosParameters.stakePoolPledgeInfluence='9'.repeat(100000)+'/10';
+  const report=createCardanoPreprodConwayReadinessReport(f);
+  assert.match(report.unresolved.poolPledgeInfluence.ogmios,/exceeds supported integer width/);
+  assert.equal(report.agreed.poolPledgeInfluence,undefined);
+  assert.equal(report.completeConwayParametersEstablished,false);
+});
