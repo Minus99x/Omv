@@ -79,9 +79,16 @@ export function createCardanoProtocolParameterGate(snapshots) {
   // The gate consumes normalized snapshots, but still rejects malformed callers.
   const complete = snapshots.every(snapshot => snapshot.era === 'Conway' &&
     fields.every(field => snapshot[field] !== undefined && snapshot[field] !== null || field === 'maxValueSize' && snapshot[field] === null) &&
-    snapshot.maxTxExUnits?.memory != null && snapshot.maxTxExUnits?.steps != null &&
-    snapshot.priceMemory?.numerator != null && snapshot.priceMemory?.denominator != null &&
-    snapshot.priceSteps?.numerator != null && snapshot.priceSteps?.denominator != null);
+    Number.isSafeInteger(snapshot.epoch) && snapshot.epoch >= 0 &&
+    /^\d+\.\d+$/.test(snapshot.protocolVersion) &&
+    ['minFeeA', 'minFeeB', 'coinsPerUtxoByte', 'collateralPercentage'].every(field =>
+      typeof snapshot[field] === 'bigint' && snapshot[field] > 0n) &&
+    ['maxTxSize', 'maxCollateralInputs'].every(field => Number.isSafeInteger(snapshot[field]) && snapshot[field] > 0) &&
+    (snapshot.maxValueSize === null || Number.isSafeInteger(snapshot.maxValueSize) && snapshot.maxValueSize > 0) &&
+    /^[0-9a-f]{64}$/.test(snapshot.plutusV3CostModelSha256) &&
+    ['memory', 'steps'].every(field => typeof snapshot.maxTxExUnits?.[field] === 'bigint' && snapshot.maxTxExUnits[field] > 0n) &&
+    ['priceMemory', 'priceSteps'].every(field =>
+      ['numerator', 'denominator'].every(part => typeof snapshot[field]?.[part] === 'bigint' && snapshot[field][part] > 0n)));
   const matching = complete && snapshots.every(snapshot => fields.every(field => String(snapshot[field]) === String(first[field])) &&
     snapshot.maxTxExUnits?.memory === first.maxTxExUnits?.memory &&
     snapshot.maxTxExUnits?.steps === first.maxTxExUnits?.steps &&
