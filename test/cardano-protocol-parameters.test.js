@@ -147,3 +147,13 @@ test('Cardano collateral requires explicit boolean ADA-only attestation', () => 
   }
   assert.equal(calculateCardanoRequiredCollateral({ feeLovelace: '1000000', parameters, collateralIsAdaOnly: true }).collateralIsAdaOnly, true);
 });
+
+
+test('Cardano gate rejects truthy nonboolean independent confirmations', () => {
+  for (const independentlyConfirmed of ['true', 1, {}, [], null]) {
+    const malformed = { ...parameters, sourceCount: 2, independentlyConfirmed };
+    const gate = createCardanoProtocolParameterGate([malformed]);
+    assert.equal(gate.liveConstructionReady, false);
+    assert.match(gate.reason, /confirmation/);
+  }
+});
