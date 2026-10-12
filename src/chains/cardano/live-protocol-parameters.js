@@ -34,7 +34,11 @@ function gcd(a, b) {
 
 function rational(value, label) {
   if (typeof value === 'string' && /^\d+\/\d+$/.test(value)) {
-    const [n, d] = value.split('/').map(BigInt);
+    const [numeratorText, denominatorText] = value.split('/');
+    if (numeratorText.length > 1000 || denominatorText.length > 1000) {
+      throw new TypeError(`${label} rational precision exceeds the supported limit.`);
+    }
+    const [n, d] = [BigInt(numeratorText), BigInt(denominatorText)];
     if (d < 1n) throw new TypeError(`${label} denominator must be positive.`);
     const g = gcd(n, d);
     return Object.freeze({ numerator: (n / g).toString(), denominator: (d / g).toString() });
