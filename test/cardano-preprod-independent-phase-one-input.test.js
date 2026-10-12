@@ -27,7 +27,7 @@ function serializedFixtureTransaction() {
   );
   body.set_collateral(collateral);
   body.set_validity_start_interval_bignum(Cardano.BigNum.from_str('9990'));
-  body.set_ttl_bignum(Cardano.BigNum.from_str('10010'));
+  body.set_ttl(Cardano.BigNum.from_str('10010'));
   body.set_network_id(Cardano.NetworkId.testnet());
   // A deterministic test-only owner signature keeps this fixture genuinely
   // signed without involving a connected wallet or any real credentials.
