@@ -59,7 +59,9 @@ export function normalizeCardanoProtocolParameterSnapshot(snapshot) {
     plutusV3CostModel: Object.freeze([...params.plutusV3CostModel]),
     plutusV3CostModelSha256: params.plutusV3CostModelSha256,
     sourceCount: snapshot.source.independentSourceCount,
-    independentlyConfirmed: snapshot.promotion?.independentlyConfirmed === true
+    independentlyConfirmed: snapshot.promotion?.independentlyConfirmed === true,
+    eligibleForLiveTransactionConstruction: snapshot.promotion?.eligibleForLiveTransactionConstruction === true,
+    connectorLiveProof: snapshot.promotion?.connectorLiveProof === true
   };
   return Object.freeze(normalized);
 }
@@ -92,14 +94,16 @@ export function createCardanoProtocolParameterGate(snapshots) {
   // Use the largest independently attested count, never additive counts.
   const sourceCount = Math.max(...snapshots.map(snapshot => snapshot.sourceCount));
   const confirmed = snapshots.every(snapshot => snapshot.independentlyConfirmed === true);
+  const authorized = snapshots.every(snapshot => snapshot.eligibleForLiveTransactionConstruction === true && snapshot.connectorLiveProof === true);
   return Object.freeze({
     matching,
     independentSourceCount: sourceCount,
-    liveConstructionReady: matching && sourceCount >= 2 && confirmed,
+    liveConstructionReady: matching && sourceCount >= 2 && confirmed && authorized,
     reason: sourceCount < 2 ? 'At least two independent current Preprod sources are required.' :
       !complete ? 'Complete Conway protocol-parameter snapshots are required.' :
       !matching ? 'Protocol-parameter sources disagree.' :
-      !confirmed ? 'Independent protocol-parameter confirmation is required.' : null
+      !confirmed ? 'Independent protocol-parameter confirmation is required.' :
+      !authorized ? 'Explicit live construction eligibility and connector proof are required.' : null
   });
 }
 
