@@ -168,3 +168,13 @@ test('live Cardano epoch provider rejects objects without an explicit epoch', ()
     }), /epoch response must include an epoch/);
   }
 });
+
+test('live Cardano execution prices reject oversized decimal text before parsing', () => {
+  for (const price of [' '.repeat(1200) + '0.1', '1'.repeat(1200)]) {
+    const changed = blockfrost();
+    changed.price_mem = price;
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: ogmios(), blockfrostParameters: changed, epoch: 400, tip
+    }), /decimal precision exceeds the supported limit/);
+  }
+});
