@@ -130,7 +130,7 @@ export function calculateCardanoMinimumFee({ transactionBytes, memory = 0, steps
 export function calculateCardanoRequiredCollateral({ feeLovelace, parameters, collateralInputCount = 1, collateralIsAdaOnly = true }) {
   const fee = positive(feeLovelace, 'feeLovelace');
   if (!Number.isSafeInteger(collateralInputCount) || collateralInputCount < 1 || collateralInputCount > parameters.maxCollateralInputs) throw new RangeError('Collateral input count exceeds current protocol limits.');
-  if (!collateralIsAdaOnly) throw new Error('Collateral inputs must contain ADA only.');
+  if (collateralIsAdaOnly !== true) throw new Error('Collateral inputs must contain ADA only.');
   return Object.freeze({
     requiredCollateral: ceilDiv(fee * parameters.collateralPercentage, 100n).toString(),
     collateralPercentage: parameters.collateralPercentage.toString(),
