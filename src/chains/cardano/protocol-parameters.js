@@ -93,6 +93,12 @@ export function createCardanoProtocolParameterGate(snapshots) {
     ['maxTxSize', 'maxCollateralInputs'].every(field => Number.isSafeInteger(snapshot[field]) && snapshot[field] > 0) &&
     (snapshot.maxValueSize === null || Number.isSafeInteger(snapshot.maxValueSize) && snapshot.maxValueSize > 0) &&
     /^[0-9a-f]{64}$/.test(snapshot.plutusV3CostModelSha256) &&
+    // Caller-provided "normalized" objects still need their complete cost
+    // model verified; agreeing digest strings alone do not prove agreement.
+    Array.isArray(snapshot.plutusV3CostModel) &&
+    snapshot.plutusV3CostModel.length === 350 &&
+    snapshot.plutusV3CostModel.every(Number.isSafeInteger) &&
+    costModelDigest(snapshot.plutusV3CostModel) === snapshot.plutusV3CostModelSha256 &&
     ['memory', 'steps'].every(field => typeof snapshot.maxTxExUnits?.[field] === 'bigint' && snapshot.maxTxExUnits[field] > 0n) &&
     ['priceMemory', 'priceSteps'].every(field =>
       ['numerator', 'denominator'].every(part => typeof snapshot[field]?.[part] === 'bigint' && snapshot[field][part] > 0n)));
