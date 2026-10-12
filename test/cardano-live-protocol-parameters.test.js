@@ -150,3 +150,13 @@ test('live Cardano snapshots reject malformed capture timestamps', () => {
     }), /capture timestamp/);
   }
 });
+
+test('live Cardano rational execution prices reject oversized numerator and denominator', () => {
+  for (const price of [`${'1'.repeat(1001)}/2`, `1/${'9'.repeat(1001)}`]) {
+    const changed = ogmios();
+    changed.scriptExecutionPrices.memory = price;
+    assert.throws(() => createCardanoPreprodLiveProtocolSnapshot({
+      ogmiosParameters: changed, blockfrostParameters: blockfrost(), epoch: 400, tip
+    }), /rational precision exceeds the supported limit/);
+  }
+});
