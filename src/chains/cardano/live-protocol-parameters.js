@@ -168,6 +168,10 @@ export function createCardanoPreprodLiveProtocolSnapshot({
   const hash = rawHash.toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(hash)) throw new TypeError('Ogmios stable tip hash must be 32-byte hex.');
   const slot = safeInteger(tip?.slot, 'Ogmios tip slot');
+  if (typeof capturedAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(capturedAt) ||
+      !Number.isFinite(Date.parse(capturedAt)) || new Date(capturedAt).toISOString() !== capturedAt) {
+    throw new TypeError('Cardano capture timestamp must be a canonical UTC ISO instant.');
+  }
 
   const ogmios = normalizedOgmios(ogmiosParameters);
   const blockfrost = normalizedBlockfrost(blockfrostParameters);
