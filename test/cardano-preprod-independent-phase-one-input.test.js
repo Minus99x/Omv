@@ -21,7 +21,17 @@ function serializedFixtureTransaction() {
   const body=Cardano.TransactionBody.new_tx_body(
     inputs, outputs, Cardano.BigNum.from_str('200000')
   );
-  const signed=Cardano.Transaction.new(body, Cardano.TransactionWitnessSet.new()).to_hex();
+  // A deterministic test-only owner signature keeps this fixture genuinely
+  // signed without involving a connected wallet or any real credentials.
+  const privateKey=Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({length:32},()=>9));
+  const witnessSet=Cardano.TransactionWitnessSet.new();
+  const vkeys=Cardano.Vkeywitnesses.new();
+  vkeys.add(Cardano.make_vkey_witness(
+    Cardano.TransactionHash.from_bytes(blake2b(body.to_bytes(), {dkLen:32})),
+    privateKey
+  ));
+  witnessSet.set_vkeys(vkeys);
+  const signed=Cardano.Transaction.new(body, witnessSet).to_hex();
   return Object.freeze({
     signed,
     bodyHash:Buffer.from(blake2b(body.to_bytes(), {dkLen:32})).toString('hex')
