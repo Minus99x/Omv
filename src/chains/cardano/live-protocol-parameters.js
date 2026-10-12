@@ -40,6 +40,9 @@ function rational(value, label) {
     return Object.freeze({ numerator: (n / g).toString(), denominator: (d / g).toString() });
   }
 
+  if (typeof value !== 'string' && (typeof value !== 'number' || !Number.isFinite(value))) {
+    throw new TypeError(`${label} must be a finite decimal or rational.`);
+  }
   let text = String(value).trim().toLowerCase();
   if (!/^(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/.test(text)) throw new TypeError(`${label} must be a decimal or rational.`);
   const [mantissa, exponentText = '0'] = text.split('e');
