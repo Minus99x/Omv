@@ -115,14 +115,18 @@ export function createCardanoProtocolParameterGate(snapshots) {
   const sourceCount = Math.max(...snapshots.map(snapshot => snapshot.sourceCount));
   const confirmed = snapshots.every(snapshot => snapshot.independentlyConfirmed === true);
   const authorized = snapshots.every(snapshot => snapshot.eligibleForLiveTransactionConstruction === true && snapshot.connectorLiveProof === true);
+  // Historical snapshots may omit maxValueSize for offline evaluation, but
+  // transaction construction needs the current serialized-value size limit.
+  const hasMaxValueSize = matching && first.maxValueSize !== null;
   return Object.freeze({
     matching,
     independentSourceCount: sourceCount,
-    liveConstructionReady: matching && sourceCount >= 2 && confirmed && authorized,
+    liveConstructionReady: matching && sourceCount >= 2 && confirmed && authorized && hasMaxValueSize,
     reason: sourceCount < 2 ? 'At least two independent current Preprod sources are required.' :
       !complete ? 'Complete Conway protocol-parameter snapshots are required.' :
       !matching ? 'Protocol-parameter sources disagree.' :
       !confirmed ? 'Independent protocol-parameter confirmation is required.' :
+      !hasMaxValueSize ? 'Current maxValueSize evidence is required for live transaction construction.' :
       !authorized ? 'Explicit live construction eligibility and connector proof are required.' : null
   });
 }
