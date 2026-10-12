@@ -75,7 +75,7 @@ function protocolVersionOgmios(value) {
 
 function plutusV3Ogmios(value) {
   const model = value?.['plutus:v3'] ?? value?.PlutusV3 ?? value?.plutusV3;
-  if (!Array.isArray(model) || model.length !== 350 || model.some(v => !(typeof v === 'number' && Number.isSafeInteger(v) || typeof v === 'string' && /^-?\d+$/.test(v) && BigInt(v) >= BigInt(Number.MIN_SAFE_INTEGER) && BigInt(v) <= BigInt(Number.MAX_SAFE_INTEGER)))) {
+  if (!Array.isArray(model) || model.length !== 350 || model.some(v => !(typeof v === 'number' && Number.isSafeInteger(v) || typeof v === 'string' && v.length <= 32 && /^-?\d+$/.test(v) && BigInt(v) >= BigInt(Number.MIN_SAFE_INTEGER) && BigInt(v) <= BigInt(Number.MAX_SAFE_INTEGER)))) {
     throw new TypeError('Ogmios must provide a complete 350-entry Plutus V3 cost model.');
   }
   return model.map(Number);
@@ -84,7 +84,7 @@ function plutusV3Ogmios(value) {
 function plutusV3Blockfrost(value) {
   const raw = value?.cost_models_raw ?? value?.costModelsRaw;
   const model = raw?.PlutusV3 ?? raw?.['plutus:v3'] ?? raw?.plutusV3;
-  if (!Array.isArray(model) || model.length !== 350 || model.some(v => !(typeof v === 'number' && Number.isSafeInteger(v) || typeof v === 'string' && /^-?\d+$/.test(v) && BigInt(v) >= BigInt(Number.MIN_SAFE_INTEGER) && BigInt(v) <= BigInt(Number.MAX_SAFE_INTEGER)))) {
+  if (!Array.isArray(model) || model.length !== 350 || model.some(v => !(typeof v === 'number' && Number.isSafeInteger(v) || typeof v === 'string' && v.length <= 32 && /^-?\d+$/.test(v) && BigInt(v) >= BigInt(Number.MIN_SAFE_INTEGER) && BigInt(v) <= BigInt(Number.MAX_SAFE_INTEGER)))) {
     throw new TypeError('Blockfrost must provide cost_models_raw with a complete 350-entry Plutus V3 cost model.');
   }
   return model.map(Number);
