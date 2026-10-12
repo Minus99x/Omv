@@ -162,3 +162,25 @@ test('valid offset RFC3339 system start remains accepted without assuming UTC st
   assert.equal(report.parameters.completeConway.systemStart,'2022-06-20T17:00:00-07:00');
   assert.equal(report.parameters.completeConwayAgreement.submissionAuthorized,false);
 });
+
+test('matching oversized Conway integers are rejected before BigInt parsing',()=> {
+  const args=fixture();
+  for (const source of [args.ogmiosCompleteConway,args.blockfrostCompleteConway]) {
+    source.governanceActionDeposit='9'.repeat(100000);
+  }
+  assert.throws(
+    ()=>createCardanoPreprodExtendedConwaySnapshot(args),
+    /governanceActionDeposit.*supported ledger integer range/
+  );
+});
+
+test('matching oversized Conway rational components are rejected before BigInt parsing',()=> {
+  const args=fixture();
+  for (const source of [args.ogmiosCompleteConway,args.blockfrostCompleteConway]) {
+    source.drepVotingThresholds.treasuryWithdrawal={numerator:'9'.repeat(100000),denominator:'10'};
+  }
+  assert.throws(
+    ()=>createCardanoPreprodExtendedConwaySnapshot(args),
+    /treasuryWithdrawal.numerator.*supported ledger integer range/
+  );
+});
