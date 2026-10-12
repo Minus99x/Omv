@@ -6,6 +6,9 @@ function integer(value, label) {
       !/^\d+$/.test(String(value))) {
     throw new TypeError(`${label} must be a precise non-negative integer.`);
   }
+  if (typeof value === 'string' && value.length > 1000) {
+    throw new TypeError(`${label} integer precision exceeds the supported limit.`);
+  }
   return BigInt(value).toString();
 }
 
