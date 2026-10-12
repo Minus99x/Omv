@@ -47,7 +47,10 @@ function rational(value, label) {
   if (!/^(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/.test(text)) throw new TypeError(`${label} must be a decimal or rational.`);
   const [mantissa, exponentText = '0'] = text.split('e');
   const exponent = Number(exponentText);
-  if (!Number.isSafeInteger(exponent)) throw new TypeError(`${label} exponent is invalid.`);
+  // Bound untrusted decimal expansion before BigInt exponentiation.
+  if (!Number.isSafeInteger(exponent) || Math.abs(exponent) > 1000 || mantissa.length > 1000) {
+    throw new TypeError(`${label} decimal precision or exponent exceeds the supported limit.`);
+  }
   const [whole = '0', fraction = ''] = mantissa.split('.');
   let numerator = BigInt((whole || '0') + fraction);
   let denominator = 10n ** BigInt(fraction.length);
