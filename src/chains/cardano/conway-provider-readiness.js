@@ -64,7 +64,11 @@ function parseUnsigned(value, label) {
       (typeof value === 'number' && !Number.isSafeInteger(value))) {
     throw new TypeError(label + ' must be an unsigned integer without truncation.');
   }
-  const number = BigInt(String(value));
+  // A ledger u64 has at most 20 decimal digits. Reject excessive provider
+  // payloads before invoking BigInt; this diagnostic is evaluation-only.
+  const decimal = String(value);
+  if (decimal.length > 20) throw new RangeError(label + ' exceeds u64.');
+  const number = BigInt(decimal);
   if (number > 18446744073709551615n) throw new RangeError(label + ' exceeds u64.');
   return number.toString();
 }
@@ -76,6 +80,9 @@ function rational(value, label) {
     denominator = parseUnsigned(value.denominator, label + '.denominator');
   } else {
     const text = String(value);
+    // Applies to both rational and decimal representations. The decimal
+    // branch was already bounded, but a/b text had no pre-parse size limit.
+    if (text.length > 80) throw new RangeError(label + ' exceeds supported integer width.');
     if (/^\d+\/\d+$/.test(text)) {
       [numerator, denominator] = text.split('/');
     } else {
