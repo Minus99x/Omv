@@ -5,6 +5,11 @@ on:
       - dev/0.6.60-reconcile-overnight-bitcoin
     paths:
       - .github/workflows/xdc-apothem-disposable-operator.yml
+      - scripts/xdc-apothem-disposable-wallet.js
+      - scripts/xdc-apothem-disposable-live.js
+      - scripts/xdc-apothem-disposable-operator-checks.mjs
+      - src/chains/evm/apothem-public-trial-guard.js
+      - test/xdc-apothem-public-trial-guard.test.js
 permissions:
   contents: read
 jobs:
