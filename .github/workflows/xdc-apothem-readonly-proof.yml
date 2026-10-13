@@ -1,4 +1,4 @@
-name: XDC Apothem read-only public RPC proof
+name: XDC Apothem independent two-provider RPC comparison
 on:
   push:
     branches:
@@ -23,3 +23,7 @@ jobs:
         run: node --check scripts/xdc-apothem-readonly-probe.js && node --test test/xdc-apothem-readonly-probe.test.js
       - name: Query real Apothem network without wallets or transaction submission
         run: node scripts/xdc-apothem-readonly-probe.js
+      - name: Validate independent same-height and gas comparison
+        run: node --check scripts/xdc-apothem-independent-rpc-check.js && node --test test/xdc-apothem-independent-rpc-check.test.js
+      - name: Cross-check two independent Apothem providers on the live chain
+        run: node scripts/xdc-apothem-independent-rpc-check.js
