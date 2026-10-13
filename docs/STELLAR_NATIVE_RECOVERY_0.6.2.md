@@ -55,7 +55,7 @@ The offline execution-evidence pipeline now covers:
 - exact contact-signature set verification;
 - owner heartbeat XDR and owner-signature verification;
 - fee-bump inner/outer envelope binding;
-- exact `txTOO_EARLY` and success result-code requirements;
+- exact `tx_bad_minseq_age_or_gap` (native minSeqAge) and success result-code requirements;
 - Testnet network-identity fail-closed checks;
 - digest-bound success evidence for initial too-early rejection, heartbeat reset, post-heartbeat too-early rejection, eligible N-of-N recovery, rescue-balance movement and finality;
 - digest-bound failed-applied evidence proving that an applied failed recovery consumes the matching one-time `preAuthTx` signer and forbids retry of the same envelope;
@@ -91,11 +91,28 @@ The real on-ledger sequence was:
 
 **Scope is deliberately narrow:** This proves a *single genuine on-network native recovery*, not the full OmegaVault lifecycle, broad M-of-N, token rescue, owner heartbeat/reset, premature failure, failed-applied/preAuth consumption, all chain invariants, repeated reliability or external security audit. No mainnet, real assets, customer keys or chain-support promotion.
 
+## Public-Testnet owner-heartbeat/reset and 1-of-1 recovery — 2026-10-12
+
+The native proof runner was extended on **fresh disposable Stellar Testnet accounts**, using an owner-signed `bumpSequence` heartbeat and the **same immutable contact-signed recovery envelope** before and after that heartbeat.
+
+[Successful end-to-end public-Testnet run](https://github.com/Minus99x/Omegavault/actions/runs/38331699707) confirms:
+
+1. Owner-authorized on-ledger setup: transaction `8fe93873b144ff891db049df7d68a33f8978caf5d06d80f8d287db98061e19c0`, ledger **5166181**.
+2. The premature recovery was rejected with Stellar's **actual minimum-sequence-age code `tx_bad_minseq_age_or_gap`**. The vault sequence, one-time `preAuthTx` signer and rescue balance remained unchanged.
+3. Owner heartbeat: `49e89d58f31c93e8c2a164bc85ee379620a4f98fdd859366d8b46324fb4e4d00`, ledger **5166182**; verified new source sequence/sequence-time and preserved recovery signer.
+4. The **same** recovery envelope was rejected again after heartbeat with `tx_bad_minseq_age_or_gap` and no balance or signer change.
+5. After **45 seconds** of new account-sequence age as observed using real ledger close times, recovery `62ea42fbfe668809d2b61ec8541b01c127ba2e03ba19e6790df264f315d683b0` succeeded in ledger **5166192**, ledger hash `6e7403d3d45a325895f0073a09122fd3b1fe5c9c88c3b74232835eebad98aa7b`.
+6. Horizon confirmed exact **1.0000000 fake XLM** rescue credit and consumption of the single-use `preAuthTx` signer.
+
+**Important protocol correction:** The previous synthetic evidence path modeled early native recovery as `txTOO_EARLY`, which is for absolute `minTime` timebounds. Native `minAccountSequenceAge` enforcement instead returned `tx_bad_minseq_age_or_gap` on actual public Testnet. Normalization, injected driver fixtures, evidence checks and negative tests were corrected to require the real native result, without accepting unrelated network rejection codes as evidence of an inactivity rule.
+
+This verifies a meaningful **1-of-1 owner-heartbeat and native recovery sequence**, not multi-contact threshold coverage, broad asset rescue, failure-applied one-time authorizer consumption, adversarial end-to-end threats, or production readiness. No customer assets or owner wallets were involved.
+
 ## Remaining promotion gate
 
-Real public-Testnet **heartbeat/reset and post-heartbeat rejection** remain to be demonstrated alongside failed-applied consumption, wider asset/role cases, negative adversarial evidence, release security review and the full lifecycle binding. The earlier driver-injected end-to-end runs are still synthetic; they cannot be substituted for these public-network proofs.
+Additional real public-Testnet cases remain required: **2-of-2 independent contacts**, fee-bump sponsorship, asset trustline preflight, failed-applied `preAuthTx` consumption, owner-contact compromise scenarios, full independent security review and release policy. The already-tested driver-injected pipelines remain valuable regressions but cannot substitute for chain evidence.
 
-This isolated native-recovery milestone does **not** remove the existing chain promotion blockers or authorize product deployment.
+Stellar remains **not promoted for product support**; observed Testnet milestones do not authorize deployment.
 
 ## Authority boundary
 
