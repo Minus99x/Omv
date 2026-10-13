@@ -129,7 +129,7 @@ function fakeDriver(inputs, overrides = {}) {
           observedAt:'2026-10-03T00:00:00Z',
           includedInLedger:false,
           successful:false,
-          resultCode:'txTOO_EARLY'
+          resultCode:'tx_bad_minseq_age_or_gap'
         };
       }
       if (purpose === 'heartbeat') {
@@ -148,7 +148,7 @@ function fakeDriver(inputs, overrides = {}) {
           observedAt:'2026-10-03T00:02:00Z',
           includedInLedger:false,
           successful:false,
-          resultCode:'txTOO_EARLY'
+          resultCode:'tx_bad_minseq_age_or_gap'
         };
       }
       if (purpose === 'eligible-recovery-fee-bump') {
@@ -193,8 +193,8 @@ test('Stellar Testnet proof runner orchestrates too-early, heartbeat reset, elig
   assert.equal(result.success, true);
   assert.equal(result.kind, 'stellar-testnet-recovery-proof');
   assert.equal(result.networkRef, 'stellar:testnet');
-  assert.equal(result.evidenceBundle.initialTooEarly.resultCode, 'txTOO_EARLY');
-  assert.equal(result.evidenceBundle.postHeartbeatTooEarly.resultCode, 'txTOO_EARLY');
+  assert.equal(result.evidenceBundle.initialTooEarly.resultCode, 'tx_bad_minseq_age_or_gap');
+  assert.equal(result.evidenceBundle.postHeartbeatTooEarly.resultCode, 'tx_bad_minseq_age_or_gap');
   assert.equal(result.evidenceBundle.eligibleSubmission.resultCode, 'txSUCCESS');
   assert.equal(result.evidenceBundle.accountState.after.preAuthTxSignerPresent, false);
   assert.equal(result.evidenceBundle.finality.status, 'finalized');
@@ -234,7 +234,7 @@ test('Stellar Testnet proof runner requires the exact current execution manifest
   assert.equal(fake.calls.length, 0);
 });
 
-test('Stellar Testnet proof runner requires initial txTOO_EARLY before heartbeat', async () => {
+test('Stellar Testnet proof runner requires initial tx_bad_minseq_age_or_gap before heartbeat', async () => {
   const inputs = proofInputs();
   const fake = fakeDriver(inputs, {
     submitEnvelope({ purpose, expectedTransactionHashHex }) {
@@ -252,7 +252,7 @@ test('Stellar Testnet proof runner requires initial txTOO_EARLY before heartbeat
   });
   await assert.rejects(
     () => runStellarTestnetRecoveryProof({ ...inputs, driver:fake.driver }),
-    /txTOO_EARLY/
+    /tx_bad_minseq_age_or_gap/
   );
   assert.equal(fake.calls.some(call => call[0] === 'submitEnvelope' && call[1] === 'heartbeat'), false);
 });
