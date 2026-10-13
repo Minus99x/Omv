@@ -264,6 +264,45 @@ export function createCardanoPreprodIndependentPhaseOneInput({
   if (fundingAddress.network_id() !== 0 || paymentCredential?.to_keyhash()?.to_hex() !== ownerKeyHash) {
     throw new Error('Initialize seed payment credential must match the verified owner VKey on Preprod.');
   }
+  // The previous pre-submit check records fee and output balances. Derive
+  // those same ADA conservation facts from the *signed CBOR* and fresh,
+  // independently captured plain ADA-only UTxOs before handing it to a
+  // separate complete Conway phase-one validator.
+  const outputs = signedBody.outputs();
+  if (outputs.len() !== 2) {
+    throw new Error('Signed initialize must have exactly the vault state and wallet change outputs.');
+  }
+  const stateOutput = outputs.get(0);
+  const changeOutput = outputs.get(1);
+  if (changeOutput.address().to_bech32() !== seed.address ||
+      changeOutput.amount().multiasset() != null) {
+    throw new Error('Signed initialize change must return ADA-only to the bound seed wallet.');
+  }
+  const feeLovelace = signedBody.fee().to_str();
+  const declaredFee = preSubmit.signedTransaction?.feeLovelace;
+  const currentMinimumFee = preSubmit.signedTransaction?.currentMinimumFeeLovelace;
+  if (feeLovelace !== declaredFee || typeof currentMinimumFee !== 'string' ||
+      !/^(0|[1-9]\\d*)$/.test(currentMinimumFee) || currentMinimumFee.length > 20 ||
+      BigInt(feeLovelace) < BigInt(currentMinimumFee)) {
+    throw new Error('Signed initialize fee does not match its current pre-submit fee commitment.');
+  }
+  if (seed.lovelace.length > 20 ||
+      BigInt(seed.lovelace) !== BigInt(stateOutput.amount().coin().to_str()) +
+        BigInt(changeOutput.amount().coin().to_str()) + BigInt(feeLovelace)) {
+    throw new Error('Signed initialize seed ADA conservation failed.');
+  }
+  const collateralReturn = signedBody.collateral_return();
+  const totalCollateral = signedBody.total_collateral();
+  if (!collateralReturn || !totalCollateral ||
+      collateralReturn.address().to_bech32() !== collateral.address ||
+      collateralReturn.amount().multiasset() != null) {
+    throw new Error('Signed initialize collateral return must return ADA-only to the bound collateral wallet.');
+  }
+  if (collateral.lovelace.length > 20 ||
+      BigInt(collateral.lovelace) !== BigInt(totalCollateral.to_str()) +
+        BigInt(collateralReturn.amount().coin().to_str())) {
+    throw new Error('Signed initialize collateral ADA conservation failed.');
+  }
   const ledgerSnapshot = object(preSubmit.ledgerInputSnapshot, 'preSubmitEvidence.ledgerInputSnapshot');
   const ledgerSnapshotDigest = hex32(preSubmit.ledgerInputSnapshotSha256, 'preSubmitEvidence.ledgerInputSnapshotSha256');
   if (hashCardanoEvidence(ledgerSnapshot) !== ledgerSnapshotDigest) {
