@@ -65,15 +65,15 @@ function hasPreAuthSigner(snapshot, preAuthTxSigner) {
 function requireTooEarly(result, expectedHash, label) {
   if (!result || typeof result !== 'object') throw new Error(`${label} did not return a submission result.`);
   if (result.transactionHashHex !== expectedHash) throw new Error(`${label} returned a different transaction hash.`);
-  if (result.includedInLedger !== false || result.successful !== false || result.resultCode !== 'txTOO_EARLY') {
-    throw new Error(`${label} must prove txTOO_EARLY without ledger inclusion.`);
+  if (result.includedInLedger !== false || result.successful !== false || result.resultCode !== 'tx_bad_minseq_age_or_gap') {
+    throw new Error(`${label} must prove tx_bad_minseq_age_or_gap without ledger inclusion.`);
   }
   return Object.freeze({
     transactionHashHex: expectedHash,
     observedAt: requiredText(result.observedAt, `${label}.observedAt`),
     includedInLedger: false,
     successful: false,
-    resultCode: 'txTOO_EARLY'
+    resultCode: 'tx_bad_minseq_age_or_gap'
   });
 }
 
@@ -399,7 +399,7 @@ function requireAppliedFailure(result, expectedHash, label) {
     throw new Error(`${label} must prove an included but unsuccessful transaction.`);
   }
   const resultCode = requiredText(result.resultCode, `${label}.resultCode`);
-  if (resultCode === 'txSUCCESS' || resultCode === 'txTOO_EARLY') {
+  if (resultCode === 'txSUCCESS' || resultCode === 'tx_bad_minseq_age_or_gap' || resultCode === 'txTOO_EARLY') {
     throw new Error(`${label} must return an applied failure result code.`);
   }
   return Object.freeze({
