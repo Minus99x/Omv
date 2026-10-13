@@ -1,4 +1,4 @@
-name: XDC chain-51 isolated EVM recovery rehearsal
+name: XDC chain-51 adversarial recovery and late-deposit audit
 on:
   push:
     branches:
@@ -23,5 +23,5 @@ jobs:
           npm install --no-save --package-lock=false --ignore-scripts ethers@6.13.4 ganache@7.9.2
       - name: Verify rehearsal syntax without connecting to a public network
         run: node --check scripts/xdc-apothem-local-recovery-rehearsal.js
-      - name: Execute real contract logic locally with guardian heartbeat and mock XRC-20 sweep
+      - name: Audit guardian policy, duplicate token sweep and post-recovery native-funds behavior
         run: node scripts/xdc-apothem-local-recovery-rehearsal.js
