@@ -6,36 +6,55 @@ import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { createCardanoPreprodIndependentPhaseOneInput, verifyCardanoPreprodIndependentPhaseOneInput } from '../src/chains/cardano/preprod-independent-phase-one-input.js';
 const h=(c)=>c.repeat(64);
-function serializedFixtureTransaction({ includeRequiredSigner=true, signingHashOverride=null }={}) {
-  const inputs=Cardano.TransactionInputs.new();
-  inputs.add(Cardano.TransactionInput.new(
-    Cardano.TransactionHash.from_hex(h('1')), 0
-  ));
-  const collateral=Cardano.TransactionInputs.new();
-  collateral.add(Cardano.TransactionInput.new(
-    Cardano.TransactionHash.from_hex(h('2')), 1
-  ));
-  const outputs=Cardano.TransactionOutputs.new();
-  const address=Cardano.EnterpriseAddress.new(
-    0, Cardano.Credential.from_keyhash(Cardano.Ed25519KeyHash.from_hex('3'.repeat(56)))
-  ).to_address();
-  outputs.add(Cardano.TransactionOutput.new(
-    address, Cardano.Value.new(Cardano.BigNum.from_str('3000000'))
-  ));
-  const body=Cardano.TransactionBody.new_tx_body(
-    inputs, outputs, Cardano.BigNum.from_str('200000')
-  );
-  body.set_collateral(collateral);
-  body.set_validity_start_interval_bignum(Cardano.BigNum.from_str('9990'));
-  body.set_ttl(Cardano.BigNum.from_str('10010'));
-  body.set_network_id(Cardano.NetworkId.testnet());
-  // A deterministic test-only owner signature keeps this fixture genuinely
-  // signed without involving a connected wallet or any real credentials.
+function serializedFixtureTransaction({
+  includeRequiredSigner=true,
+  signingHashOverride=null,
+  feeLovelace='200000',
+  changeLovelace='1800000',
+  collateralReturnLovelace='4500000',
+  totalCollateralLovelace='500000',
+  changeAddressOverride=null,
+  collateralReturnAddressOverride=null,
+  includeChange=true,
+  includeCollateralReturn=true
+}={}) {
+  // Fixed deterministic private key is used only in this offline test fixture.
   const privateKey=Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({length:32},()=>9));
   const ownerKeyHash=privateKey.to_public().hash().to_hex();
   const ownerAddress=Cardano.EnterpriseAddress.new(
-    0, Cardano.Credential.from_keyhash(privateKey.to_public().hash())
+    0,Cardano.Credential.from_keyhash(privateKey.to_public().hash())
   ).to_address().to_bech32();
+  const inputs=Cardano.TransactionInputs.new();
+  inputs.add(Cardano.TransactionInput.new(Cardano.TransactionHash.from_hex(h('1')),0));
+  const collateral=Cardano.TransactionInputs.new();
+  collateral.add(Cardano.TransactionInput.new(Cardano.TransactionHash.from_hex(h('2')),1));
+  const outputs=Cardano.TransactionOutputs.new();
+  const vaultAddress=Cardano.EnterpriseAddress.new(
+    0,Cardano.Credential.from_keyhash(Cardano.Ed25519KeyHash.from_hex('3'.repeat(56)))
+  ).to_address();
+  outputs.add(Cardano.TransactionOutput.new(
+    vaultAddress, Cardano.Value.new(Cardano.BigNum.from_str('3000000'))
+  ));
+  if (includeChange) {
+    outputs.add(Cardano.TransactionOutput.new(
+      Cardano.Address.from_bech32(changeAddressOverride ?? ownerAddress),
+      Cardano.Value.new(Cardano.BigNum.from_str(changeLovelace))
+    ));
+  }
+  const body=Cardano.TransactionBody.new_tx_body(
+    inputs,outputs,Cardano.BigNum.from_str(feeLovelace)
+  );
+  body.set_collateral(collateral);
+  body.set_total_collateral(Cardano.BigNum.from_str(totalCollateralLovelace));
+  if (includeCollateralReturn) {
+    body.set_collateral_return(Cardano.TransactionOutput.new(
+      Cardano.Address.from_bech32(collateralReturnAddressOverride ?? ownerAddress),
+      Cardano.Value.new(Cardano.BigNum.from_str(collateralReturnLovelace))
+    ));
+  }
+  body.set_validity_start_interval_bignum(Cardano.BigNum.from_str('9990'));
+  body.set_ttl(Cardano.BigNum.from_str('10010'));
+  body.set_network_id(Cardano.NetworkId.testnet());
   if (includeRequiredSigner) {
     const requiredSigners=Cardano.Ed25519KeyHashes.new();
     requiredSigners.add(privateKey.to_public().hash());
@@ -43,18 +62,15 @@ function serializedFixtureTransaction({ includeRequiredSigner=true, signingHashO
   }
   const witnessSet=Cardano.TransactionWitnessSet.new();
   const vkeys=Cardano.Vkeywitnesses.new();
-  const signedBodyHash=Buffer.from(blake2b(body.to_bytes(), {dkLen:32})).toString('hex');
+  const signedBodyHash=Buffer.from(blake2b(body.to_bytes(),{dkLen:32})).toString('hex');
   vkeys.add(Cardano.make_vkey_witness(
     Cardano.TransactionHash.from_hex(signingHashOverride ?? signedBodyHash),
     privateKey
   ));
   witnessSet.set_vkeys(vkeys);
-  const signed=Cardano.Transaction.new(body, witnessSet).to_hex();
+  const signed=Cardano.Transaction.new(body,witnessSet).to_hex();
   return Object.freeze({
-    signed,
-    bodyHash:Buffer.from(blake2b(body.to_bytes(), {dkLen:32})).toString('hex'),
-    ownerKeyHash,
-    ownerAddress
+    signed,bodyHash:signedBodyHash,ownerKeyHash,ownerAddress,feeLovelace
   });
 }
 const {signed,bodyHash,ownerKeyHash,ownerAddress}=serializedFixtureTransaction();
@@ -87,7 +103,7 @@ function fixture() {
    unsignedPreflightSha256:witness.unsignedPreflightSha256,
    validatorIdentitySha256:witness.validatorIdentitySha256,
    utxoBindingEvidenceSha256:witness.utxoBindingEvidenceSha256,
-   signedTransaction:{sha256:sha,bytes:signed.length/2},
+   signedTransaction:{sha256:sha,bytes:signed.length/2,feeLovelace:'200000',currentMinimumFeeLovelace:'200000'},
    currentProtocolSnapshot:snapshot,currentProtocolSnapshotSha256:hashCardanoEvidence(snapshot),
    currentProtocolParametersSha256:h('a'),currentTip:tip,
    validity:{lowerSlot:9990,upperSlot:10010,currentTipWithinInterval:true},
@@ -304,6 +320,7 @@ function rebindSignedFixture(x, alternate) {
   x.preSubmitEvidence.witnessEvidenceSha256=x.witnessEvidence.witnessEvidenceSha256;
   x.preSubmitEvidence.signedTransaction.sha256=newSha;
   x.preSubmitEvidence.signedTransaction.bytes=alternate.signed.length/2;
+  x.preSubmitEvidence.signedTransaction.feeLovelace=alternate.feeLovelace;
   resign(x.preSubmitEvidence,'preSubmitSha256');
 }
 
@@ -346,4 +363,66 @@ test('independent handoff accepts cryptographically bound owner signature and se
  assert.equal(request.ledgerContext.utxoCommitments.seed.address,ownerAddress);
  assert.equal(request.completePhaseOneValidated,false);
  assert.equal(request.transactionSubmissionAuthorized,false);
+});
+
+test('signed initialize conserves seed and collateral ADA with real signed outputs',()=>{
+ const result=create(fixture());
+ assert.equal(result.signedTransaction.bytes,signed.length/2);
+ assert.equal(result.transactionSubmissionAuthorized,false);
+});
+
+test('signed initialize rejects a changed wallet output even with fully rebound signed evidence',()=>{
+ const x=fixture();
+ rebindSignedFixture(x,serializedFixtureTransaction({changeLovelace:'1700000'}));
+ assert.throws(()=>create(x),/seed ADA conservation failed/);
+});
+
+test('signed initialize rejects altered collateral return balance under a valid owner signature',()=>{
+ const x=fixture();
+ rebindSignedFixture(x,serializedFixtureTransaction({collateralReturnLovelace:'4400000'}));
+ assert.throws(()=>create(x),/collateral ADA conservation failed/);
+});
+
+test('signed initialize rejects change sent to an unauthorized wallet',()=>{
+ const x=fixture();
+ const alien=Cardano.EnterpriseAddress.new(
+   0,Cardano.Credential.from_keyhash(Cardano.Ed25519KeyHash.from_hex('8'.repeat(56)))
+ ).to_address().to_bech32();
+ rebindSignedFixture(x,serializedFixtureTransaction({changeAddressOverride:alien}));
+ assert.throws(()=>create(x),/change must return ADA-only/);
+});
+
+test('signed initialize rejects collateral return redirected to another address',()=>{
+ const x=fixture();
+ const alien=Cardano.EnterpriseAddress.new(
+   0,Cardano.Credential.from_keyhash(Cardano.Ed25519KeyHash.from_hex('8'.repeat(56)))
+ ).to_address().to_bech32();
+ rebindSignedFixture(x,serializedFixtureTransaction({collateralReturnAddressOverride:alien}));
+ assert.throws(()=>create(x),/collateral return must return ADA-only/);
+});
+
+test('signed initialize rejects omission of collateral return with matching evidence digests',()=>{
+ const x=fixture();
+ rebindSignedFixture(x,serializedFixtureTransaction({includeCollateralReturn:false}));
+ assert.throws(()=>create(x),/collateral return must return ADA-only/);
+});
+
+test('signed initialize rejects missing wallet change even with valid owner signature',()=>{
+ const x=fixture();
+ rebindSignedFixture(x,serializedFixtureTransaction({includeChange:false}));
+ assert.throws(()=>create(x),/exactly the vault state and wallet change outputs/);
+});
+
+test('signed initialize rejects a fee that contradicts recomputed pre-submit evidence',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.signedTransaction.feeLovelace='210000';
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/fee does not match its current pre-submit fee commitment/);
+});
+
+test('signed initialize rejects fee below recorded current minimum',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.signedTransaction.currentMinimumFeeLovelace='200001';
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/fee does not match its current pre-submit fee commitment/);
 });
