@@ -36,7 +36,7 @@ function requireGate(env) {
   }
 }
 function amountUnits(amount) {
-  const match = /^(0|[1-9]\\d*)\\.(\\d{7})$/.exec(amount);
+  const match = /^(0|[1-9]\d*)\.(\d{7})$/.exec(amount);
   if (!match) throw new TypeError('Horizon amount must have exactly seven decimal places.');
   return BigInt(match[1]) * 10000000n + BigInt(match[2]);
 }
