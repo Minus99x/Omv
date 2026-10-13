@@ -60,7 +60,7 @@ function rejectionAttempt(input, label, recoveryHash) {
   if (transactionHashHex !== recoveryHash) throw new Error(`${label} is not bound to the recovery transaction hash.`);
   if (input.includedInLedger !== false || input.successful !== false) throw new Error(`${label} must prove rejection before ledger inclusion.`);
   const resultCode = requiredText(input.resultCode, `${label}.resultCode`);
-  if (resultCode !== 'txTOO_EARLY') throw new Error(`${label} must prove Stellar txTOO_EARLY semantics.`);
+  if (resultCode !== 'tx_bad_minseq_age_or_gap') throw new Error(`${label} must prove Stellar tx_bad_minseq_age_or_gap semantics.`);
   return Object.freeze({
     transactionHashHex,
     observedAt: observed.text,
@@ -283,7 +283,7 @@ export function createStellarFailedAppliedRecoveryEvidenceBundle(input) {
     throw new Error('Failed-applied evidence requires an included but unsuccessful recovery transaction.');
   }
   const resultCode = requiredText(input.submission.resultCode, 'submission.resultCode');
-  if (resultCode === 'txSUCCESS' || resultCode === 'txTOO_EARLY') {
+  if (resultCode === 'txSUCCESS' || resultCode === 'tx_bad_minseq_age_or_gap' || resultCode === 'txTOO_EARLY') {
     throw new Error('Failed-applied evidence requires an applied failure result code.');
   }
   const submission = Object.freeze({
