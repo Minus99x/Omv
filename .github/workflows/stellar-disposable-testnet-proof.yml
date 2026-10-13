@@ -1,4 +1,4 @@
-name: Stellar sponsored 2-of-2 Testnet verified-XDR recovery proof
+name: Stellar issued-token 2-of-2 sponsored recovery proof
 on:
   push:
     branches:
@@ -15,6 +15,7 @@ jobs:
       OMEGAVAULT_STELLAR_DISPOSABLE_TESTNET: DISPOSABLE_FAKE_XLM_ONLY
       OMEGAVAULT_STELLAR_DISPOSABLE_CONTACTS: '2'
       OMEGAVAULT_STELLAR_DISPOSABLE_SPONSOR: SPONSORED_FAKE_XLM_ONLY
+      OMEGAVAULT_STELLAR_DISPOSABLE_ASSET: EPHEMERAL_CLASSIC_ASSET
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
