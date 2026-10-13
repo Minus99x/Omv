@@ -108,9 +108,23 @@ The native proof runner was extended on **fresh disposable Stellar Testnet accou
 
 This verifies a meaningful **1-of-1 owner-heartbeat and native recovery sequence**, not multi-contact threshold coverage, broad asset rescue, failure-applied one-time authorizer consumption, adversarial end-to-end threats, or production readiness. No customer assets or owner wallets were involved.
 
+## Public-Testnet 2-of-2 independent-guardian native recovery — 2026-10-12
+
+With two independently generated disposable contact keys, the same native Testnet path (one exact pre-authorized recovery, extra signers and owner sequence-age heartbeat) has now passed a complete public-network execution:
+
+- [Successful one-shot 2-of-2 GitHub Actions run](https://github.com/Minus99x/Omegavault/actions/runs/38336534794), commit `cd99f1ea3a47b15fa588a93129e0fa2282495731`.
+- Owner's native setup transaction: `ce172fd4966ba444398df62b28e3faa9f8130176d7492a18d5cd46f8e08d7da3`, ledger **5166913**.
+- Early recovery rejected with `tx_bad_minseq_age_or_gap`; both vault state and rescue balance unchanged.
+- Owner's real `bumpSequence` heartbeat: `59621a2775c2b5240b6b3c45413e0a1d4aa71cf95c2208e781e6336820b53a6c`, ledger **5166914**, and the same signed envelope rejected a second time.
+- Recovery transaction: `1e9fe486e26895b3959964d775c4087dacc68393c49d2d0f4eb81d22e5aa96ac`, ledger **5166924**, ledger hash `5cc7552103920f34767a84541f157c433b65383402560886247e85e817e8ff10`.
+- After a **45-second sequence-age interval** measured against ledger close times, Horizon confirmed **exactly 1.0000000 fake XLM** credited to the designated rescue wallet and removal of the one-time preAuthTx signer.
+- Offline negative test separately confirms one signature does not satisfy 2-of-2; the native execution was signed by two separate ephemeral contact keypairs, not by owner or an account-wide trusted-contact signer.
+
+This is a genuine two-guardian public-Testnet proof with disposable tokens, not an assertion of production readiness or support for arbitrary M-of-N. Native Stellar transaction preconditions allow at most two extra signers; broader policies need their own separately verified Soroban implementation.
+
 ## Remaining promotion gate
 
-Additional real public-Testnet cases remain required: **2-of-2 independent contacts**, fee-bump sponsorship, asset trustline preflight, failed-applied `preAuthTx` consumption, owner-contact compromise scenarios, full independent security review and release policy. The already-tested driver-injected pipelines remain valuable regressions but cannot substitute for chain evidence.
+Additional real public-Testnet cases remain required: **fee-bump sponsorship, classic asset/trustline preflight, failed-applied `preAuthTx` consumption**, owner/contact compromise scenarios, complete independent security review and release policy. The already-tested driver-injected pipelines remain valuable regressions but cannot substitute for chain evidence.
 
 Stellar remains **not promoted for product support**; observed Testnet milestones do not authorize deployment.
 
