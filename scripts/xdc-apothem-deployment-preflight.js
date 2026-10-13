@@ -15,8 +15,14 @@ import {
   compareApothemRpcProviders
 } from './xdc-apothem-independent-rpc-check.js';
 
-const CONTRACT='contracts/OmegaVaultRecoveryVaultV050.sol';
-const CONTRACT_NAME='OmegaVaultRecoveryVaultV050';
+const CONTRACT_VARIANTS=Object.freeze({
+ V050:Object.freeze({file:'contracts/OmegaVaultRecoveryVaultV050.sol',name:'OmegaVaultRecoveryVaultV050'}),
+ V051:Object.freeze({file:'contracts/OmegaVaultRecoveryVaultV051.sol',name:'OmegaVaultRecoveryVaultV051'})
+});
+function sourceSpec(variant){
+ if(typeof variant!=='string'||!Object.hasOwn(CONTRACT_VARIANTS,variant))throw new Error('Unknown fixed testnet recovery source variant');
+ return CONTRACT_VARIANTS[variant];
+}
 const SOLC_VERSION='0.8.24';
 const TEST_ONLY_DEPLOYER='0x'+'11'.repeat(20); // invalid as a live actor: no private key
 const CONTACTS=['0x'+'22'.repeat(20),'0x'+'33'.repeat(20)];
@@ -26,13 +32,15 @@ function quantity(v,label){
  if(typeof v!=='string'||!HEX.test(v))throw new Error(label+' invalid hex quantity');
  return BigInt(v);
 }
-export function readContract(){
- const source=readFileSync(CONTRACT,'utf8');
- if(!source.includes('contract OmegaVaultRecoveryVaultV050'))throw new Error('Expected exact V0.5 OmegaVault recovery source missing.');
+export function readContract(variant='V050'){
+ const {file,name}=sourceSpec(variant);
+ const source=readFileSync(file,'utf8');
+ if(!source.includes('contract '+name))throw new Error('Expected OmegaVault recovery source missing.');
  return source;
 }
-export function compileSource(source){
- const input={language:'Solidity',sources:{[CONTRACT]:{content:source}},settings:{
+export function compileSource(source,variant='V050'){
+ const {file,name}=sourceSpec(variant);
+ const input={language:'Solidity',sources:{[file]:{content:source}},settings:{
    optimizer:{enabled:true,runs:200},evmVersion:'paris',
    outputSelection:{'*':{'*':['abi','evm.bytecode.object','evm.deployedBytecode.object']}}
  }};
@@ -49,7 +57,7 @@ export function compileSource(source){
  const result=JSON.parse(raw.slice(start));
  const failures=(result.errors??[]).filter(e=>e.severity==='error');
  if(failures.length)throw new Error('Pinned solc compilation failed: '+failures.map(e=>e.formattedMessage??e.message).join(' | ').slice(0,600));
- const c=result.contracts?.[CONTRACT]?.[CONTRACT_NAME];
+ const c=result.contracts?.[file]?.[name];
  if(!c||!Array.isArray(c.abi))throw new Error('Expected V0.5 contract ABI missing.');
  const bin=c.evm?.bytecode?.object,runtime=c.evm?.deployedBytecode?.object;
  if(typeof bin!=='string'||!bin.length||typeof runtime!=='string'||!runtime.length)throw Error('Deployment or runtime bytecode missing.');
@@ -72,9 +80,10 @@ async function rpc(fetchImpl,endpoint,method,params=[]){
  if(body?.jsonrpc!=='2.0'||body.id!==id||Object.hasOwn(body,'error'))throw Error('RPC method '+method+' rejected: '+String(body?.error?.message??'response invalid').slice(0,200));
  return body.result;
 }
-export async function inspectXdcApothemDeployment({fetchImpl=globalThis.fetch}={}){
+export async function inspectXdcApothemDeployment({fetchImpl=globalThis.fetch,variant='V050'}={}){
  if(typeof fetchImpl!=='function')throw new TypeError('fetch required');
- const compiled=compileSource(readContract());
+ const {name}=sourceSpec(variant);
+ const compiled=compileSource(readContract(variant),variant);
  const common=await compareApothemRpcProviders({fetchImpl});
  if(common.chainIdDecimal!==51||common.readOnly!==true)throw Error('Apothem network comparison did not verify chain 51.');
  const params=['0x'+BigInt(common.sharedHeight).toString(16),false];
@@ -109,7 +118,7 @@ export async function inspectXdcApothemDeployment({fetchImpl=globalThis.fetch}={
  return Object.freeze({
    ...budget,
    commonBlock:common.sharedHeight,matchingCommonBlockHash:common.blockHash,
-   evmVersion:'paris',optimizerRuns:200,contractName:CONTRACT_NAME,
+   evmVersion:'paris',optimizerRuns:200,contractName:name,contractVariant:variant,
    dryRunDeployer:TEST_ONLY_DEPLOYER,
    dryRunDeployerHasNoPrivateKey:true,
    gasLimitPerBlock:limitA.toString(),
