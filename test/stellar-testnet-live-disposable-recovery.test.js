@@ -34,22 +34,22 @@ test('accepts only the exact genuine Horizon early-rejection code as proof',()=>
   const expectedHash='12'.repeat(32);
   const observedAt='2026-10-12T00:00:00Z';
   const result=requireStellarTestnetTooEarly({
-    response:{ data:{ extras:{ result_codes:{ transaction:'txTOO_EARLY' } } } }
+    response:{ data:{ extras:{ result_codes:{ transaction:'tx_bad_minseq_age_or_gap' } } } }
   },expectedHash,observedAt);
   assert.equal(result.includedInLedger,false);
   assert.equal(result.successful,false);
   assert.equal(result.transactionHashHex,expectedHash);
-  assert.equal(result.resultCode,'txTOO_EARLY');
+  assert.equal(result.resultCode,'tx_bad_minseq_age_or_gap');
 });
 
 test('rejects bad-sequence, bad-authorization and missing proof codes',()=>{
   const expectedHash='34'.repeat(32);
-  for(const code of ['txBAD_SEQ','txBAD_AUTH','txFAILED',null]){
+  for(const code of ['txBAD_SEQ','txBAD_AUTH','txFAILED','txTOO_EARLY',null]){
     assert.throws(
       ()=>requireStellarTestnetTooEarly({
         response:{ data:{ extras:{ result_codes:{ transaction:code } } } }
       },expectedHash,'2026-10-12T00:00:00Z'),
-      /unsupported proof result code/
+      /Expected native Stellar minimum-sequence-age rejection/
     );
   }
 });
