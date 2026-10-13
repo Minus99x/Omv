@@ -42,7 +42,7 @@ export function compileSource(source,variant='V050'){
  const {file,name}=sourceSpec(variant);
  const input={language:'Solidity',sources:{[file]:{content:source}},settings:{
    optimizer:{enabled:true,runs:200},evmVersion:'paris',
-   outputSelection:{'*':{'*':['abi','evm.bytecode.object','evm.deployedBytecode.object']}}
+   outputSelection:{'*':{'*':['abi','evm.bytecode.object','evm.deployedBytecode.object','evm.deployedBytecode.immutableReferences']}}
  }};
  // No dependency changes to package.json/package-lock; compiler version pinned.
  const version=execFileSync('npx',['--yes',`solc@${SOLC_VERSION}`,'--version'],{
@@ -62,7 +62,8 @@ export function compileSource(source,variant='V050'){
  const bin=c.evm?.bytecode?.object,runtime=c.evm?.deployedBytecode?.object;
  if(typeof bin!=='string'||!bin.length||typeof runtime!=='string'||!runtime.length)throw Error('Deployment or runtime bytecode missing.');
  if(!c.abi.some(x=>x.type==='constructor')||!c.abi.some(x=>x.name==='executeRecovery'))throw Error('Incorrect recovery ABI was compiled.');
- return {compilerVersion:version,creation:bin,runtime,abi:c.abi};
+ return {compilerVersion:version,creation:bin,runtime,
+   immutableReferences:c.evm?.deployedBytecode?.immutableReferences??{},abi:c.abi};
 }
 async function rpc(fetchImpl,endpoint,method,params=[]){
  if(!['https://rpc.apothem.network','https://erpc.apothem.network'].includes(endpoint))throw Error('Unapproved network endpoint.');
