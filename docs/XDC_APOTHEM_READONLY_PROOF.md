@@ -54,6 +54,20 @@ Verified in locally mined EVM transactions: owner and rescue configuration; nati
 
 Harness: `scripts/xdc-apothem-local-recovery-rehearsal.js`. **No public-network transaction, faucet, customer key, or real assets** were touched.
 
+## V0.5 adversarial finding and isolated V0.5.1 correction — 2026-10-13
+
+A purpose-built [successful isolated EVM security audit](https://github.com/Minus99x/Omegavault/actions/runs/38393273181) exercised the **unaltered** `OmegaVaultRecoveryVaultV050.sol` on a disposable Ganache chain configured with chain ID 51.
+
+It verified six malformed constructor policies revert (empty contact set, duplicate contacts, impossible threshold, zero inactivity, owner as contact, destination as contact), pre-recovery token sweeping is forbidden, invalid/zero token addresses are rejected, repeat zero-balance token sweeping cannot duplicate a payout and owner withdrawal is disabled after final recovery.
+
+**Material defect in V0.5, actually reproduced:** `receive()` accepts a new native-value transfer **after** `recovered` becomes true, but `executeRecovery()` cannot run twice and `ownerWithdraw()` is disabled once recovered. Therefore a normal late native deposit can become stranded. This candidate must not be the target of a new public Apothem deployment until fixed and revalidated.
+
+A **separate new source candidate**, `contracts/OmegaVaultRecoveryVaultV051.sol`, changes the adapter version to 501 and adds a permissionless `recoverLateNative()` guarded by `recovered`. Its sole payout target is the preconfigured immutable `rescueDestination`; the original V0.5 source and previously recorded gas estimate remain unchanged.
+
+[Verified isolated V0.5.1 safety run](https://github.com/Minus99x/Omegavault/actions/runs/38393575216) compiled the new source with pinned Solidity 0.8.24, completed genuine local 2-of-2 native recovery, rejected an early late-native sweep, then deposited **137 wei** after recovery and transferred exactly those 137 wei to the same immutable rescue address. An empty second sweep did not credit extra value. This remains **local simulated chain execution**, not public XDC recovery or a security audit.
+
+**Required before the public Apothem attempt:** Pin and independently compare V0.5.1 compiled runtime/creation bytecode, repeat gas estimates on both testnet RPCs for this changed source, revisit reentrancy and malicious-recipient scenarios, and use only fresh disposable faucet-funded accounts with a strict maximum fake-token fee cap. Do **not** reuse the V0.5 deployment estimate as though it applies to V0.5.1. Re-evaluate forced native transfers and smart-contract recipient compatibility separately.
+
 ## Funding boundary for the first public-Testnet recovery
 
 The [official Apothem faucet](https://faucet.apothem.network/) requires a wallet address and CAPTCHA according to its documented workflow. No authenticated, documented unattended claim method has been established in this campaign. A **fresh disposable Apothem deployer wallet** must therefore be funded with faucet tokens through an authorized user action before any genuine testnet deployment can be claimed. Do not substitute user-controlled mainnet or existing production wallet keys, copy a private key into git/CI logs, or bypass the faucet's anti-abuse checks.
