@@ -1,0 +1,27 @@
+name: XDC isolated V0.5.1 late-native security proof
+on:
+  push:
+    branches:
+      - dev/0.6.60-reconcile-overnight-bitcoin
+    paths:
+      - .github/workflows/xdc-apothem-v051-safety.yml
+permissions:
+  contents: read
+jobs:
+  v051-late-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+      - name: Install pinned dependencies and isolated local-EVM test tools
+        run: |
+          npm ci --ignore-scripts
+          npm install --no-save --package-lock=false --ignore-scripts ethers@6.13.4 ganache@7.9.2
+      - name: Syntax-check the new V0.5.1 candidate proof
+        run: node --check scripts/xdc-apothem-local-v051-safety.js
+      - name: Reproduce two-guardian native recovery and return post-recovery deposits safely
+        run: node scripts/xdc-apothem-local-v051-safety.js
