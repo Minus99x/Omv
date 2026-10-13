@@ -9,10 +9,13 @@
 import { pathToFileURL } from 'node:url';
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
 import {
+  buildHeartbeatEnvelopeArtifact,
   buildRecoveryEnvelopeArtifact,
+  createHeartbeatPlan,
   createRecoveryEnvelopePlan,
   createSignerSetupPlan,
   validateRecoveryAccountSnapshot,
+  verifySignedHeartbeatEnvelopeArtifact,
   verifySignedRecoveryEnvelopeArtifact
 } from '../src/chains/stellar/native-recovery.js';
 import {
@@ -21,6 +24,7 @@ import {
 import {
   normalizeHorizonAccountSnapshot,
   normalizeHorizonFinality,
+  normalizeHorizonSubmissionError,
   normalizeHorizonSubmissionSuccess
 } from '../src/chains/stellar/horizon-proof-driver.js';
 
@@ -29,6 +33,7 @@ const TESTNET_HORIZON = 'https://horizon-testnet.stellar.org';
 const ENABLE = 'OMEGAVAULT_STELLAR_DISPOSABLE_TESTNET';
 const CONFIRM = 'DISPOSABLE_FAKE_XLM_ONLY';
 const TEST_XLM = '1.0000000';
+const INACTIVITY_SECONDS = 45;
 
 function requireGate(env) {
   if (env?.[ENABLE] !== CONFIRM) {
@@ -50,6 +55,33 @@ function assertSuccess(response, expectedHash) {
   const normalized = normalizeHorizonSubmissionSuccess({ response, expectedTransactionHashHex:expectedHash });
   if (normalized.resultCode !== 'txSUCCESS') throw new Error('Live transaction did not prove success.');
   return normalized;
+}
+export function requireStellarTestnetTooEarly(error, expectedTransactionHashHex, observedAt) {
+  return normalizeHorizonSubmissionError({ error, expectedTransactionHashHex, observedAt });
+}
+async function proveTooEarly({ transport, signedTransactionXdr, expectedHash, vault, rescue, expectedSequence, expectedPreAuthSigner, expectedRescueBalance, label }) {
+  let rejected = null;
+  try {
+    await transport.submitTransactionXdr(signedTransactionXdr);
+  } catch (error) {
+    rejected = requireStellarTestnetTooEarly(error, expectedHash, new Date().toISOString());
+  }
+  if (!rejected || rejected.includedInLedger !== false || rejected.resultCode !== 'txTOO_EARLY') {
+    throw new Error(label+' must produce a real non-included txTOO_EARLY rejection.');
+  }
+  const [state, beneficiary] = await Promise.all([
+    transport.loadAccount(vault), transport.loadAccount(rescue)
+  ]);
+  if (String(state.sequence) !== String(expectedSequence)) {
+    throw new Error(label+' unexpectedly advanced the source sequence.');
+  }
+  if (!state.signers?.some(s=>s.key === expectedPreAuthSigner && Number(s.weight)>0)) {
+    throw new Error(label+' unexpectedly removed the recovery preAuthTx signer.');
+  }
+  if (nativeBalance(beneficiary,rescue) !== expectedRescueBalance) {
+    throw new Error(label+' unexpectedly credited the recovery beneficiary.');
+  }
+  return Object.freeze({ outcome:rejected.resultCode, transactionHash:expectedHash, sourceSequenceUnchanged:true, preAuthSignerPreserved:true, rescueBalanceUnchanged:true });
 }
 async function fetchFund(fetchImpl, account) {
   const res = await fetchImpl(FRIENDbot+'/?addr='+encodeURIComponent(account),{
@@ -99,7 +131,7 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     vaultAccount:vault.publicKey(),
     rescueDestination:rescue.publicKey(),
     currentSequence:String(initialVault.sequence),
-    inactivitySeconds:12,
+    inactivitySeconds:INACTIVITY_SECONDS,
     contacts:[contact.publicKey()],
     threshold:1,
     assets:['native'],
@@ -144,15 +176,76 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     throw new Error('Testnet signer setup did not advance owner account sequence.');
   }
 
-  // Strict sequence-age observation against real ledger close times, never
-  // wall-clock assumption or simulated result. This can take some seconds.
+  // The exact pre-authorized recovery must be rejected while owner is active.
+  const initialRejection=await proveTooEarly({
+    transport,signedTransactionXdr:signedRecovery.toXdr(),
+    expectedHash:recoveryArtifact.transactionHashHex,
+    vault:vault.publicKey(),rescue:rescue.publicKey(),
+    expectedSequence:String(setupState.sequence),
+    expectedPreAuthSigner:recoveryArtifact.preAuthTxSigner,
+    expectedRescueBalance:rescueBalanceBefore,
+    label:'Pre-heartbeat early recovery'
+  });
+
+  // Owner heartbeat is an actual signed Stellar bumpSequence, not a local
+  // timestamp reset; it must preserve the already-bound preAuthTx signer.
+  const heartbeatPlan=createHeartbeatPlan({
+    vaultAccount:vault.publicKey(),currentSequence:String(setupState.sequence)
+  });
+  const heartbeatArtifact=buildHeartbeatEnvelopeArtifact({
+    vaultAccount:vault.publicKey(),currentSequence:String(setupState.sequence)
+  });
+  const signedHeartbeat=TransactionBuilder.fromXdr(heartbeatArtifact.transactionXdr,Networks.TESTNET);
+  signedHeartbeat.sign(vault);
+  const verifiedHeartbeat=verifySignedHeartbeatEnvelopeArtifact({
+    plan:heartbeatPlan,artifact:heartbeatArtifact,signedTransactionXdr:signedHeartbeat.toXdr()
+  });
+  if(!verifiedHeartbeat.valid)throw new Error('Owner heartbeat did not pass offline signature checks: '+verifiedHeartbeat.errors.join('; '));
+  const heartbeatResult=assertSuccess(
+    await transport.submitTransactionXdr(signedHeartbeat.toXdr()),heartbeatArtifact.transactionHashHex
+  );
+  const heartbeatTransaction=await transport.loadTransaction(heartbeatArtifact.transactionHashHex);
+  const heartbeatLedger=await transport.loadLedger(heartbeatResult.ledger);
+  const heartbeatFinality=normalizeHorizonFinality({
+    transactionResponse:heartbeatTransaction,ledgerResponse:heartbeatLedger,
+    expectedTransactionHashHex:heartbeatArtifact.transactionHashHex,
+    expectedLedger:heartbeatResult.ledger
+  });
+  const postHeartbeatState=await transport.loadAccount(vault.publicKey());
+  const postHeartbeatSequence=String(BigInt(setupState.sequence)+2n);
+  if(String(postHeartbeatState.sequence)!==postHeartbeatSequence ||
+     BigInt(postHeartbeatState.sequence_time??-1)<=BigInt(setupState.sequence_time??-1)) {
+    throw new Error('Real owner heartbeat did not advance the sequence/sequence-age anchor.');
+  }
+  const afterHeartbeat=normalizeHorizonAccountSnapshot({
+    accountResponse:postHeartbeatState,expectedAccount:vault.publicKey()
+  });
+  const readyAfterHeartbeat=validateRecoveryAccountSnapshot({
+    plan:recoveryPlan,artifact:recoveryArtifact,snapshot:afterHeartbeat
+  });
+  if(!readyAfterHeartbeat.ready)throw new Error('Owner heartbeat destroyed configured recovery policy: '+readyAfterHeartbeat.errors.join('; '));
+
+  // The SAME immutable signed recovery envelope must again be too early
+  // after the owner heartbeat. It cannot consume the preAuth signer or funds.
+  const resetRejection=await proveTooEarly({
+    transport,signedTransactionXdr:signedRecovery.toXdr(),
+    expectedHash:recoveryArtifact.transactionHashHex,
+    vault:vault.publicKey(),rescue:rescue.publicKey(),
+    expectedSequence:postHeartbeatSequence,
+    expectedPreAuthSigner:recoveryArtifact.preAuthTxSigner,
+    expectedRescueBalance:rescueBalanceBefore,
+    label:'Post-heartbeat early recovery'
+  });
+
+  // Eligibility is established from genuine latest ledger close time and
+  // the freshly reset account sequence age. Never use local clock alone.
   const eligible=await transport.waitUntilEligible({
     sourceAccount:vault.publicKey(),
     minAccountSequenceAge:recoveryPlan.preconditions.minAccountSequenceAge,
-    currentSequence:String(setupState.sequence),
+    currentSequence:postHeartbeatSequence,
     recoverySequence:recoveryPlan.sequence.recoverySequence
   });
-  if(eligible.eligible!==true)throw new Error('Real Testnet sequence-age precondition was not observed.');
+  if(eligible.eligible!==true)throw new Error('Real Testnet post-heartbeat eligibility was not observed.');
 
   const recoveryResult=assertSuccess(
     await transport.submitTransactionXdr(signedRecovery.toXdr()),
@@ -183,6 +276,12 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     contact:contact.publicKey(),
     setupTransactionHash:setupHash,
     setupLedger:setupResult.ledger,
+    initialEarlyRejection:initialRejection,
+    ownerHeartbeatTransactionHash:heartbeatArtifact.transactionHashHex,
+    ownerHeartbeatLedger:heartbeatResult.ledger,
+    ownerHeartbeatLedgerHash:heartbeatFinality.ledgerHash,
+    postHeartbeatEarlyRejection:resetRejection,
+    inactivitySeconds:INACTIVITY_SECONDS,
     recoveryTransactionHash:recoveryResult.transactionHashHex,
     recoveryLedger:recoveryResult.ledger,
     recoveryLedgerHash:finality.ledgerHash,
@@ -190,6 +289,8 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     verifiedOwnerSignerSet:true,
     verifiedContactBoundToExactRecovery:true,
     verifiedSequenceAge:true,
+    ownerHeartbeatResetProven:true,
+    initialAndResetEarlyRejectionsProven:true,
     rescueCreditConfirmed:true,
     singleUseSignerConsumed:true
   });
