@@ -1,4 +1,4 @@
-name: XDC Apothem independent two-provider RPC comparison
+name: XDC Apothem official and eRPC provider comparison
 on:
   push:
     branches:
@@ -25,5 +25,5 @@ jobs:
         run: node scripts/xdc-apothem-readonly-probe.js
       - name: Validate independent same-height and gas comparison
         run: node --check scripts/xdc-apothem-independent-rpc-check.js && node --test test/xdc-apothem-independent-rpc-check.test.js
-      - name: Cross-check two independent Apothem providers on the live chain
+      - name: Cross-check official and eRPC Apothem providers at the same live height
         run: node scripts/xdc-apothem-independent-rpc-check.js
