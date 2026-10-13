@@ -68,6 +68,16 @@ A **separate new source candidate**, `contracts/OmegaVaultRecoveryVaultV051.sol`
 
 **Required before the public Apothem attempt:** Pin and independently compare V0.5.1 compiled runtime/creation bytecode, repeat gas estimates on both testnet RPCs for this changed source, revisit reentrancy and malicious-recipient scenarios, and use only fresh disposable faucet-funded accounts with a strict maximum fake-token fee cap. Do **not** reuse the V0.5 deployment estimate as though it applies to V0.5.1. Re-evaluate forced native transfers and smart-contract recipient compatibility separately.
 
+## V0.5.1 independent Apothem candidate estimate — 2026-10-13
+
+[Successful separate V0.5.1 live read-only preflight](https://github.com/Minus99x/Omegavault/actions/runs/38479434005) compiled **the corrected V0.5.1 source itself**, never substituting the older V0.5 fee estimate. A two-item allowlist selects exactly the existing V0.5 baseline or corrected V0.5.1 source; arbitrary file paths and variants fail before RPC access.
+
+- Compiler: pinned **Solidity 0.8.24**, Paris EVM, optimizer 200 runs; creation bytecode **5,613 bytes**, runtime bytecode **4,568 bytes**.
+- Official and eRPC Apothem providers agreed on chain **51**, common block **84,056,421** (hash `0xfa1eff98b11ad137e8529e29c50fbb843f3114514dc18fa394c3b04b447bbe37`), base fee **625 gwei** and gas quote **625 gwei**.
+- Both independently simulated the same 2-of-2/45-second recovery deployment bytecode at **1,442,885 gas**; conservative 25%-buffered limit **1,803,607 gas**, estimated maximum **1.127254375 fake TXDC** at the observed quote.
+- The estimated fee remained below a fixed **5 fake TXDC** deployment ceiling. This is a *read-only RPC simulation with an unowned placeholder deployer address*. No actual wallet was funded, transaction signed/broadcast or new XDC contract deployed.
+- The estimate is a historical public-testnet observation, not a standing quote, fee reservation or authorization. Repeat with funded disposable identities and explicit fee-mode/balance checks immediately before any future real deployment.
+
 ## Funding boundary for the first public-Testnet recovery
 
 The [official Apothem faucet](https://faucet.apothem.network/) requires a wallet address and CAPTCHA according to its documented workflow. No authenticated, documented unattended claim method has been established in this campaign. A **fresh disposable Apothem deployer wallet** must therefore be funded with faucet tokens through an authorized user action before any genuine testnet deployment can be claimed. Do not substitute user-controlled mainnet or existing production wallet keys, copy a private key into git/CI logs, or bypass the faucet's anti-abuse checks.
