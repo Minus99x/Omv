@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {Wallet} from 'ethers';
+import {Wallet,Transaction} from 'ethers';
 import {createEncryptedDisposableBundle,validateDisposablePublicManifest,
  inspectDisposableFunding,requirePrivateDirectoryOutsideGit} from './xdc-apothem-disposable-wallet.js';
-import {requireLiveTrialGate,executeDisposableApothemTrial} from './xdc-apothem-disposable-live.js';
+import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction} from './xdc-apothem-disposable-live.js';
 const pass='local-fixture-password-not-for-real-wallets';
 test('disposable private keys are encrypted, four roles distinct and never returned as naked secrets',async()=>{
  const bundle=await createEncryptedDisposableBundle({password:pass});
@@ -79,4 +79,64 @@ test('preparation forbids plaintext and encrypted test wallet artifacts within a
   try{assert.equal(requirePrivateDirectoryOutsideGit(outside),outside);}
   finally{rmSync(outside,{recursive:true,force:true});}
  }finally{rmSync(tmp,{recursive:true,force:true});}
+});
+
+test('signed Apothem hash is durably recorded before RPC broadcast or lost response',async()=>{
+ const wallet=Wallet.createRandom();
+ const tx={chainId:51,type:0,nonce:7,gasPrice:625000000000n,
+  gasLimit:25000n,to:Wallet.createRandom().address,value:137n};
+ const signer={
+  getAddress:async()=>wallet.address,
+  populateTransaction:async x=>({...x,from:wallet.address}),
+  signTransaction:async x=>wallet.signTransaction(x)
+ };
+ let recorded=null,broadcasts=0;
+ const response=await broadcastSignedApothemTransaction({
+  signer,transaction:tx,
+  recordBeforeBroadcast:async value=>{recorded=value;},
+  network:{broadcastTransaction:async raw=>{
+   broadcasts++;
+   const signed=Transaction.from(raw);
+   assert.equal(recorded.txHash,signed.hash);
+   assert.equal(recorded.nonce,7);
+   assert.equal(signed.from.toLowerCase(),wallet.address.toLowerCase());
+   return {hash:signed.hash};
+  }}
+ });
+ assert.equal(response.hash,recorded.txHash);
+ assert.equal(broadcasts,1);
+ let lostHash=null;
+ await assert.rejects(broadcastSignedApothemTransaction({
+  signer,transaction:tx,
+  recordBeforeBroadcast:async value=>{lostHash=value.txHash;},
+  network:{broadcastTransaction:async raw=>{
+   assert.equal(Transaction.from(raw).hash,lostHash);
+   throw Error('Public RPC response lost AFTER acceptance');
+  }}
+ }),/response lost/);
+ assert.match(lostHash,/^0x[0-9a-f]{64}$/);
+});
+test('Apothem signed transaction mismatches and missing journal durability block broadcast',async()=>{
+ const wallet=Wallet.createRandom();
+ const tx={chainId:51,type:0,nonce:0,gasPrice:625000000000n,
+  gasLimit:25000n,to:Wallet.createRandom().address,value:0n};
+ const signer={
+  getAddress:async()=>wallet.address,
+  populateTransaction:async x=>({...x,from:wallet.address}),
+  signTransaction:async x=>wallet.signTransaction(x)
+ };
+ let broadcastCount=0;
+ const network={broadcastTransaction:async()=>{broadcastCount++;throw Error('unexpected broadcast');}};
+ const recordBeforeBroadcast=async()=>{throw Error('journal write failed');};
+ await assert.rejects(broadcastSignedApothemTransaction({
+  signer,network,transaction:tx,recordBeforeBroadcast
+ }),/journal write failed/);
+ await assert.rejects(broadcastSignedApothemTransaction({
+  signer:{...signer,signTransaction:async x=>wallet.signTransaction({...x,chainId:50})},
+  network,transaction:tx,recordBeforeBroadcast:async()=>{throw Error('must not reach journal');}
+ }),/differs from bounded chain-51 intent/);
+ await assert.rejects(broadcastSignedApothemTransaction({
+  signer,network,transaction:tx
+ }),/durable pre-broadcast journal/);
+ assert.equal(broadcastCount,0);
 });
