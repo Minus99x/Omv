@@ -64,6 +64,23 @@ export async function rehearseRecoveryLocally(){
   ]);
   assert.equal((await provider.getNetwork()).chainId,51n);
   const vaultFactory=new ContractFactory(compiled.abi,'0x'+compiled.creation,owner);
+  // Constructor mutations must fail on an actual local EVM call, not just
+  // an offline validator. No invalid configuration can be deployed.
+  const invalidPolicies=[
+    {contacts:[],threshold:0,inactivity:45,destination:rescueAddress},
+    {contacts:[a,a],threshold:2,inactivity:45,destination:rescueAddress},
+    {contacts:[a,b],threshold:3,inactivity:45,destination:rescueAddress},
+    {contacts:[a,b],threshold:2,inactivity:0,destination:rescueAddress},
+    {contacts:[ownerAddress,b],threshold:2,inactivity:45,destination:rescueAddress},
+    {contacts:[a,rescueAddress],threshold:2,inactivity:45,destination:rescueAddress}
+  ];
+  for(const policy of invalidPolicies){
+    const candidate=await vaultFactory.getDeployTransaction(
+      policy.contacts,policy.threshold,policy.inactivity,policy.destination
+    );
+    await expectRevert(()=>provider.call({from:ownerAddress,data:candidate.data}),
+      'Invalid constructor policy must revert');
+  }
   const vault=await vaultFactory.deploy([a,b],2,45,rescueAddress);
   await vault.waitForDeployment();
   const vaultAddress=await vault.getAddress();
@@ -71,6 +88,8 @@ export async function rehearseRecoveryLocally(){
   assert.equal((await vault.rescueDestination()).toLowerCase(),rescueAddress.toLowerCase());
   assert.equal(await vault.threshold(),2n);
   await mined(owner.sendTransaction({to:vaultAddress,value:parseEther('1')}));
+  await expectRevert(()=>vault.recoverERC20.staticCall(ownerAddress),
+    'Anyone must be unable to sweep tokens before threshold recovery');
   await expectRevert(()=>vault.connect(contactA).approveRecovery.staticCall(),'Guardian cannot approve before inactivity');
   await expectRevert(()=>vault.connect(observer).approveRecovery.staticCall(),'Noncontact cannot approve');
   await expectRevert(()=>vault.connect(observer).executeRecovery.staticCall(),'Recovery must not execute before inactivity');
@@ -100,6 +119,25 @@ export async function rehearseRecoveryLocally(){
   await mined(vault.connect(observer).recoverERC20(tokenAddress));
   assert.equal(await token.balanceOf(vaultAddress),0n);
   assert.equal(await token.balanceOf(rescueAddress),1000000n);
+  // Permissionless ERC-20 sweeping cannot redirect or duplicate the credit.
+  await mined(vault.connect(contactA).recoverERC20(tokenAddress));
+  assert.equal(await token.balanceOf(rescueAddress),1000000n);
+  await expectRevert(()=>vault.connect(observer).recoverERC20.staticCall(ownerAddress),
+    'An account without valid token balanceOf must be rejected');
+  await expectRevert(()=>vault.connect(observer).recoverERC20.staticCall(
+    '0x0000000000000000000000000000000000000000'),
+    'A zero-address token must be rejected');
+  await expectRevert(()=>vault.ownerWithdraw.staticCall(rescueAddress,1n),
+    'Owner cannot withdraw after recovery');
+
+  // This is a FAILING PROPERTY OF V0.5, exposed rather than hidden:
+  // after recovered is true, receive() still accepts native value and
+  // executeRecovery()/ownerWithdraw() are both disabled, so late ETH/TXDC
+  // paid directly to the vault remains trapped. Do not promote this version.
+  await mined(owner.sendTransaction({to:vaultAddress,value:1n}));
+  assert.equal(await provider.getBalance(vaultAddress),1n);
+  await expectRevert(()=>vault.executeRecovery.staticCall(),
+    'No second native recovery after recovery state is final');
 
   const second=await vaultFactory.deploy([a,b],2,45,rescueAddress);
   await second.waitForDeployment();
@@ -129,6 +167,13 @@ export async function rehearseRecoveryLocally(){
    doubleRecoveryRejected:true,
    mockTokenRecoveredUnits:'1000000',
    tokenSweepVerified:true,
+   invalidConstructorPoliciesRejected:invalidPolicies.length,
+   preRecoveryTokenSweepRejected:true,
+   fakeTokenAndZeroAddressRejected:true,
+   duplicateTokenSweepNoExtraCredit:true,
+   ownerWithdrawalAfterRecoveryRejected:true,
+   lateNativeValueStrandedInV050:true,
+   releaseSafetyGate:'BLOCKED: V0.5 accepts late native deposits after recovery without any rescue path',
    recoveryGasUsed:recoveryReceipt.gasUsed.toString(),
    noProductionAssets:true
   });
