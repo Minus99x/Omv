@@ -10,11 +10,14 @@ import { pathToFileURL } from 'node:url';
 import { Account, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
 import {
   buildHeartbeatEnvelopeArtifact,
+  buildFeeBumpEnvelopeArtifact,
   buildRecoveryEnvelopeArtifact,
+  createFeeBumpSponsorPlan,
   createHeartbeatPlan,
   createRecoveryEnvelopePlan,
   createSignerSetupPlan,
   validateRecoveryAccountSnapshot,
+  verifySignedFeeBumpEnvelopeArtifact,
   verifySignedHeartbeatEnvelopeArtifact,
   verifySignedRecoveryEnvelopeArtifact
 } from '../src/chains/stellar/native-recovery.js';
@@ -38,6 +41,14 @@ function requireGate(env) {
   if (env?.[ENABLE] !== CONFIRM) {
     throw new Error('Disposable Stellar Testnet live execution is disabled; explicit testnet gate is required.');
   }
+}
+export function disposableStellarFeeSponsorMode(env) {
+  requireGate(env);
+  const value=env?.OMEGAVAULT_STELLAR_DISPOSABLE_SPONSOR ?? 'OFF';
+  if(value !== 'OFF' && value !== 'SPONSORED_FAKE_XLM_ONLY'){
+    throw new Error('Disposable fee sponsorship requires an explicit, exact Testnet-only opt-in.');
+  }
+  return value==='SPONSORED_FAKE_XLM_ONLY';
 }
 export function disposableStellarContactCount(env) {
   requireGate(env);
@@ -143,11 +154,15 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   if(typeof fetchImpl!=='function') throw new TypeError('Live Testnet proof requires fetch().');
   if(Networks.TESTNET!=='Test SDF Network ; September 2015') throw new Error('Stellar Testnet identity mismatch.');
   const contactCount=disposableStellarContactCount(env);
-  // Fresh independent, disposable identities. Never load any key material.
+  const sponsored=disposableStellarFeeSponsorMode(env);
+  // Each participating signer is generated afresh; no customer or owner key.
   const vault=Keypair.random(), rescue=Keypair.random();
   const contacts=Array.from({length:contactCount},()=>Keypair.random());
+  const feeSponsor=sponsored?Keypair.random():null;
   const contactAddresses=contacts.map(contact=>contact.publicKey());
-  if(new Set([vault.publicKey(),rescue.publicKey(),...contactAddresses]).size!==contactCount+2){
+  const allIdentities=[vault.publicKey(),rescue.publicKey(),...contactAddresses,
+    ...(feeSponsor?[feeSponsor.publicKey()]:[])];
+  if(new Set(allIdentities).size!==allIdentities.length){
     throw new Error('Discovered duplicate disposable Stellar signer identities.');
   }
   const transport=createStellarTestnetHorizonHttpTransport({
@@ -155,6 +170,7 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   });
   await fetchFund(fetchImpl,vault.publicKey());
   await fetchFund(fetchImpl,rescue.publicKey());
+  if (feeSponsor) await fetchFund(fetchImpl,feeSponsor.publicKey());
   const initialVault=await pollAccount(transport,vault.publicKey());
   const initialRescue=await pollAccount(transport,rescue.publicKey());
   const rescueBalanceBefore=nativeBalance(initialRescue,rescue.publicKey());
@@ -178,6 +194,33 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     plan:recoveryPlan,artifact:recoveryArtifact,signedTransactionXdr:signedRecovery.toXdr()
   });
   if(!verified.valid)throw new Error('Disposable recovery XDR failed signature validation: '+verified.errors.join('; '));
+
+  let signedFeeBump=null;
+  let feeBumpArtifact=null;
+  let feeBumpPlan=null;
+  if(feeSponsor){
+    feeBumpPlan=createFeeBumpSponsorPlan({
+      feeAccount:feeSponsor.publicKey(),
+      innerEnvelopeHash:recoveryArtifact.transactionHashHex,
+      maxFeeStroops:'1000'
+    });
+    feeBumpArtifact=buildFeeBumpEnvelopeArtifact({
+      recoveryPlan,recoveryArtifact,
+      signedRecoveryTransactionXdr:signedRecovery.toXdr(),
+      feeBumpPlan,baseFeeStroops:'200'
+    });
+    signedFeeBump=TransactionBuilder.fromXdr(feeBumpArtifact.feeBumpTransactionXdr,Networks.TESTNET);
+    signedFeeBump.sign(feeSponsor);
+    const verification=verifySignedFeeBumpEnvelopeArtifact({
+      recoveryPlan,recoveryArtifact,feeBumpPlan,artifact:feeBumpArtifact,
+      signedFeeBumpTransactionXdr:signedFeeBump.toXdr()
+    });
+    if(!verification.valid)throw new Error('Sponsored envelope failed signed inner/outer verification: '+verification.errors.join('; '));
+    if(signedFeeBump.innerTransaction.toXdr()!==signedRecovery.toXdr() ||
+       feeBumpArtifact.innerTransactionHashHex!==recoveryArtifact.transactionHashHex){
+      throw new Error('Fee sponsorship changed the protected recovery envelope.');
+    }
+  }
 
   // A single owner-authorized, on-ledger atomic setup binds exactly this
   // recovery hash; the contact never acquires account-wide signing authority.
@@ -279,18 +322,57 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   });
   if(eligible.eligible!==true)throw new Error('Real Testnet post-heartbeat eligibility was not observed.');
 
+  // Establish actual balances immediately before final recovery. With a
+  // fee bump, the fee payer must pay and the vault must lose only 1 XLM.
+  const beforeRecoveryVault=await transport.loadAccount(vault.publicKey());
+  const vaultBeforeBalance=nativeBalance(beforeRecoveryVault,vault.publicKey());
+  const beforeSponsor=feeSponsor?await transport.loadAccount(feeSponsor.publicKey()):null;
+  const sponsorBeforeBalance=feeSponsor?nativeBalance(beforeSponsor,feeSponsor.publicKey()):null;
+  const submittedHash=feeBumpArtifact?.feeBumpTransactionHashHex ?? recoveryArtifact.transactionHashHex;
+  const signedFinalXdr=signedFeeBump?.toXdr() ?? signedRecovery.toXdr();
   const recoveryResult=assertSuccess(
-    await transport.submitTransactionXdr(signedRecovery.toXdr()),
-    recoveryArtifact.transactionHashHex
+    await transport.submitTransactionXdr(signedFinalXdr),
+    submittedHash
   );
-  const chainTx=await transport.loadTransaction(recoveryArtifact.transactionHashHex);
+  const chainTx=await transport.loadTransaction(submittedHash);
   const chainLedger=await transport.loadLedger(recoveryResult.ledger);
   const finality=normalizeHorizonFinality({
     transactionResponse:chainTx,
     ledgerResponse:chainLedger,
-    expectedTransactionHashHex:recoveryArtifact.transactionHashHex,
+    expectedTransactionHashHex:submittedHash,
     expectedLedger:recoveryResult.ledger
   });
+  let sponsorshipEvidence=null;
+  if(feeSponsor){
+    if(chainTx.fee_account!==feeSponsor.publicKey() ||
+       String(chainTx.inner_transaction_hash??'').toLowerCase()!==recoveryArtifact.transactionHashHex){
+      throw new Error('Real Horizon fee-bump transaction did not bind the expected sponsor and signed inner recovery.');
+    }
+    const chargedRaw=String(chainTx.fee_charged??'');
+    if(!/^[1-9]\\d*$/.test(chargedRaw) ||
+       BigInt(chargedRaw)>BigInt(feeBumpArtifact.maxFeeStroops)){
+      throw new Error('Real fee bump did not report a bounded positive fee charge.');
+    }
+    const [afterSponsor,afterVault]=await Promise.all([
+      transport.loadAccount(feeSponsor.publicKey()),transport.loadAccount(vault.publicKey())
+    ]);
+    if(sponsorBeforeBalance-nativeBalance(afterSponsor,feeSponsor.publicKey())!==BigInt(chargedRaw)){
+      throw new Error('Sponsor XLM balance did not pay the exact on-ledger charged fee.');
+    }
+    if(vaultBeforeBalance-nativeBalance(afterVault,vault.publicKey())!==amountUnits(TEST_XLM)){
+      throw new Error('Sponsored inner recovery unexpectedly charged vault transaction fees or extra funds.');
+    }
+    sponsorshipEvidence=Object.freeze({
+      feePayer:feeSponsor.publicKey(),
+      outerTransactionHash:submittedHash,
+      innerTransactionHash:recoveryArtifact.transactionHashHex,
+      actualFeeChargedStroops:chargedRaw,
+      totalBidFeeCapStroops:feeBumpArtifact.maxFeeStroops,
+      signedInnerEnvelopePreserved:true,
+      sponsorChargedExactHorizonFee:true,
+      vaultOnlyPaidProtectedRecoveryAmount:true
+    });
+  }
   const finalRescue=await pollAccount(transport,rescue.publicKey());
   const rescueBalanceAfter=nativeBalance(finalRescue,rescue.publicKey());
   if(rescueBalanceAfter-rescueBalanceBefore!==amountUnits(TEST_XLM)){
@@ -315,7 +397,9 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     ownerHeartbeatLedgerHash:heartbeatFinality.ledgerHash,
     postHeartbeatEarlyRejection:resetRejection,
     inactivitySeconds:INACTIVITY_SECONDS,
-    recoveryTransactionHash:recoveryResult.transactionHashHex,
+    recoveryTransactionHash:recoveryArtifact.transactionHashHex,
+    networkSubmittedTransactionHash:submittedHash,
+    sponsorshipEvidence,
     recoveryLedger:recoveryResult.ledger,
     recoveryLedgerHash:finality.ledgerHash,
     amountRecoveredXlm:TEST_XLM,
