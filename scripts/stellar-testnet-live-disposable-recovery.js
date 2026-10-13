@@ -349,7 +349,7 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
       throw new Error('Real Horizon fee-bump transaction did not bind the expected sponsor and signed inner recovery.');
     }
     const chargedRaw=String(chainTx.fee_charged??'');
-    if(!/^[1-9]\\d*$/.test(chargedRaw) ||
+    if(!/^[1-9]\d*$/.test(chargedRaw) ||
        BigInt(chargedRaw)>BigInt(feeBumpArtifact.maxFeeStroops)){
       throw new Error('Real fee bump did not report a bounded positive fee charge.');
     }
