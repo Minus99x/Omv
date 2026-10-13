@@ -4,7 +4,7 @@ import { encodeRecoveryVaultConstructor,createApothemReadOnlyDeploymentBudget,
  XDC_APOTHEM_DISPOSABLE_MAX_FEE_WEI } from '../src/chains/evm/apothem-deployment-budget.js';
 const owner='0x'+'11'.repeat(20),contacts=['0x'+'22'.repeat(20),'0x'+'33'.repeat(20)],rescue='0x'+'44'.repeat(20);
 const constructor={owner,contacts,rescue,threshold:2,inactivitySeconds:45};
-const dummy={compiledCreationBytecode:'6001600055',codeSizeBytes:32,compilerVersion:'0.8.24+commit.e11b9ed9.Emscripten.clang',providerGasPriceHex:['0x9184e72a000','0x9184e72a000']};
+const dummy={compiledCreationBytecode:'6001600055',codeSizeBytes:32,compilerVersion:'0.8.24+commit.e11b9ed9.Emscripten.clang',providerGasPriceHex:['0x9184e72a00','0x9184e72a00']};
 test('constructor encoding binds two unique guardians, policy, and immutable rescue using canonical ABI words',()=>{
  const data=encodeRecoveryVaultConstructor(constructor);
  assert.equal(data.length,2+32*2*(5+contacts.length));
