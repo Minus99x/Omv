@@ -89,7 +89,7 @@ function scriptedHorizon(inputs) {
       const xdr = new URLSearchParams(options.body).get('tx');
       if (submissions === 1 || submissions === 3) {
         assert.equal(xdr, inputs.signedRecoveryTransactionXdr);
-        return response({ extras:{ result_codes:{ transaction:'txTOO_EARLY' } } }, { ok:false, status:400 });
+        return response({ extras:{ result_codes:{ transaction:'tx_bad_minseq_age_or_gap' } } }, { ok:false, status:400 });
       }
       if (submissions === 2) {
         assert.equal(xdr, inputs.signedHeartbeatTransactionXdr);
