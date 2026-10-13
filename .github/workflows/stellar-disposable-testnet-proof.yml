@@ -1,4 +1,4 @@
-name: Stellar disposable Testnet recovery proof
+name: Stellar disposable 2-of-2 Testnet recovery proof
 on:
   push:
     branches:
@@ -13,6 +13,7 @@ jobs:
     timeout-minutes: 12
     env:
       OMEGAVAULT_STELLAR_DISPOSABLE_TESTNET: DISPOSABLE_FAKE_XLM_ONLY
+      OMEGAVAULT_STELLAR_DISPOSABLE_CONTACTS: '2'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -25,6 +26,7 @@ jobs:
         run: node --test test/stellar-testnet-live-disposable-recovery.test.js
       - name: Validate live proof source syntax
         run: node --check scripts/stellar-testnet-live-disposable-recovery.js
+      # Real Testnet only; freshly generated disposable guardian identities.
       # Native min-sequence-age failures are tx_bad_minseq_age_or_gap, not txTOO_EARLY.
       - name: Prove minSeqAge rejection, on-chain heartbeat reset and native recovery on public Testnet
         run: node scripts/stellar-testnet-live-disposable-recovery.js
