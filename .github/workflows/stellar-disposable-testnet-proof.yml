@@ -23,5 +23,7 @@ jobs:
         run: npm ci --ignore-scripts
       - name: Verify opt-in boundary before any live action
         run: node --test test/stellar-testnet-live-disposable-recovery.test.js
-      - name: Execute disposable native recovery on public Stellar Testnet
+      - name: Validate live proof source syntax
+        run: node --check scripts/stellar-testnet-live-disposable-recovery.js
+      - name: Prove early rejection, on-chain heartbeat reset and native recovery on public Testnet
         run: node scripts/stellar-testnet-live-disposable-recovery.js
