@@ -232,6 +232,38 @@ export function createCardanoPreprodIndependentPhaseOneInput({
       signedBody.network_id()?.kind() !== Cardano.NetworkId.testnet().kind()) {
     throw new Error('Signed initialize transaction has invalid validity flag or network id.');
   }
+  // Verify the *actual* owner witness, required signer and funding address,
+  // not merely the earlier witness evidence's self-asserted boolean flags.
+  // This is a local cryptographic/integrity check, NOT complete phase one.
+  const vkeys = signedTransaction.witness_set().vkeys();
+  if (!vkeys || vkeys.len() !== 1 || witness.witnessCount !== 1) {
+    throw new Error('Signed initialize requires exactly one owner VKey witness.');
+  }
+  const ownerWitness = vkeys.get(0);
+  const ownerPublicKey = ownerWitness.vkey().public_key();
+  const ownerKeyHash = ownerPublicKey.hash().to_hex();
+  if (ownerKeyHash !== witness.ownerPaymentKeyHash) {
+    throw new Error('Signed initialize owner VKey does not match recorded owner payment key.');
+  }
+  if (!ownerPublicKey.verify(blake2b(signedBody.to_bytes(), { dkLen: 32 }), ownerWitness.signature())) {
+    throw new Error('Signed initialize owner VKey signature is not valid for its transaction body.');
+  }
+  const requiredSigners = signedBody.required_signers();
+  if (requiredSigners?.len() !== 1 || requiredSigners.get(0).to_hex() !== ownerKeyHash) {
+    throw new Error('Signed initialize required signer does not match the verified owner VKey.');
+  }
+  let fundingAddress;
+  try {
+    fundingAddress = Cardano.Address.from_bech32(seed.address);
+  } catch {
+    throw new Error('Initialize seed must have a valid Cardano Preprod payment-key address.');
+  }
+  const paymentCredential = Cardano.BaseAddress.from_address(fundingAddress)?.payment_cred() ??
+    Cardano.EnterpriseAddress.from_address(fundingAddress)?.payment_cred() ??
+    Cardano.PointerAddress.from_address(fundingAddress)?.payment_cred();
+  if (fundingAddress.network_id() !== 0 || paymentCredential?.to_keyhash()?.to_hex() !== ownerKeyHash) {
+    throw new Error('Initialize seed payment credential must match the verified owner VKey on Preprod.');
+  }
   const ledgerSnapshot = object(preSubmit.ledgerInputSnapshot, 'preSubmitEvidence.ledgerInputSnapshot');
   const ledgerSnapshotDigest = hex32(preSubmit.ledgerInputSnapshotSha256, 'preSubmitEvidence.ledgerInputSnapshotSha256');
   if (hashCardanoEvidence(ledgerSnapshot) !== ledgerSnapshotDigest) {
