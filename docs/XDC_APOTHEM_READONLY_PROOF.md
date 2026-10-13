@@ -78,6 +78,18 @@ A **separate new source candidate**, `contracts/OmegaVaultRecoveryVaultV051.sol`
 - The estimated fee remained below a fixed **5 fake TXDC** deployment ceiling. This is a *read-only RPC simulation with an unowned placeholder deployer address*. No actual wallet was funded, transaction signed/broadcast or new XDC contract deployed.
 - The estimate is a historical public-testnet observation, not a standing quote, fee reservation or authorization. Repeat with funded disposable identities and explicit fee-mode/balance checks immediately before any future real deployment.
 
+## Rejecting rescue contract: isolated transaction-atomicity proof — 2026-10-13
+
+[Successful V0.5.1 recipient-failure run](https://github.com/Minus99x/Omegavault/actions/runs/38479601695) deployed a disposable Solidity `RefusingRescue` smart contract and configured it as the immutable beneficiary of a fresh two-guardian V0.5.1 vault **only on local Ganache chain 51**.
+
+- After the 45-second inactivity wait, both guardian approvals succeeded and the vault held exactly 1 simulated native coin.
+- The destination smart contract explicitly rejected plain native payment; `executeRecovery()` **reverted** rather than marking the vault recovered or losing funds.
+- On-ledger *local-emulator* state checks confirmed `recovered === false`, **both guardian approvals remained present**, the full vault native balance was still intact, and the rejecting recipient had received zero.
+- This is **safe transaction atomicity**, not successful recoverability for an incompatible recipient: because the rescue address is immutable, users must choose an address capable of accepting native value. Restrict the first public Apothem proof to a fresh disposable externally owned rescue account, verify address classification, and test recipient compatibility separately before ever supporting arbitrary smart-contract beneficiaries.
+- The same run also preserved prior positive two-guardian recovery, 137-wei post-recovery late-native payout, and empty-repeat-sweep invariants.
+
+This proof does not replace independent audit, public XDC transaction receipts, XDPoS finality, or production wallet security.
+
 ## Funding boundary for the first public-Testnet recovery
 
 The [official Apothem faucet](https://faucet.apothem.network/) requires a wallet address and CAPTCHA according to its documented workflow. No authenticated, documented unattended claim method has been established in this campaign. A **fresh disposable Apothem deployer wallet** must therefore be funded with faucet tokens through an authorized user action before any genuine testnet deployment can be claimed. Do not substitute user-controlled mainnet or existing production wallet keys, copy a private key into git/CI logs, or bypass the faucet's anti-abuse checks.
