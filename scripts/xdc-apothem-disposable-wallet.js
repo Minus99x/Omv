@@ -6,7 +6,7 @@
  * STATUS: reads PUBLIC manifest only; does not decrypt or sign.
  * The real-network transaction executor is a separate explicitly gated command.
  */
-import {mkdirSync,openSync,writeFileSync,closeSync,readFileSync} from 'node:fs';
+import {mkdirSync,openSync,writeFileSync,closeSync,readFileSync,existsSync} from 'node:fs';
 import {homedir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -16,6 +16,16 @@ import {validateApothemTrialRoles,requirePublicApothemChainId,
 
 const DEFAULT_DIR=join(homedir(),'.omegavault-test','xdc-apothem-disposable');
 const NAMES=['owner','guardianA','guardianB','rescue'];
+export function requirePrivateDirectoryOutsideGit(directory){
+ let path=resolve(directory);
+ while(true){
+  if(existsSync(join(path,'.git')))throw new Error('Disposable encrypted Testnet wallets cannot be saved inside a Git repository.');
+  const parent=dirname(path);
+  if(parent===path)break;
+  path=parent;
+ }
+ return resolve(directory);
+}
 function fileIn(dir,name){return join(dir,name);}
 function writeExclusive(path,obj){
  const fd=openSync(path,'wx',0o600);
@@ -133,6 +143,7 @@ async function main(){
  const command=process.argv[2]??'';
  const dir=process.argv[3]?resolve(process.argv[3]):DEFAULT_DIR;
  if(command==='prepare'){
+   requirePrivateDirectoryOutsideGit(dir);
    const pass=await hiddenPassword('New disposable-wallet encryption passphrase: ');
    const confirm=await hiddenPassword('Re-enter encryption passphrase: ');
    if(pass!==confirm)throw Error('Passphrases do not match.');
