@@ -24,7 +24,6 @@ import {
 import {
   normalizeHorizonAccountSnapshot,
   normalizeHorizonFinality,
-  normalizeHorizonSubmissionError,
   normalizeHorizonSubmissionSuccess
 } from '../src/chains/stellar/horizon-proof-driver.js';
 
@@ -57,7 +56,26 @@ function assertSuccess(response, expectedHash) {
   return normalized;
 }
 export function requireStellarTestnetTooEarly(error, expectedTransactionHashHex, observedAt) {
-  return normalizeHorizonSubmissionError({ error, expectedTransactionHashHex, observedAt });
+  // minAccountSequenceAge has a distinct native Stellar Core result code.
+  // txTOO_EARLY is for absolute minTime timebounds, not sequence age.
+  // Do not allow bad sequence, insufficient fee, auth failures or generic
+  // Horizon errors to masquerade as successful inactivity enforcement.
+  const resultCode = error?.response?.data?.extras?.result_codes?.transaction;
+  if (resultCode !== 'tx_bad_minseq_age_or_gap') {
+    throw new Error('Expected native Stellar minimum-sequence-age rejection, received '+String(resultCode ?? 'unknown'));
+  }
+  if (typeof expectedTransactionHashHex !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(expectedTransactionHashHex)) {
+    throw new Error('Premature rejection requires a bound 32-byte transaction hash.');
+  }
+  if (!Number.isFinite(Date.parse(observedAt))) throw new Error('Premature rejection requires an observation timestamp.');
+  return Object.freeze({
+    transactionHashHex: expectedTransactionHashHex,
+    observedAt: new Date(observedAt).toISOString(),
+    includedInLedger: false,
+    successful: false,
+    resultCode
+  });
 }
 async function proveTooEarly({ transport, signedTransactionXdr, expectedHash, vault, rescue, expectedSequence, expectedPreAuthSigner, expectedRescueBalance, label }) {
   let rejected = null;
@@ -66,8 +84,8 @@ async function proveTooEarly({ transport, signedTransactionXdr, expectedHash, va
   } catch (error) {
     rejected = requireStellarTestnetTooEarly(error, expectedHash, new Date().toISOString());
   }
-  if (!rejected || rejected.includedInLedger !== false || rejected.resultCode !== 'txTOO_EARLY') {
-    throw new Error(label+' must produce a real non-included txTOO_EARLY rejection.');
+  if (!rejected || rejected.includedInLedger !== false || rejected.resultCode !== 'tx_bad_minseq_age_or_gap') {
+    throw new Error(label+' must produce a real non-included minimum-sequence-age rejection.');
   }
   const [state, beneficiary] = await Promise.all([
     transport.loadAccount(vault), transport.loadAccount(rescue)
