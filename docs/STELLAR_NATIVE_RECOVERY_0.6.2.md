@@ -135,9 +135,27 @@ This is a genuine two-guardian public-Testnet proof with disposable tokens, not 
 
 Scope: genuine public Stellar Testnet, fee-bump sponsor, two independently generated contact identities and XLM native asset only. It does **not** prove token recovery, failed-applied one-time authorization handling on public Testnet, broadly variable guardian thresholds or production security. No mainnet funds or user wallets were used.
 
+## First real issued-token recovery on public Stellar Testnet — 2026-10-12
+
+[Successful live OMVT classic-asset recovery](https://github.com/Minus99x/Omegavault/actions/runs/38346812996) exercised the existing **native Stellar** 2-of-2 extra-signer/preAuthTx recovery policy for a *new ephemeral Testnet-issued asset*, rather than substituting a generic XLM payment.
+
+Fresh disposable Testnet identities (issuer, vault, rescue, two separate guardians and network-fee sponsor) were generated in the isolated runner without user wallets or customer credentials.
+
+- Issuer: `GCWKORA4SENKQQGDIDODEFM2TLKJNSMRCBG4UPRN5JXRNFTZOIZURBOZ`. Asset code: **OMVT**, issued only on Stellar Testnet.
+- Vault trustline creation: `bc47202bbfee37b8c9fa3fd119bb73bbabe2f58ff4012d07730d78758e000c77` (ledger **5168462**).
+- Rescue trustline creation: `ae32eecb7bf1a7c7c5d6e20abf99884545171ecfb5f54ed41d6d18d86c7bc1a3` (ledger **5168463**).
+- Issuer payment of exactly **10.0000000 OMVT** to the vault: `0878c83fdf77a5c172c2056c9170aa4dd307ee521cf104c374589993b1806c1e` (ledger **5168464**).
+- Owner's precise single-use recovery authorizer: `51b2e3acade31c716c5eb8256228a3bc7935597259b709093fc3210b51a30450` (ledger **5168465**), after live issuer/trustline authorization, vault balance, destination capacity preflight.
+- Before heartbeat, the exact guardian-signed recovery transaction failed with genuine `tx_bad_minseq_age_or_gap` and no rescue credit, signer removal or vault sequence change.
+- Owner-signed `bumpSequence` heartbeat `f5a2c42327ec45b89047159c83d92be809478d6696bcad84397ac4874ae4433e` (ledger **5168466**) reset inactivity; a second premature recovery failed with the same code and unchanged balances.
+- After **45 seconds** of observed sequence-age eligibility, the 2-of-2 guardian-signed inner recovery `4cf16128af81028b598efd6fb4f4e3aa649561b394f521ee88df1683ef5b9d28` was accepted as part of fee-sponsored outer transaction `5c63916a026d2fd297dd47b9084bc778c741172654660f04ae20ce0117e77b89` (ledger **5168476**, ledger hash `40953f35333e47ea0f095800f8c9f8ca1acbd70b6b416fb5a90d7e6850fccdbc`).
+- Final Horizon balances proved **exactly 3.0000000 OMVT** debited from the vault and credited to the authorized rescue trustline, unchanged vault native XLM balance (for the sponsored token recovery), **200 stroops** charged to the independent fee sponsor and consumed `preAuthTx` signer.
+
+**Boundaries:** This is one **issuer-created, non-auth-restricted, Testnet-only classic asset**, with known predeclared balance and destination, two mandatory contact signatures and a fee sponsor. It does not establish arbitrary real-world issuer restrictions, revoked/frozen trustlines, clawback, assets created *after* recovery-envelope binding, arbitrary M-of-N, real-user-wallet behavior, malicious-issuer resistance, publicly demonstrated failed-applied authorization consumption, or deployment-readiness. Preflight must remain strict and independent security review is required.
+
 ## Remaining promotion gate
 
-Additional real public-Testnet cases remain required: **classic asset/trustline preflight, failed-applied `preAuthTx` consumption**, owner/contact compromise scenarios, complete independent security review and release policy. The already-tested driver-injected pipelines remain valuable regressions but cannot substitute for chain evidence.
+Additional real public-Testnet cases remain required: **revoked/unauthorized classic asset scenarios and failed-applied `preAuthTx` consumption**, owner/contact compromise scenarios, complete independent security review and release policy. The already-tested driver-injected pipelines remain valuable regressions but cannot substitute for chain evidence.
 
 Stellar remains **not promoted for product support**; observed Testnet milestones do not authorize deployment.
 
