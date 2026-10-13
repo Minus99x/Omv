@@ -7,11 +7,12 @@
  * This is one N-of-N native XLM recovery only, not connector promotion.
  */
 import { pathToFileURL } from 'node:url';
-import { Account, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
+import { Account, Asset, Keypair, Networks, Operation, TransactionBuilder } from '@stellar/stellar-sdk';
 import {
   buildHeartbeatEnvelopeArtifact,
   buildFeeBumpEnvelopeArtifact,
   buildRecoveryEnvelopeArtifact,
+  createClassicAssetPreflight,
   createFeeBumpSponsorPlan,
   createHeartbeatPlan,
   createRecoveryEnvelopePlan,
@@ -35,12 +36,22 @@ const TESTNET_HORIZON = 'https://horizon-testnet.stellar.org';
 const ENABLE = 'OMEGAVAULT_STELLAR_DISPOSABLE_TESTNET';
 const CONFIRM = 'DISPOSABLE_FAKE_XLM_ONLY';
 const TEST_XLM = '1.0000000';
+const TEST_CLASSIC_ASSET = 'OMVT';
+const TEST_CLASSIC_PAYMENT = '3.0000000';
 const INACTIVITY_SECONDS = 45;
 
 function requireGate(env) {
   if (env?.[ENABLE] !== CONFIRM) {
     throw new Error('Disposable Stellar Testnet live execution is disabled; explicit testnet gate is required.');
   }
+}
+export function disposableStellarAssetMode(env) {
+  requireGate(env);
+  const value=env?.OMEGAVAULT_STELLAR_DISPOSABLE_ASSET ?? 'NATIVE_XLM_ONLY';
+  if(value!=='NATIVE_XLM_ONLY' && value!=='EPHEMERAL_CLASSIC_ASSET'){
+    throw new Error('Disposable classic-asset proof requires an exact Testnet-only opt-in.');
+  }
+  return value==='EPHEMERAL_CLASSIC_ASSET';
 }
 export function disposableStellarFeeSponsorMode(env) {
   requireGate(env);
@@ -62,6 +73,19 @@ function amountUnits(amount) {
   const match = /^(0|[1-9]\d*)\.(\d{7})$/.exec(amount);
   if (!match) throw new TypeError('Horizon amount must have exactly seven decimal places.');
   return BigInt(match[1]) * 10000000n + BigInt(match[2]);
+}
+function classicAssetLine(response, expectedAccount, asset) {
+  if (response?.account_id!==expectedAccount) throw new Error('Horizon returned a wrong classic asset account.');
+  const lines=response?.balances?.filter(item=>item.asset_code===asset.code &&
+    item.asset_issuer===asset.issuer && ['credit_alphanum4','credit_alphanum12'].includes(item.asset_type));
+  if(!Array.isArray(lines) || lines.length!==1) throw new Error('Expected exactly one matching issued-asset trustline.');
+  const line=lines[0];
+  if(line.is_authorized!==true)throw new Error('Testnet classic asset trustline is not authorized.');
+  if(typeof line.limit!=='string'||amountUnits(line.limit)<=0n)throw new Error('Testnet classic asset trustline limit is invalid.');
+  return line;
+}
+function classicAssetBalance(response, account, asset) {
+  return amountUnits(classicAssetLine(response,account,asset).balance);
 }
 function nativeBalance(response, expectedAccount) {
   if (response?.account_id !== expectedAccount) throw new Error('Horizon returned an account other than the requested account.');
@@ -96,7 +120,7 @@ export function requireStellarTestnetTooEarly(error, expectedTransactionHashHex,
     resultCode
   });
 }
-async function proveTooEarly({ transport, signedTransactionXdr, expectedHash, vault, rescue, expectedSequence, expectedPreAuthSigner, expectedRescueBalance, label }) {
+async function proveTooEarly({ transport, signedTransactionXdr, expectedHash, vault, rescue, expectedSequence, expectedPreAuthSigner, expectedRescueBalance, protectedAsset=null, expectedProtectedRescueBalance=null, label }) {
   let rejected = null;
   try {
     await transport.submitTransactionXdr(signedTransactionXdr);
@@ -117,6 +141,9 @@ async function proveTooEarly({ transport, signedTransactionXdr, expectedHash, va
   }
   if (nativeBalance(beneficiary,rescue) !== expectedRescueBalance) {
     throw new Error(label+' unexpectedly credited the recovery beneficiary.');
+  }
+  if (protectedAsset && classicAssetBalance(beneficiary,rescue,protectedAsset)!==expectedProtectedRescueBalance){
+    throw new Error(label+' unexpectedly credited the protected classic asset.');
   }
   return Object.freeze({ outcome:rejected.resultCode, transactionHash:expectedHash, sourceSequenceUnchanged:true, preAuthSignerPreserved:true, rescueBalanceUnchanged:true });
 }
@@ -155,13 +182,16 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   if(Networks.TESTNET!=='Test SDF Network ; September 2015') throw new Error('Stellar Testnet identity mismatch.');
   const contactCount=disposableStellarContactCount(env);
   const sponsored=disposableStellarFeeSponsorMode(env);
+  const issuedAsset=disposableStellarAssetMode(env);
   // Each participating signer is generated afresh; no customer or owner key.
   const vault=Keypair.random(), rescue=Keypair.random();
   const contacts=Array.from({length:contactCount},()=>Keypair.random());
   const feeSponsor=sponsored?Keypair.random():null;
+  const issuer=issuedAsset?Keypair.random():null;
   const contactAddresses=contacts.map(contact=>contact.publicKey());
   const allIdentities=[vault.publicKey(),rescue.publicKey(),...contactAddresses,
-    ...(feeSponsor?[feeSponsor.publicKey()]:[])];
+    ...(feeSponsor?[feeSponsor.publicKey()]:[]),
+    ...(issuer?[issuer.publicKey()]:[])];
   if(new Set(allIdentities).size!==allIdentities.length){
     throw new Error('Discovered duplicate disposable Stellar signer identities.');
   }
@@ -171,9 +201,61 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   await fetchFund(fetchImpl,vault.publicKey());
   await fetchFund(fetchImpl,rescue.publicKey());
   if (feeSponsor) await fetchFund(fetchImpl,feeSponsor.publicKey());
+  if (issuer) await fetchFund(fetchImpl,issuer.publicKey());
+  let asset=null, classicSetup=null;
+  if(issuer){
+    asset=new Asset(TEST_CLASSIC_ASSET,issuer.publicKey());
+    const trustlines=[];
+    for(const keypair of [vault,rescue]){
+      const state=await transport.loadAccount(keypair.publicKey());
+      const tx=new TransactionBuilder(
+        new Account(keypair.publicKey(),String(state.sequence)),
+        {fee:'100',networkPassphrase:Networks.TESTNET}
+      ).addOperation(Operation.changeTrust({
+        asset,limit:'100.0000000'
+      })).setTimeout(90).build();
+      tx.sign(keypair);
+      const hash=Buffer.from(tx.hash()).toString('hex');
+      const receipt=assertSuccess(await transport.submitTransactionXdr(tx.toXdr()),hash);
+      trustlines.push(Object.freeze({account:keypair.publicKey(),transactionHash:hash,ledger:receipt.ledger}));
+    }
+    const issuerState=await transport.loadAccount(issuer.publicKey());
+    const issueTx=new TransactionBuilder(
+      new Account(issuer.publicKey(),String(issuerState.sequence)),
+      {fee:'100',networkPassphrase:Networks.TESTNET}
+    ).addOperation(Operation.payment({
+      destination:vault.publicKey(),asset,amount:'10.0000000'
+    })).setTimeout(90).build();
+    issueTx.sign(issuer);
+    const issueHash=Buffer.from(issueTx.hash()).toString('hex');
+    const issueReceipt=assertSuccess(await transport.submitTransactionXdr(issueTx.toXdr()),issueHash);
+    classicSetup=Object.freeze({
+      assetCode:asset.code,issuer:asset.issuer,
+      trustlines:Object.freeze(trustlines),
+      issuanceHash:issueHash,issuanceLedger:issueReceipt.ledger,
+      totalIssuedToVault:'10.0000000'
+    });
+  }
   const initialVault=await pollAccount(transport,vault.publicKey());
   const initialRescue=await pollAccount(transport,rescue.publicKey());
   const rescueBalanceBefore=nativeBalance(initialRescue,rescue.publicKey());
+  const assetDescriptor=asset?{code:asset.code,issuer:asset.issuer}:null;
+  const recoveryAmount=issuedAsset?TEST_CLASSIC_PAYMENT:TEST_XLM;
+  const protectedRescueBefore=asset?classicAssetBalance(initialRescue,rescue.publicKey(),assetDescriptor):rescueBalanceBefore;
+  function checkClassicPreflight(vaultState,rescueState) {
+    if(!assetDescriptor)return null;
+    const vaultLine=classicAssetLine(vaultState,vault.publicKey(),assetDescriptor);
+    const rescueLine=classicAssetLine(rescueState,rescue.publicKey(),assetDescriptor);
+    const preflight=createClassicAssetPreflight({
+      asset:assetDescriptor,
+      vaultTrustline:{exists:true,authorized:vaultLine.is_authorized,limit:vaultLine.limit,balance:vaultLine.balance},
+      rescueTrustline:{exists:true,authorized:rescueLine.is_authorized,limit:rescueLine.limit,balance:rescueLine.balance},
+      vaultBalance:vaultLine.balance,paymentAmount:recoveryAmount
+    });
+    if(!preflight.ready)throw new Error('Stellar classic asset recovery preflight blocked: '+preflight.errors.join('; '));
+    return preflight;
+  }
+  checkClassicPreflight(initialVault,initialRescue);
 
   const recoveryPlan=createRecoveryEnvelopePlan({
     vaultAccount:vault.publicKey(),
@@ -182,8 +264,8 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     inactivitySeconds:INACTIVITY_SECONDS,
     contacts:contactAddresses,
     threshold:contactCount,
-    assets:['native'],
-    amounts:{native:TEST_XLM}
+    assets:assetDescriptor?[assetDescriptor]:['native'],
+    amounts:assetDescriptor?{[`${assetDescriptor.code}:${assetDescriptor.issuer}`]:recoveryAmount}:{native:TEST_XLM}
   });
   const recoveryArtifact=buildRecoveryEnvelopeArtifact(recoveryPlan);
   const signedRecovery=TransactionBuilder.fromXdr(
@@ -259,6 +341,8 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     expectedSequence:String(setupState.sequence),
     expectedPreAuthSigner:recoveryArtifact.preAuthTxSigner,
     expectedRescueBalance:rescueBalanceBefore,
+    protectedAsset:assetDescriptor,
+    expectedProtectedRescueBalance:protectedRescueBefore,
     label:'Pre-heartbeat early recovery'
   });
 
@@ -309,6 +393,8 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     expectedSequence:postHeartbeatSequence,
     expectedPreAuthSigner:recoveryArtifact.preAuthTxSigner,
     expectedRescueBalance:rescueBalanceBefore,
+    protectedAsset:assetDescriptor,
+    expectedProtectedRescueBalance:protectedRescueBefore,
     label:'Post-heartbeat early recovery'
   });
 
@@ -325,7 +411,10 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   // Establish actual balances immediately before final recovery. With a
   // fee bump, the fee payer must pay and the vault must lose only 1 XLM.
   const beforeRecoveryVault=await transport.loadAccount(vault.publicKey());
+  const beforeRecoveryRescue=await transport.loadAccount(rescue.publicKey());
+  checkClassicPreflight(beforeRecoveryVault,beforeRecoveryRescue);
   const vaultBeforeBalance=nativeBalance(beforeRecoveryVault,vault.publicKey());
+  const assetVaultBefore=assetDescriptor?classicAssetBalance(beforeRecoveryVault,vault.publicKey(),assetDescriptor):null;
   const beforeSponsor=feeSponsor?await transport.loadAccount(feeSponsor.publicKey()):null;
   const sponsorBeforeBalance=feeSponsor?nativeBalance(beforeSponsor,feeSponsor.publicKey()):null;
   const submittedHash=feeBumpArtifact?.feeBumpTransactionHashHex ?? recoveryArtifact.transactionHashHex;
@@ -377,8 +466,9 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     if(sponsorBeforeBalance-nativeBalance(afterSponsor,feeSponsor.publicKey())!==BigInt(chargedRaw)){
       throw new Error('Sponsor XLM balance did not pay the exact on-ledger charged fee.');
     }
-    if(vaultBeforeBalance-nativeBalance(afterVault,vault.publicKey())!==amountUnits(TEST_XLM)){
-      throw new Error('Sponsored inner recovery unexpectedly charged vault transaction fees or extra funds.');
+    const expectedNativeDebit=issuedAsset?0n:amountUnits(TEST_XLM);
+    if(vaultBeforeBalance-nativeBalance(afterVault,vault.publicKey())!==expectedNativeDebit){
+      throw new Error('Sponsored recovery unexpectedly charged vault native transaction fees or extra funds.');
     }
     sponsorshipEvidence=Object.freeze({
       feePayer:feeSponsor.publicKey(),
@@ -393,10 +483,25 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   }
   const finalRescue=await pollAccount(transport,rescue.publicKey());
   const rescueBalanceAfter=nativeBalance(finalRescue,rescue.publicKey());
-  if(rescueBalanceAfter-rescueBalanceBefore!==amountUnits(TEST_XLM)){
-    throw new Error('Testnet rescue balance failed exact 1 XLM recovery conservation.');
+  if(rescueBalanceAfter-rescueBalanceBefore!==(issuedAsset?0n:amountUnits(TEST_XLM))){
+    throw new Error('Testnet rescue XLM balance failed protected recovery conservation.');
   }
   const finalVault=await pollAccount(transport,vault.publicKey());
+  let classicAssetEvidence=null;
+  if(assetDescriptor){
+    const rescued=classicAssetBalance(finalRescue,rescue.publicKey(),assetDescriptor)-protectedRescueBefore;
+    const spent=assetVaultBefore-classicAssetBalance(finalVault,vault.publicKey(),assetDescriptor);
+    if(rescued!==amountUnits(recoveryAmount)||spent!==amountUnits(recoveryAmount)){
+      throw new Error('Classic issued-asset rescue did not transfer exactly the declared amount.');
+    }
+    classicAssetEvidence=Object.freeze({
+      ...classicSetup,
+      recoveredAmount:recoveryAmount,
+      vaultTokenDebitVerified:true,
+      rescueTrustlineCreditVerified:true,
+      finalAuthorizationPreserved:true
+    });
+  }
   if(finalVault.signers?.some(x=>x.key===recoveryArtifact.preAuthTxSigner)){
     throw new Error('Consumed single-use Testnet preAuthTx signer still present after successful recovery.');
   }
@@ -420,7 +525,8 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     sponsorshipEvidence,
     recoveryLedger:recoveryResult.ledger,
     recoveryLedgerHash:finality.ledgerHash,
-    amountRecoveredXlm:TEST_XLM,
+    amountRecoveredXlm:issuedAsset?'0.0000000':TEST_XLM,
+    classicAssetEvidence,
     verifiedOwnerSignerSet:true,
     verifiedContactBoundToExactRecovery:true,
     verifiedSequenceAge:true,
