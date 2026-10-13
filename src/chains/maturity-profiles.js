@@ -45,7 +45,7 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   stellar: Object.freeze({
     stage: 'offline-verified',
     blockers: ref(
-      'The first isolated 1-of-1 native-XLM recovery succeeded on public Stellar Testnet; full on-network heartbeat/reset, early-rejection, failed-applied and multi-case recovery evidence remains required before promotion.',
+      'Isolated 1-of-1 native-XLM recovery and on-network owner heartbeat/reset, premature rejections, final recovery and rescue credit now have public Stellar Testnet evidence; genuine 2-of-2, fee-bump, token, failed-applied and broader security validation remain required before promotion.',
       'Offline/injected-driver evidence is not public-network proof even when transaction, finality and rescue-balance bindings verify.'
     ),
     gateEvidence: Object.freeze({
@@ -58,6 +58,7 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
     notes: ref(
       'Pinned @stellar/stellar-sdk 17.1.0 execution is verified offline.',
       '2026-10-12: Disposable-account public Stellar Testnet recovered exactly 1.0000000 fake XLM via preAuthTx plus one contact extra-signer, with on-ledger setup 5165976 and recovery 5165980, observed finality, rescue credit and single-use signer consumption (GitHub Actions run 38330316217). This is a narrow real-network proof, not a complete lifecycle or audit.',
+      '2026-10-12 follow-up: public Testnet observed genuine tx_bad_minseq_age_or_gap rejection, owner-signed heartbeat (ledger 5166182), second post-heartbeat rejection of the same envelope and successful 1.0000000 fake-XLM rescue (ledger 5166192), verified single-use signer consumption (GitHub Actions run 38331699707). Does not prove all policy modes or production safety.',
       'The offline pipeline now covers initial/post-heartbeat txTOO_EARLY, owner heartbeat, eligible N-of-N fee-bump recovery, finality/rescue-balance binding, failed-applied preAuthTx consumption, Horizon normalization/transport and digest-bound evidence.',
       'Customer-wallet signing, complete public-Testnet lifecycle, failed-applied behavior, broader policy proofs and connector promotion remain separately gated.'
     )
