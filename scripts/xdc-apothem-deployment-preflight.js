@@ -26,12 +26,12 @@ function quantity(v,label){
  if(typeof v!=='string'||!HEX.test(v))throw new Error(label+' invalid hex quantity');
  return BigInt(v);
 }
-function readContract(){
+export function readContract(){
  const source=readFileSync(CONTRACT,'utf8');
  if(!source.includes('contract OmegaVaultRecoveryVaultV050'))throw new Error('Expected exact V0.5 OmegaVault recovery source missing.');
  return source;
 }
-function compileSource(source){
+export function compileSource(source){
  const input={language:'Solidity',sources:{[CONTRACT]:{content:source}},settings:{
    optimizer:{enabled:true,runs:200},evmVersion:'paris',
    outputSelection:{'*':{'*':['abi','evm.bytecode.object','evm.deployedBytecode.object']}}
@@ -54,7 +54,7 @@ function compileSource(source){
  const bin=c.evm?.bytecode?.object,runtime=c.evm?.deployedBytecode?.object;
  if(typeof bin!=='string'||!bin.length||typeof runtime!=='string'||!runtime.length)throw Error('Deployment or runtime bytecode missing.');
  if(!c.abi.some(x=>x.type==='constructor')||!c.abi.some(x=>x.name==='executeRecovery'))throw Error('Incorrect recovery ABI was compiled.');
- return {compilerVersion:version,creation:bin,runtime};
+ return {compilerVersion:version,creation:bin,runtime,abi:c.abi};
 }
 async function rpc(fetchImpl,endpoint,method,params=[]){
  if(!['https://rpc.apothem.network','https://erpc.apothem.network'].includes(endpoint))throw Error('Unapproved network endpoint.');
