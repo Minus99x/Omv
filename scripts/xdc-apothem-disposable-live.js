@@ -10,7 +10,7 @@
 import {readFileSync,openSync,writeFileSync,closeSync,renameSync,existsSync} from 'node:fs';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {Wallet,JsonRpcProvider,ContractFactory,Contract} from 'ethers';
+import {Wallet,JsonRpcProvider,ContractFactory,Contract,Transaction} from 'ethers';
 import {DEFAULT_DIR,loadPublicManifest,hiddenPassword,inspectDisposableFunding} from './xdc-apothem-disposable-wallet.js';
 import {inspectV051Candidate} from './xdc-apothem-v051-deployment-preflight.js';
 import {compileSource,readContract} from './xdc-apothem-deployment-preflight.js';
@@ -52,6 +52,37 @@ async function ensureRevert(promise,label){
   throw Error(label+' could not be established because the read-only call failed unexpectedly: '+String(e?.message??e));
  }
  throw Error(label+' unexpectedly succeeded; execution blocked.');
+}
+/**
+ * Sign the exact bounded chain-51 legacy transaction locally and persist its
+ * deterministic transaction hash BEFORE any public-RPC broadcast attempt.
+ * If the RPC accepts but drops its response, the journal still identifies
+ * the transaction for manual on-chain reconciliation. Never persist raw bytes.
+ */
+export async function broadcastSignedApothemTransaction({
+ signer,network,transaction,recordBeforeBroadcast
+}){
+ if(typeof recordBeforeBroadcast!=='function')throw TypeError('A durable pre-broadcast journal callback is required.');
+ const populated=await signer.populateTransaction(transaction);
+ const signedRaw=await signer.signTransaction(populated);
+ const signed=Transaction.from(signedRaw);
+ const signerAddress=(await signer.getAddress()).toLowerCase();
+ const intendedTo=String(transaction.to??'').toLowerCase();
+ const signedTo=String(signed.to??'').toLowerCase();
+ if(signed.from?.toLowerCase()!==signerAddress||
+    signed.chainId!==51n||signed.type!==0||
+    signed.gasPrice!==BigInt(transaction.gasPrice)||
+    signed.gasLimit!==BigInt(transaction.gasLimit)||
+    signed.value!==BigInt(transaction.value??0n)||
+    signedTo!==intendedTo||
+    signed.data.toLowerCase()!==String(transaction.data??'0x').toLowerCase()||
+    !signed.hash)
+   throw Error('Signed Apothem transaction differs from bounded chain-51 intent; nothing broadcast.');
+ await recordBeforeBroadcast({txHash:signed.hash,nonce:signed.nonce});
+ const sent=await network.broadcastTransaction(signedRaw);
+ if(sent?.hash?.toLowerCase()!==signed.hash.toLowerCase())
+  throw Error('Broadcast response hash differs from pre-journaled signed transaction; reconcile manually.');
+ return sent;
 }
 async function decryptRoles(dir,password,expected){
  const saved=JSON.parse(readFileSync(join(dir,'secrets.json'),'utf8'));
@@ -121,11 +152,16 @@ export async function executeDisposableApothemTrial({
   // Explicit chain/legacy fee (not user-selected provider or automatic mainnet fallback).
   const safeTx={...tx,chainId:51,type:0,gasPrice:guard.gasPriceWei,
    gasLimit:guard.gasLimit};
-  const step={label,status:'broadcasting',from,valueWei:value.toString(),
+  const step={label,status:'preparing-signature',from,valueWei:value.toString(),
    maxReservedFeeWei:guard.maxFee.toString(),txHash:null};
   journal.steps.push(step);save();
-  const sent=await signer.sendTransaction(safeTx);
-  step.txHash=sent.hash;step.status='submitted';save();
+  const sent=await broadcastSignedApothemTransaction({
+   signer,network,transaction:safeTx,
+   recordBeforeBroadcast:({txHash,nonce})=>{
+    step.txHash=txHash;step.nonce=nonce;step.status='broadcasting';save();
+   }
+  });
+  step.status='submitted';save();
   const received=await network.waitForTransaction(sent.hash,2,TX_TIMEOUT_MS);
   const verified=verifyApothemReceipt({receipt:received,transactionHash:sent.hash});
   const actualFee=BigInt(verified.actualFeeWei);
