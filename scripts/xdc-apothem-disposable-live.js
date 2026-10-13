@@ -1,0 +1,237 @@
+#!/usr/bin/env node
+/**
+ * EXPLICITLY OPTED-IN PUBLIC APOTHEM TESTNET trial, never mainnet.
+ * Requires an operator-created *encrypted* disposable local keystore and free
+ * faucet fake TXDC. No user/customer wallets or unattended faucet bypass.
+ * Writes a PUBLIC receipt journal; if interrupted, refuses automatic replay.
+ *
+ * Intended as an operator-side controlled proof, NOT supported production flow.
+ */
+import {readFileSync,openSync,writeFileSync,closeSync,renameSync,existsSync} from 'node:fs';
+import {join} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {Wallet,JsonRpcProvider,ContractFactory,Contract} from 'ethers';
+import {DEFAULT_DIR,loadPublicManifest,hiddenPassword,inspectDisposableFunding} from './xdc-apothem-disposable-wallet.js';
+import {inspectV051Candidate} from './xdc-apothem-v051-deployment-preflight.js';
+import {compileSource,readContract} from './xdc-apothem-deployment-preflight.js';
+import {requirePublicApothemChainId,validateApothemTrialRoles,
+ boundedApothemFee,verifyApothemReceipt,verifyApothemRuntimeBytecode,
+ XDC_PUBLIC_TRIAL_FEE_LIMIT_WEI,XDC_PUBLIC_TRIAL_DEPOSIT_WEI}
+ from '../src/chains/evm/apothem-public-trial-guard.js';
+
+const GATE='OMEGAVAULT_XDC_APOTHEM_DISPOSABLE_LIVE';
+const CONFIRM='PUBLIC_APOTHEM_FAKE_TXDC_ONLY';
+const PROVIDER='https://rpc.apothem.network';
+const GUARDIAN_TOPUP=10n**17n;
+const LATE_NATIVE_AMOUNT=137n;
+const TX_TIMEOUT_MS=120000;
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+
+export function requireLiveTrialGate(env){
+ if(env?.[GATE]!==CONFIRM)throw Error('Public Apothem trial is OFF. Require explicit exact fake-TXDC chain-51 execution opt-in.');
+ return true;
+}
+function writeNew(path,data){
+ const fd=openSync(path,'wx',0o600);
+ try{writeFileSync(fd,JSON.stringify(data,null,2)+'\n',{encoding:'utf8'});}
+ finally{closeSync(fd);}
+}
+function rewriteAtomic(path,data){
+ const temporary=path+'.tmp';
+ const fd=openSync(temporary,'wx',0o600);
+ try{writeFileSync(fd,JSON.stringify(data,null,2)+'\n',{encoding:'utf8'});}
+ finally{closeSync(fd);}
+ renameSync(temporary,path);
+}
+async function ensureRevert(promise,label){
+ try{await promise;}
+ catch(e){
+  if(e?.code==='CALL_EXCEPTION'||/execution reverted|revert|missing revert data/i.test(String(e?.message??''))){
+   return Object.freeze({rejected:true,reason:label});
+  }
+  throw Error(label+' could not be established because the read-only call failed unexpectedly: '+String(e?.message??e));
+ }
+ throw Error(label+' unexpectedly succeeded; execution blocked.');
+}
+async function decryptRoles(dir,password,expected){
+ const saved=JSON.parse(readFileSync(join(dir,'secrets.json'),'utf8'));
+ if(saved?.schema!=='omegavault.xdc.apothem-encrypted-identities.v1'||saved.chainId!==51)
+  throw Error('Wrong disposable encrypted-keystore schema or chain.');
+ const identities={};
+ for(const role of ['owner','guardianA','guardianB','rescue']){
+  if(typeof saved?.encrypted?.[role]!=='string')throw Error('Encrypted disposable '+role+' missing.');
+  const wallet=await Wallet.fromEncryptedJson(saved.encrypted[role],password);
+  if(wallet.address.toLowerCase()!==expected[role])throw Error('Encrypted account does not match public '+role+' identity.');
+  identities[role]=wallet;
+ }
+ validateApothemTrialRoles(Object.fromEntries(Object.entries(identities).map(([k,v])=>[k,v.address])));
+ return Object.freeze(identities);
+}
+export async function executeDisposableApothemTrial({
+ directory=DEFAULT_DIR,env=process.env
+}={}){
+ requireLiveTrialGate(env);
+ const pub=loadPublicManifest(directory);
+ const roles=validateApothemTrialRoles(pub.roles);
+ const journalPath=join(directory,'execution-journal.json');
+ if(existsSync(journalPath))throw Error('Prior execution journal exists; reconcile on-chain transactions before any retry. No automatic replay.');
+ const funding=await inspectDisposableFunding({directory});
+ if(!funding.fundingVerified||!funding.rescueHasNoCodeOnBothProviders)
+  throw Error('Disposable owner faucet funding or EOA-only rescue safety gate not satisfied.');
+ const preflight=await inspectV051Candidate();
+ const compiled=compileSource(readContract('V051'),'V051');
+ if(compiled.runtime.length/2!==preflight.runtimeBytecodeBytes||
+    compiled.creation.length/2!==preflight.creationBytecodeBytes)
+  throw Error('Deployment-preflight bytecode sizes no longer match the pinned V0.5.1 candidate.');
+ const network=new JsonRpcProvider(PROVIDER,undefined,{batchMaxCount:1});
+ requirePublicApothemChainId(await network.send('eth_chainId',[]));
+ if(await network.getCode(roles.rescue)!=='0x')throw Error('Rescue has deployed bytecode; only disposable EOA rescue allowed.');
+ const password=await hiddenPassword('Unlock local disposable testnet keystore (never logged): ');
+ const wallets=await decryptRoles(directory,password,roles);
+ const owner=wallets.owner.connect(network);
+ const a=wallets.guardianA.connect(network),b=wallets.guardianB.connect(network);
+ const factory=new ContractFactory(compiled.abi,'0x'+compiled.creation,owner);
+ const plan=await factory.getDeployTransaction([roles.guardianA,roles.guardianB],2,45,roles.rescue);
+ let fees=0n;
+ const journal={
+  schema:'omegavault.xdc.apothem-disposable-public-trial.v1',
+  network:'xdc:apothem',chainId:51,contractVariant:'V051',
+  status:'incomplete',roles,preflightBlock:preflight.commonBlock,
+  preflightBufferedFeeWei:preflight.conservativeTxFeeBudgetWei,
+  steps:[],totalActualFeeWei:'0',productionReady:false,
+  customerWalletsUsed:false,mainnetTouched:false
+ };
+ // Persist before signing or sending. If a crash occurs, stop rather than replay.
+ writeNew(journalPath,journal);
+ function save(){rewriteAtomic(journalPath,journal);}
+ async function send(label,signer,tx){
+  const from=(await signer.getAddress()).toLowerCase();
+  if(![roles.owner,roles.guardianA,roles.guardianB].includes(from))
+   throw Error('Trial signer is not an approved disposable testnet role.');
+  const value=BigInt(tx.value??0n);
+  const [gasRaw,estimateRaw,balance]=await Promise.all([
+   network.send('eth_gasPrice',[]),
+   network.estimateGas({...tx,from}),
+   network.getBalance(from)
+  ]);
+  const guard=boundedApothemFee({estimatedGas:BigInt(estimateRaw),
+   gasPriceWei:BigInt(gasRaw),spentFeeWei:fees});
+  if(BigInt(balance)<guard.maxFee+value)
+   throw Error(label+' wallet does not have enough disposable fake TXDC for the maximum fee and transfer.');
+  // Explicit chain/legacy fee (not user-selected provider or automatic mainnet fallback).
+  const safeTx={...tx,chainId:51,type:0,gasPrice:guard.gasPriceWei,
+   gasLimit:guard.gasLimit};
+  const step={label,status:'broadcasting',from,valueWei:value.toString(),
+   maxReservedFeeWei:guard.maxFee.toString(),txHash:null};
+  journal.steps.push(step);save();
+  const sent=await signer.sendTransaction(safeTx);
+  step.txHash=sent.hash;step.status='submitted';save();
+  const received=await network.waitForTransaction(sent.hash,2,TX_TIMEOUT_MS);
+  const verified=verifyApothemReceipt({receipt:received,transactionHash:sent.hash});
+  const actualFee=BigInt(verified.actualFeeWei);
+  fees+=actualFee;
+  if(fees>XDC_PUBLIC_TRIAL_FEE_LIMIT_WEI)throw Error('Actual trial fee cap exceeded; stop.');
+  Object.assign(step,{status:'confirmed',receipt:verified});
+  journal.totalActualFeeWei=fees.toString();save();
+  return {receipt:received,verified};
+ }
+ try{
+  const deployment=await send('deploy-v051',owner,plan);
+  const contractAddress=deployment.receipt.contractAddress;
+  verifyApothemReceipt({receipt:deployment.receipt,
+   transactionHash:deployment.receipt.hash,expectedContract:contractAddress});
+  const actualCode=await network.getCode(contractAddress);
+  const verifiedCode=verifyApothemRuntimeBytecode({
+   compiledRuntime:'0x'+compiled.runtime,
+   immutableReferences:compiled.immutableReferences,
+   actualRuntime:actualCode
+  });
+  const vault=new Contract(contractAddress,compiled.abi,owner);
+  const [recordedOwner,recRescue,recThreshold,recInactivity,recVersion]=await Promise.all([
+   vault.owner(),vault.rescueDestination(),vault.threshold(),
+   vault.inactivityPeriod(),vault.ADAPTER_VERSION()
+  ]);
+  if(recordedOwner.toLowerCase()!==roles.owner||recRescue.toLowerCase()!==roles.rescue||
+     recThreshold!==2n||recInactivity!==45n||recVersion!==501n)
+    throw Error('Deployed immutable policy does not match safe disposable 2-of-2 testnet settings.');
+  const configured=(await vault.getTrustedContacts()).map(v=>v.toLowerCase());
+  if(configured.length!==2||configured[0]!==roles.guardianA||configured[1]!==roles.guardianB)
+   throw Error('Deployed contract guardians differ from encrypted disposable identities.');
+  journal.contractAddress=contractAddress;
+  journal.runtimeEvidence=verifiedCode;save();
+
+  // Guardian approval fees come from small disposable owner-sent fake-TXDC top-ups,
+  // avoiding multiple CAPTCHA faucet claims.
+  await send('fund-guardian-a',owner,{to:roles.guardianA,value:GUARDIAN_TOPUP});
+  await send('fund-guardian-b',owner,{to:roles.guardianB,value:GUARDIAN_TOPUP});
+  const encoded=new Contract(contractAddress,compiled.abi,owner);
+  const depositBefore=await network.getBalance(contractAddress);
+  if(depositBefore!==0n)throw Error('Newly deployed vault has unexpected funds.');
+  await send('deposit-vault',owner,{to:contractAddress,value:XDC_PUBLIC_TRIAL_DEPOSIT_WEI});
+  const balance=await network.getBalance(contractAddress);
+  if(balance!==XDC_PUBLIC_TRIAL_DEPOSIT_WEI)throw Error('Protected deposit not present in vault.');
+
+  const heartbeatTx=await encoded.heartbeat.populateTransaction();
+  await send('owner-heartbeat',owner,heartbeatTx);
+  const anchor=BigInt(await encoded.lastHeartbeat());
+  journal.earlyGuard=await ensureRevert(
+   vault.connect(a).approveRecovery.staticCall(),
+   'Guardian approval before on-ledger inactivity must revert'
+  );
+  let eligible=false;
+  for(let tries=0;tries<45;tries++){
+   const head=await network.getBlock('latest');
+   if(head&&BigInt(head.timestamp)>=anchor+45n){eligible=true;break;}
+   await sleep(4000);
+  }
+  if(!eligible)throw Error('Inactivity was not established from recent Apothem block timestamps.');
+  await send('guardian-a-approval',a,await vault.connect(a).approveRecovery.populateTransaction());
+  if(await vault.approvalCount()!==1n)throw Error('First guardian did not produce exactly one approval.');
+  journal.oneGuardianGuard=await ensureRevert(
+   vault.executeRecovery.staticCall(),'One guardian alone must not execute 2-of-2 recovery'
+  );
+  await send('guardian-b-approval',b,await vault.connect(b).approveRecovery.populateTransaction());
+  if(await vault.approvalCount()!==2n)throw Error('Two independent guardian approvals not established.');
+  const recipientBefore=await network.getBalance(roles.rescue);
+  await send('execute-two-guardian-recovery',owner,await encoded.executeRecovery.populateTransaction());
+  const [afterRecipient,afterVault,recovered]=await Promise.all([
+   network.getBalance(roles.rescue),network.getBalance(contractAddress),encoded.recovered()
+  ]);
+  if(afterRecipient-recipientBefore!==XDC_PUBLIC_TRIAL_DEPOSIT_WEI||afterVault!==0n||recovered!==true)
+   throw Error('Public recovery native-balance conservation or recovered flag mismatch.');
+  journal.nativeRecoveryVerified=true;save();
+
+  await send('late-native-post-recovery-deposit',owner,{to:contractAddress,value:LATE_NATIVE_AMOUNT});
+  if(await network.getBalance(contractAddress)!==LATE_NATIVE_AMOUNT)
+   throw Error('Late native deposit not observed in vault.');
+  const lateBefore=await network.getBalance(roles.rescue);
+  await send('sweep-late-native',owner,await encoded.recoverLateNative.populateTransaction());
+  const [lateAfter,lateVault]=await Promise.all([
+   network.getBalance(roles.rescue),network.getBalance(contractAddress)
+  ]);
+  if(lateAfter-lateBefore!==LATE_NATIVE_AMOUNT||lateVault!==0n)
+   throw Error('Late-native payout failed recipient or empty-vault conservation.');
+  journal.lateNativeRecoveryVerified=true;
+  journal.status='public-testnet-native-recovery-proven';
+  journal.ownerHeartbeatVerified=true;
+  journal.twoIndependentGuardiansVerified=true;
+  journal.publicApothemTokenRecoveryProven=false;
+  journal.xdposFinalityProven=false; // two confirmations != independent finality.
+  journal.productionReady=false;save();
+  return Object.freeze({
+   journalPath,publicContract:contractAddress,transactionCount:journal.steps.length,
+   actualTotalFeeWei:fees.toString(),nativeRecoveryVerified:true,
+   lateNativeRecoveryVerified:true,publicTokenRecoveryVerified:false,
+   independentFinalityVerified:false,productionReady:false
+  });
+ }catch(error){
+  journal.status='incomplete-requires-manual-ledger-reconciliation';
+  journal.error=String(error?.message??error).slice(0,300);save();
+  throw Error('Trial halted; do NOT rerun or submit duplicate transactions before inspecting execution-journal.json: '+journal.error);
+ }
+}
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+ executeDisposableApothemTrial({directory:process.argv[2]??DEFAULT_DIR})
+  .then(result=>console.log(JSON.stringify(result,null,2)))
+  .catch(e=>{console.error('XDC_APOTHEM_LIVE_TRIAL_BLOCKED:',String(e?.message??e));process.exitCode=1;});
+}
