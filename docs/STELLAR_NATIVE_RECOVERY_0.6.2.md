@@ -122,9 +122,22 @@ With two independently generated disposable contact keys, the same native Testne
 
 This is a genuine two-guardian public-Testnet proof with disposable tokens, not an assertion of production readiness or support for arbitrary M-of-N. Native Stellar transaction preconditions allow at most two extra signers; broader policies need their own separately verified Soroban implementation.
 
+## Live disposable 2-of-2 fee sponsorship — 2026-10-12
+
+[Successful Stellar sponsored Testnet run](https://github.com/Minus99x/Omegavault/actions/runs/38345033796) used fresh vault, rescue, two guardian and fee-payer keypairs, all generated within one isolated CI process and funded with disposable Friendbot Testnet XLM.
+
+- Owner setup: `b277367c84b1da46b37814b3d50ade7da0b47c1878d3ce76b26157dcceffe673`, ledger **5168195**.
+- Initial recovery was rejected with native `tx_bad_minseq_age_or_gap`; owner heartbeat `963bf0eb68d403ef09edbc228d1bb01587088eeb496b75a722bb811f38916441` was included in ledger **5168196**, and the same signed recovery was rejected again.
+- Following 45 seconds of current sequence-age eligibility, exact preauthorized **inner recovery** hash `a65de38a55e54b47f1998566ad1279ef479930ee426d7abdc716ee5792ffc9bd` was included inside sponsored **outer fee-bump** hash `e3389bbc6d4c14b9464f3ed800c4f2526c4ec21eeb914f4c7e25c1eb71cb11e8`, ledger **5168206**; ledger hash `0b8fea5c5e094d49c53e3022f04e9740205bce76d65d070e49527d3f5620209b`.
+- Independent signer and sponsor checks validated the on-ledger signed envelope XDR byte-for-byte, original guardian signatures and rescue destination, exact one-XLM rescue credit, and consumed one-time `preAuthTx` signer.
+- Horizon charged the separate disposable fee payer **200 stroops**, versus maximum bid cap 1,000 stroops; actual sponsor XLM balance decreased by the exact charge and vault XLM balance decreased by only **1.0000000** for the protected recovery.
+- Earlier live attempt [run 38344820722](https://github.com/Minus99x/Omegavault/actions/runs/38344820722) rejected proof because the verifier expected a top-level Horizon inner hash not guaranteed by the API. The corrected verification validates the canonical on-ledger XDR first and uses optional metadata for conflict detection. An evidence-format failure must not be confused with an on-chain transaction failure.
+
+Scope: genuine public Stellar Testnet, fee-bump sponsor, two independently generated contact identities and XLM native asset only. It does **not** prove token recovery, failed-applied one-time authorization handling on public Testnet, broadly variable guardian thresholds or production security. No mainnet funds or user wallets were used.
+
 ## Remaining promotion gate
 
-Additional real public-Testnet cases remain required: **fee-bump sponsorship, classic asset/trustline preflight, failed-applied `preAuthTx` consumption**, owner/contact compromise scenarios, complete independent security review and release policy. The already-tested driver-injected pipelines remain valuable regressions but cannot substitute for chain evidence.
+Additional real public-Testnet cases remain required: **classic asset/trustline preflight, failed-applied `preAuthTx` consumption**, owner/contact compromise scenarios, complete independent security review and release policy. The already-tested driver-injected pipelines remain valuable regressions but cannot substitute for chain evidence.
 
 Stellar remains **not promoted for product support**; observed Testnet milestones do not authorize deployment.
 
