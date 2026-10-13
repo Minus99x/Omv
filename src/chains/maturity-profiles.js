@@ -45,7 +45,7 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   stellar: Object.freeze({
     stage: 'offline-verified',
     blockers: ref(
-      'Actual Stellar Testnet execution evidence is still required before public-testnet promotion.',
+      'The first isolated 1-of-1 native-XLM recovery succeeded on public Stellar Testnet; full on-network heartbeat/reset, early-rejection, failed-applied and multi-case recovery evidence remains required before promotion.',
       'Offline/injected-driver evidence is not public-network proof even when transaction, finality and rescue-balance bindings verify.'
     ),
     gateEvidence: Object.freeze({
@@ -57,8 +57,9 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
     }),
     notes: ref(
       'Pinned @stellar/stellar-sdk 17.1.0 execution is verified offline.',
+      '2026-10-12: Disposable-account public Stellar Testnet recovered exactly 1.0000000 fake XLM via preAuthTx plus one contact extra-signer, with on-ledger setup 5165976 and recovery 5165980, observed finality, rescue credit and single-use signer consumption (GitHub Actions run 38330316217). This is a narrow real-network proof, not a complete lifecycle or audit.',
       'The offline pipeline now covers initial/post-heartbeat txTOO_EARLY, owner heartbeat, eligible N-of-N fee-bump recovery, finality/rescue-balance binding, failed-applied preAuthTx consumption, Horizon normalization/transport and digest-bound evidence.',
-      'Wallet signing, public-testnet submission, finalized public-network recovery and connector promotion remain separately gated.'
+      'Customer-wallet signing, complete public-Testnet lifecycle, failed-applied behavior, broader policy proofs and connector promotion remain separately gated.'
     )
   }),
   bitcoin: Object.freeze({
