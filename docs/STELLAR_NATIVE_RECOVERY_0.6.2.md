@@ -66,11 +66,36 @@ The offline execution-evidence pipeline now covers:
 
 The connector remains `offline-verified`, not `live-proof`.
 
+## First genuine public-Testnet native recovery — 2026-10-12 (development)
+
+A standalone, expressly gated **disposable Testnet-only** runner now uses fresh ephemeral keys (never customer or owner wallets), funded by Friendbot, to execute a real native Stellar recovery with **one trusted contact** and **1-of-1 threshold**.
+
+The real on-ledger sequence was:
+
+1. Fund separate disposable vault and rescue G-accounts using fake Testnet XLM.
+2. Build the immutable **1.0000000 XLM** rescue payment envelope with a preauthorized transaction hash, trusted-contact extra-signer and `minAccountSequenceAge`.
+3. Sign that exact recovery envelope with the disposable contact key.
+4. Owner-sign and submit a real atomic `setOptions` setup to register the one-time `preAuthTx` account signer (the contact is **not** an account-wide signer).
+5. Observe the real account signer and sequence through Horizon; wait until ledger close-time proves inactivity eligibility.
+6. Submit the contact-signed recovery; verify inclusion, ledger hash/finality, exact 1-XLM rescue balance increase and consumption of the one-time `preAuthTx` signer.
+
+**Recorded public-Testnet evidence:**
+
+- Dev commit: `fc2a71aca6333258e084b99fcbb1da1fd47fd6cf`.
+- [Successful isolated GitHub Actions execution](https://github.com/Minus99x/Omegavault/actions/runs/38330316217).
+- Setup transaction: `b53b11b3773c7fc23767c261a50f3c2aba3953487946ddd99a6882183a6f7ff5` (ledger **5165976**).
+- Recovery transaction: `3c0948a212195dc2449c4a7b0cb87bcd55e9a6ef986941d7b7e651d11eefcb69` (ledger **5165980**).
+- Ledger hash: `b18b12c25fa8e7539ff32a0e57a1bcaedf79454237a7c40cfbbb413e2259f2b1`.
+- Verification booleans recorded: owner signer setup, exact contact binding, sequence-age eligibility, rescue credit and single-use signer consumption, all **true**.
+- Source: `scripts/stellar-testnet-live-disposable-recovery.js`; Tests: `test/stellar-testnet-live-disposable-recovery.test.js`.
+
+**Scope is deliberately narrow:** This proves a *single genuine on-network native recovery*, not the full OmegaVault lifecycle, broad M-of-N, token rescue, owner heartbeat/reset, premature failure, failed-applied/preAuth consumption, all chain invariants, repeated reliability or external security audit. No mainnet, real assets, customer keys or chain-support promotion.
+
 ## Remaining promotion gate
 
-An actual Stellar Testnet execution is still required. The public-network evidence must populate the already-hardened pipeline with real Horizon observations for the too-early/heartbeat/recovery/finality sequence and the failed-applied case.
+Real public-Testnet **heartbeat/reset and post-heartbeat rejection** remain to be demonstrated alongside failed-applied consumption, wider asset/role cases, negative adversarial evidence, release security review and the full lifecycle binding. The earlier driver-injected end-to-end runs are still synthetic; they cannot be substituted for these public-network proofs.
 
-Injected drivers, fixtures and clean CI prove the implementation and evidence contracts; they do not establish public-Testnet execution proof or chain promotion.
+This isolated native-recovery milestone does **not** remove the existing chain promotion blockers or authorize product deployment.
 
 ## Authority boundary
 
