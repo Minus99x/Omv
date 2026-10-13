@@ -117,17 +117,23 @@ test('Horizon success normalization binds hash, ledger and txSUCCESS', () => {
   });
 });
 
-test('Horizon rejected submission only becomes proof when result code is txTOO_EARLY', () => {
+test('Horizon rejected submission only becomes proof when result code is tx_bad_minseq_age_or_gap', () => {
   const hash='aa'.repeat(32);
-  const error={ response:{ data:{ extras:{ result_codes:{ transaction:'txTOO_EARLY' } } } } };
+  const error={ response:{ data:{ extras:{ result_codes:{ transaction:'tx_bad_minseq_age_or_gap' } } } } };
   const result=normalizeHorizonSubmissionError({
     error,
     expectedTransactionHashHex:hash,
     observedAt:'2026-10-03T00:00:00Z'
   });
-  assert.equal(result.resultCode, 'txTOO_EARLY');
+  assert.equal(result.resultCode, 'tx_bad_minseq_age_or_gap');
   assert.equal(result.includedInLedger, false);
 
+  const absoluteTimeBound={ response:{ data:{ extras:{ result_codes:{ transaction:'txTOO_EARLY' } } } } };
+  assert.throws(() => normalizeHorizonSubmissionError({
+    error:absoluteTimeBound,
+    expectedTransactionHashHex:hash,
+    observedAt:'2026-10-03T00:00:00Z'
+  }), /unsupported proof result code/);
   const wrong={ response:{ data:{ extras:{ result_codes:{ transaction:'txBAD_SEQ' } } } } };
   assert.throws(() => normalizeHorizonSubmissionError({
     error:wrong,
@@ -237,9 +243,9 @@ test('injected Horizon proof driver is testnet-only and performs no signing', as
   }), /restricted to the official Stellar Testnet Horizon endpoint/);
 });
 
-test('injected Horizon proof driver normalizes txTOO_EARLY transport rejection without treating it as inclusion', async () => {
+test('injected Horizon proof driver normalizes tx_bad_minseq_age_or_gap transport rejection without treating it as inclusion', async () => {
   const hash='aa'.repeat(32);
-  const error={ response:{ data:{ extras:{ result_codes:{ transaction:'txTOO_EARLY' } } } } };
+  const error={ response:{ data:{ extras:{ result_codes:{ transaction:'tx_bad_minseq_age_or_gap' } } } } };
   const transport={
     async loadAccount(){ return accountResponse(); },
     async submitTransactionXdr(){ throw error; },
@@ -252,6 +258,6 @@ test('injected Horizon proof driver normalizes txTOO_EARLY transport rejection w
     clock:() => '2026-10-03T00:00:00Z'
   });
   const result=await driver.submitEnvelope({ transactionXdr:'AAAA', expectedTransactionHashHex:hash });
-  assert.equal(result.resultCode, 'txTOO_EARLY');
+  assert.equal(result.resultCode, 'tx_bad_minseq_age_or_gap');
   assert.equal(result.includedInLedger, false);
 });
