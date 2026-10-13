@@ -45,7 +45,7 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   stellar: Object.freeze({
     stage: 'offline-verified',
     blockers: ref(
-      'Native 1-of-1 and 2-of-2 disposable-account XLM recoveries, owner heartbeat/reset, premature rejections, final recovery and rescue credit have genuine public Stellar Testnet evidence; fee-bump, token, failed-applied and broader security validation remain required before promotion.',
+      'Native 1-of-1 and 2-of-2 disposable-account XLM recoveries, owner heartbeat/reset, premature rejections, final recovery and rescue credit have genuine public Stellar Testnet evidence; independently sponsored fee-bump native recovery is also proven on Testnet; classic assets, failed-applied and broader security validation remain required before promotion.',
       'Offline/injected-driver evidence is not public-network proof even when transaction, finality and rescue-balance bindings verify.'
     ),
     gateEvidence: Object.freeze({
@@ -60,8 +60,9 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
       '2026-10-12: Disposable-account public Stellar Testnet recovered exactly 1.0000000 fake XLM via preAuthTx plus one contact extra-signer, with on-ledger setup 5165976 and recovery 5165980, observed finality, rescue credit and single-use signer consumption (GitHub Actions run 38330316217). This is a narrow real-network proof, not a complete lifecycle or audit.',
       '2026-10-12 independent two-guardian 2-of-2 public-Testnet recovery: owner setup ledger 5166913, heartbeat ledger 5166914, two early rejections, exact 1 fake XLM recovered in ledger 5166924, and consumed preAuthTx signer (Actions run 38336534794). This remains a bounded native 2-of-2 proof, not broad M-of-N support.',
       '2026-10-12 follow-up: public Testnet observed genuine tx_bad_minseq_age_or_gap rejection, owner-signed heartbeat (ledger 5166182), second post-heartbeat rejection of the same envelope and successful 1.0000000 fake-XLM rescue (ledger 5166192), verified single-use signer consumption (GitHub Actions run 38331699707). Does not prove all policy modes or production safety.',
-      'The offline pipeline now covers initial/post-heartbeat txTOO_EARLY, owner heartbeat, eligible N-of-N fee-bump recovery, finality/rescue-balance binding, failed-applied preAuthTx consumption, Horizon normalization/transport and digest-bound evidence.',
-      'Customer-wallet signing, complete public-Testnet lifecycle, failed-applied behavior, broader policy proofs and connector promotion remain separately gated.'
+      'The offline pipeline now covers initial/post-heartbeat tx_bad_minseq_age_or_gap, owner heartbeat, eligible N-of-N fee-bump recovery, finality/rescue-balance binding, failed-applied preAuthTx consumption, Horizon normalization/transport and digest-bound evidence.',
+      '2026-10-12 public Stellar Testnet fee sponsorship: exact 2-of-2 guardian-signed inner rescue recovered 1 fake XLM with independent sponsor charged 200 stroops; on-ledger XDR, sponsor balance, vault only 1 XLM debit and rescue balance matched (Actions run 38345033796; recovery ledger 5168206).',
+      'Customer-wallet signing, full classic-asset and failed-applied public-Testnet lifecycle, broader policy proofs and connector promotion remain separately gated.'
     )
   }),
   bitcoin: Object.freeze({
