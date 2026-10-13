@@ -33,9 +33,36 @@ The read-only `scripts/xdc-apothem-independent-rpc-check.js` now checks chain ID
 
 **Important:** Confirmed identical quote does **not** determine safe contract-deployment fees, EIP-1559 support, gas estimation, node submission acceptance, or XDPoS finality. The unusually high `eth_gasPrice` relative to older official network documentation remains a budget concern. The actual deployment gas and fee mechanism must be tested in a narrowly capped, independently funded Testnet objective before deployment is attempted. `xdc:apothem` remains `compatibility-ready`, not a released connector.
 
+## Exact V0.5 contract deployment estimate — 2026-10-12
+
+[Successful public Apothem read-only deployment preflight](https://github.com/Minus99x/Omegavault/actions/runs/38351155613) compiled the existing `contracts/OmegaVaultRecoveryVaultV050.sol` with pinned `solc 0.8.24`, Paris EVM target and optimizer (200 runs) without using wallet credentials or sending a transaction.
+
+- Compiled creation bytecode: **5,273 bytes**; deployed runtime bytecode: **4,242 bytes**.
+- Canonical ABI parameters: two distinct disposable guardians, **2-of-2 threshold**, **45-second inactivity**, fixed distinct rescue address, and disposable dry-run deployer address with **no associated private key**.
+- Both independent Apothem providers agreed on common block **84,029,077**, hash `0x217cb58e0d0de59b55079986fe71aa93a2d71930dd1f8feafe946d9fa815138c`, 625-gwei gas quote and 625-gwei block `baseFeePerGas`.
+- Both accepted the identical **read-only** `eth_estimateGas` constructor simulation: **1,358,864 gas**.
+- With a conservative 25% gas cushion, cap is **1,698,580 gas**, or **1.0616125 fake TXDC** at that observed fee. This is below the explicitly capped **5 fake TXDC** per-deployment budget.
+- The preflight **does not authorize actual signing, funding, deployment or recovery** and does not prove the present cost quote will persist.
+
+The compiler-checked preflight source is `scripts/xdc-apothem-deployment-preflight.js`; strict budget and constructor encoder tests are in `test/xdc-apothem-deployment-budget.test.js`.
+
+## Local EVM reproduction of real V0.5 source — 2026-10-12
+
+[Successful one-shot local chain-51 rehearsal](https://github.com/Minus99x/Omegavault/actions/runs/38351457906) used pinned dependencies to deploy the **same Solidity V0.5 source** on an isolated Ganache chain configured with ID 51. This is **not public XDC Apothem** and does not make the connector recovery-proven.
+
+Verified in locally mined EVM transactions: owner and rescue configuration; native deposit and exact 1-unit rescue transfer; non-guardian and premature guardian rejection; owner-signed heartbeat resetting the inactivity period and clearing prior approval; mandatory 2-of-2 guardian threshold; permissionless execute after approval; replay/double recovery rejection; post-recovery mock-token sweep of 1,000,000 units; and failure of owner heartbeat after final recovery. Reported final native recovery execution used **39,716 gas** in the isolated emulator.
+
+Harness: `scripts/xdc-apothem-local-recovery-rehearsal.js`. **No public-network transaction, faucet, customer key, or real assets** were touched.
+
+## Funding boundary for the first public-Testnet recovery
+
+The [official Apothem faucet](https://faucet.apothem.network/) requires a wallet address and CAPTCHA according to its documented workflow. No authenticated, documented unattended claim method has been established in this campaign. A **fresh disposable Apothem deployer wallet** must therefore be funded with faucet tokens through an authorized user action before any genuine testnet deployment can be claimed. Do not substitute user-controlled mainnet or existing production wallet keys, copy a private key into git/CI logs, or bypass the faucet's anti-abuse checks.
+
+Next proof: on-chain deployment with a strict ≤5 fake-TXDC gas budget, runtime-bytecode and immutable-policy verification, owner heartbeat, guardian threshold, real rescue balance transfer, public receipt/finality evidence and token recovery if applicable. Independent review and existing maturity gates remain intact.
+
 ## Next XDC objective
 
-1. Reconcile both providers' 625-gwei gas quotes against block fee fields and a bounded `eth_estimateGas` check; never hardcode historic fees or assume native finality.
+1. Re-check the current real deployment gas quote and base fee immediately before any funded transaction; do not assume the recorded estimate remains valid.
 2. Prepare disposable Apothem accounts and a bounded fee budget using faucet tokens only.
 3. Reproduce OmegaVault's Ethereum Solidity proof on Apothem with XDC-specific chain identity/address handling. Verify deployed runtime bytecode and owner/contact/rescue configuration on-chain.
 4. Execute real testnet native recovery, heartbeat and threshold guards, then XDC finality and (if implemented) token-sweep checks.
