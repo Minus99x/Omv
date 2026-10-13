@@ -46,7 +46,7 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   stellar: Object.freeze({
     stage: 'offline-verified',
     blockers: ref(
-      'Native 1-of-1 and 2-of-2 disposable-account XLM recoveries, owner heartbeat/reset, premature rejections, final recovery and rescue credit have genuine public Stellar Testnet evidence; independently sponsored fee-bump native recovery is also proven on Testnet; classic assets, failed-applied and broader security validation remain required before promotion.',
+      'Native 1-of-1 and 2-of-2 disposable-account XLM recoveries, owner heartbeat/reset, premature rejections, final recovery and rescue credit have genuine public Stellar Testnet evidence; independently sponsored fee-bump native recovery is also proven on Testnet; one restricted-scope newly issued OMVT classic asset recovered on public Testnet, but adversarial issuer/trustline states, failed-applied recovery and broader security validation remain required before promotion.',
       'Offline/injected-driver evidence is not public-network proof even when transaction, finality and rescue-balance bindings verify.'
     ),
     gateEvidence: Object.freeze({
@@ -63,7 +63,8 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
       '2026-10-12 follow-up: public Testnet observed genuine tx_bad_minseq_age_or_gap rejection, owner-signed heartbeat (ledger 5166182), second post-heartbeat rejection of the same envelope and successful 1.0000000 fake-XLM rescue (ledger 5166192), verified single-use signer consumption (GitHub Actions run 38331699707). Does not prove all policy modes or production safety.',
       'The offline pipeline now covers initial/post-heartbeat tx_bad_minseq_age_or_gap, owner heartbeat, eligible N-of-N fee-bump recovery, finality/rescue-balance binding, failed-applied preAuthTx consumption, Horizon normalization/transport and digest-bound evidence.',
       '2026-10-12 public Stellar Testnet fee sponsorship: exact 2-of-2 guardian-signed inner rescue recovered 1 fake XLM with independent sponsor charged 200 stroops; on-ledger XDR, sponsor balance, vault only 1 XLM debit and rescue balance matched (Actions run 38345033796; recovery ledger 5168206).',
-      'Customer-wallet signing, full classic-asset and failed-applied public-Testnet lifecycle, broader policy proofs and connector promotion remain separately gated.'
+      '2026-10-12 public Stellar Testnet classic asset (run 38346812996): fresh OMVT issuer and independent vault/rescue trustlines, 10 newly issued tokens, owner heartbeat and two early rejections, 2-of-2 contact preAuth recovery of precisely 3.0000000 OMVT via independent 200-stroop fee sponsor in ledger 5168476; exact on-ledger token balances and consumed one-time signer verified. Does not cover adversarial issuer controls or arbitrary tokens.',
+      'Customer-wallet signing, adversarial classic-asset permissions, failed-applied public-Testnet recovery, broader policy proofs and connector promotion remain separately gated.'
     )
   }),
   bitcoin: Object.freeze({
