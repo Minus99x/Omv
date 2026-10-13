@@ -9,7 +9,7 @@ export const CHAIN_MATURITY_PROFILES = Object.freeze({
   xdc: Object.freeze({
     stage: 'compatibility-ready',
     blockers: ref('Fresh XDC Apothem deployment, native recovery, token sweep and finalized-head evidence are still required.'),
-    notes: ref('2026-10-12 read-only chain-51 Apothem RPC probe succeeded (Actions 38345382962). Follow-up independent official and eRPC providers agreed on same block 84027733 hash and 625-gwei gas quote (Actions 38347097320); live fee estimates, XDPoS finality, deployment and recovery are not yet proven. The high observed price requires bounded testnet gas-budget analysis before any contract transaction.'),
+    notes: ref('2026-10-12 Apothem RPC identity and two-provider gas quote agreed (Actions 38345382962, 38347097320). Pinned V0.5 contract compiled and independently estimated at 1358864 deployment gas on both live testnet RPCs, buffered fee about 1.0616125 fake TXDC (Actions 38351155613). Exact compiled source also passed a complete isolated local chain-51 EVM guardian heartbeat, 2-of-2 native recovery, replay rejection and mock XRC20 sweep rehearsal (Actions 38351457906). Neither read-only gas simulation nor local execution proves public-XDC contract deployment, native recovery, token sweep or XDPoS finality; a fresh faucet-funded disposable account and on-network proof remain gated.'),
     gateEvidence: Object.freeze({
       'network-profile': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.28:XDC_NETWORK_FINALITY') }),
       'address-validation': Object.freeze({ passed: true, level: 'offline-test', refs: ref('0.6.26:EVM_XDC_PROOF_BINDING') }),
