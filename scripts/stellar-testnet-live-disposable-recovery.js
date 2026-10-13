@@ -344,9 +344,27 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   });
   let sponsorshipEvidence=null;
   if(feeSponsor){
-    if(chainTx.fee_account!==feeSponsor.publicKey() ||
-       String(chainTx.inner_transaction_hash??'').toLowerCase()!==recoveryArtifact.transactionHashHex){
-      throw new Error('Real Horizon fee-bump transaction did not bind the expected sponsor and signed inner recovery.');
+    // Horizon's fee-bump inner hash is exposed as a nested object on some
+    // versions, not necessarily a top-level inner_transaction_hash field.
+    // Prefer the actual canonical envelope included in the ledger: it binds
+    // fee payer, sponsor signature, unchanged inner transaction and guardians.
+    const liveXdr=chainTx.envelope_xdr;
+    if(typeof liveXdr!=='string' || !liveXdr){
+      throw new Error('Real Horizon fee-bump transaction is missing the on-ledger envelope XDR.');
+    }
+    const observedEnvelope=TransactionBuilder.fromXdr(liveXdr,Networks.TESTNET);
+    if(!observedEnvelope?.innerTransaction ||
+       observedEnvelope.toXdr()!==signedFinalXdr ||
+       observedEnvelope.feeSource!==feeSponsor.publicKey() ||
+       observedEnvelope.innerTransaction.toXdr()!==signedRecovery.toXdr() ||
+       Buffer.from(observedEnvelope.innerTransaction.hash()).toString('hex')!==recoveryArtifact.transactionHashHex){
+      throw new Error('Real Horizon envelope does not match the exact fee sponsor, guardians and protected inner transaction.');
+    }
+    const horizonInnerHash=chainTx.inner_transaction?.hash ?? chainTx.inner_transaction_hash;
+    if((chainTx.fee_account!=null && chainTx.fee_account!==feeSponsor.publicKey()) ||
+       (horizonInnerHash!=null &&
+        String(horizonInnerHash).toLowerCase()!==recoveryArtifact.transactionHashHex)){
+      throw new Error('Real Horizon fee-bump metadata conflicts with its verified signed XDR.');
     }
     const chargedRaw=String(chainTx.fee_charged??'');
     if(!/^[1-9]\d*$/.test(chargedRaw) ||
