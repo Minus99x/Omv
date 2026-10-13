@@ -5,6 +5,7 @@ import { buildRecoveryEnvelopeArtifact, createRecoveryEnvelopePlan, verifySigned
 import {
   runStellarDisposableTestnetRecovery,
   disposableStellarContactCount,
+  disposableStellarAssetMode,
   disposableStellarFeeSponsorMode,
   requireStellarTestnetTooEarly
 } from '../scripts/stellar-testnet-live-disposable-recovery.js';
@@ -109,4 +110,20 @@ test('sponsor and two-guardian mode reject malformed configured values before re
    }),/explicit, exact Testnet-only opt-in/
  );
  assert.equal(touched,0);
+});
+
+test('classic issued-asset Testnet mode is explicitly opt-in and refuses invalid modes before networking',async()=>{
+ const gate={OMEGAVAULT_STELLAR_DISPOSABLE_TESTNET:'DISPOSABLE_FAKE_XLM_ONLY'};
+ assert.equal(disposableStellarAssetMode(gate),false);
+ assert.equal(disposableStellarAssetMode({...gate,OMEGAVAULT_STELLAR_DISPOSABLE_ASSET:'EPHEMERAL_CLASSIC_ASSET'}),true);
+ for(const value of ['USDC','OMVT','EPHEMERAL_CLASSIC_ASSET_MAINNET','false',1]){
+   assert.throws(()=>disposableStellarAssetMode({...gate,OMEGAVAULT_STELLAR_DISPOSABLE_ASSET:value}),/exact Testnet-only opt-in/);
+ }
+ assert.throws(()=>disposableStellarAssetMode({OMEGAVAULT_STELLAR_DISPOSABLE_ASSET:'EPHEMERAL_CLASSIC_ASSET'}),/live execution is disabled/);
+ let requests=0;
+ await assert.rejects(runStellarDisposableTestnetRecovery({
+   env:{...gate,OMEGAVAULT_STELLAR_DISPOSABLE_ASSET:'USDC'},
+   fetchImpl:async()=>{requests++;throw Error('network called')}
+ }),/exact Testnet-only opt-in/);
+ assert.equal(requests,0);
 });
