@@ -1,4 +1,4 @@
-name: XDC isolated V0.5.1 late-native security proof
+name: XDC isolated V0.5.1 late-native and recipient-failure security proof
 on:
   push:
     branches:
@@ -23,5 +23,5 @@ jobs:
           npm install --no-save --package-lock=false --ignore-scripts ethers@6.13.4 ganache@7.9.2
       - name: Syntax-check the new V0.5.1 candidate proof
         run: node --check scripts/xdc-apothem-local-v051-safety.js
-      - name: Reproduce two-guardian native recovery and return post-recovery deposits safely
+      - name: Prove two-guardian recovery, late deposit rescue and atomic failure for rejecting recipient
         run: node scripts/xdc-apothem-local-v051-safety.js
