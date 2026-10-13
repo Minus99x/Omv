@@ -6,7 +6,7 @@ import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { createCardanoPreprodIndependentPhaseOneInput, verifyCardanoPreprodIndependentPhaseOneInput } from '../src/chains/cardano/preprod-independent-phase-one-input.js';
 const h=(c)=>c.repeat(64);
-function serializedFixtureTransaction() {
+function serializedFixtureTransaction({ includeRequiredSigner=true, signingHashOverride=null }={}) {
   const inputs=Cardano.TransactionInputs.new();
   inputs.add(Cardano.TransactionInput.new(
     Cardano.TransactionHash.from_hex(h('1')), 0
@@ -32,20 +32,32 @@ function serializedFixtureTransaction() {
   // A deterministic test-only owner signature keeps this fixture genuinely
   // signed without involving a connected wallet or any real credentials.
   const privateKey=Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({length:32},()=>9));
+  const ownerKeyHash=privateKey.to_public().hash().to_hex();
+  const ownerAddress=Cardano.EnterpriseAddress.new(
+    0, Cardano.Credential.from_keyhash(privateKey.to_public().hash())
+  ).to_address().to_bech32();
+  if (includeRequiredSigner) {
+    const requiredSigners=Cardano.Ed25519KeyHashes.new();
+    requiredSigners.add(privateKey.to_public().hash());
+    body.set_required_signers(requiredSigners);
+  }
   const witnessSet=Cardano.TransactionWitnessSet.new();
   const vkeys=Cardano.Vkeywitnesses.new();
+  const signedBodyHash=Buffer.from(blake2b(body.to_bytes(), {dkLen:32})).toString('hex');
   vkeys.add(Cardano.make_vkey_witness(
-    Cardano.TransactionHash.from_bytes(blake2b(body.to_bytes(), {dkLen:32})),
+    Cardano.TransactionHash.from_hex(signingHashOverride ?? signedBodyHash),
     privateKey
   ));
   witnessSet.set_vkeys(vkeys);
   const signed=Cardano.Transaction.new(body, witnessSet).to_hex();
   return Object.freeze({
     signed,
-    bodyHash:Buffer.from(blake2b(body.to_bytes(), {dkLen:32})).toString('hex')
+    bodyHash:Buffer.from(blake2b(body.to_bytes(), {dkLen:32})).toString('hex'),
+    ownerKeyHash,
+    ownerAddress
   });
 }
-const {signed,bodyHash}=serializedFixtureTransaction();
+const {signed,bodyHash,ownerKeyHash,ownerAddress}=serializedFixtureTransaction();
 const sha=createHash('sha256').update(Buffer.from(signed,'hex')).digest('hex');
 const actions={transactionSubmissionAuthorized:false,transactionSubmissionPerformed:false,liveValueMovementAuthorized:false,publicNetworkRecoveryProven:false,supportClaimAuthorized:false};
 const checks=Object.fromEntries([
@@ -61,12 +73,13 @@ function fixture() {
    schema:'omegavault.cardano.preprod-initialize-wallet-witness-evidence.v1',network:'preprod',action:'initialize',
    unsignedCandidateSha256:h('a'),unsignedPreflightSha256:h('b'),validatorIdentitySha256:h('c'),utxoBindingEvidenceSha256:h('d'),
    transactionBodyHash:bodyHash,signedTransactionCborHex:signed,signedTransactionSha256:sha,
+   ownerPaymentKeyHash:ownerKeyHash,witnessCount:1,
    checks:{exactWalletProducedSignedBytesPreserved:true,signedTransactionCanonicalRoundTripExact:true,exactUnsignedBodyPreserved:true,auxiliaryDataPreserved:true,nonWalletWitnessesPreserved:true,exactOwnerKeyWitnessCount:true,ownerPaymentKeyHashMatched:true,ownerSignatureCryptographicallyValid:true,walletWitnessesValidated:true,completePhaseOneValidated:false},liveActions:{...actions}
  };
  witness.witnessEvidenceSha256=hashCardanoEvidence(witness);
  const tip={hash:h('f'),slot:10000};
  const snapshot={schemaVersion:2,tip:{blockHash:tip.hash,slot:tip.slot},parameters:{sourceBlockHash:tip.hash}};
- const utxo=(char,index)=>({reference:{transaction:{id:h(char)},index},address:'addr_test1vfixture',lovelace:'5000000',valueSha256:h(char),datumPresent:false,referenceScriptPresent:false,stillUnspent:true,exactValuePreserved:true,exactOutputShapePreserved:true});
+ const utxo=(char,index)=>({reference:{transaction:{id:h(char)},index},address:ownerAddress,lovelace:'5000000',valueSha256:h(char),datumPresent:false,referenceScriptPresent:false,stillUnspent:true,exactValuePreserved:true,exactOutputShapePreserved:true});
  const presubmit={
    schema:'omegavault.cardano.preprod-initialize-pre-submit-evidence.v2',network:'preprod',action:'initialize',
    witnessEvidenceSha256:witness.witnessEvidenceSha256,
@@ -279,4 +292,58 @@ test('accepts the real signed seed, collateral and half-open validity commitment
  assert.equal(out.ledgerContext.utxoCommitments.collateral.reference.index,1);
  assert.deepEqual(out.ledgerContext.validity,{lowerSlot:9990,upperSlot:10010});
  assert.equal(out.completePhaseOneValidated,false);
+});
+
+function rebindSignedFixture(x, alternate) {
+  const newSha=createHash('sha256').update(Buffer.from(alternate.signed,'hex')).digest('hex');
+  x.signedTransactionCborHex=alternate.signed;
+  x.witnessEvidence.signedTransactionCborHex=alternate.signed;
+  x.witnessEvidence.signedTransactionSha256=newSha;
+  x.witnessEvidence.transactionBodyHash=alternate.bodyHash;
+  resign(x.witnessEvidence,'witnessEvidenceSha256');
+  x.preSubmitEvidence.witnessEvidenceSha256=x.witnessEvidence.witnessEvidenceSha256;
+  x.preSubmitEvidence.signedTransaction.sha256=newSha;
+  x.preSubmitEvidence.signedTransaction.bytes=alternate.signed.length/2;
+  resign(x.preSubmitEvidence,'preSubmitSha256');
+}
+
+test('independent handoff re-verifies the actual owner VKey signature, even with forged digests',()=>{
+ const x=fixture();
+ rebindSignedFixture(x,serializedFixtureTransaction({signingHashOverride:h('e')}));
+ assert.throws(()=>create(x),/owner VKey signature is not valid/);
+});
+
+test('independent handoff rejects a required owner signer omitted from signed CBOR',()=>{
+ const x=fixture();
+ rebindSignedFixture(x,serializedFixtureTransaction({includeRequiredSigner:false}));
+ assert.throws(()=>create(x),/required signer does not match/);
+});
+
+test('independent handoff rejects a claimed owner key that differs from signed witness',()=>{
+ const x=fixture();
+ x.witnessEvidence.ownerPaymentKeyHash='9'.repeat(56);
+ resign(x.witnessEvidence,'witnessEvidenceSha256');
+ x.preSubmitEvidence.witnessEvidenceSha256=x.witnessEvidence.witnessEvidenceSha256;
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/owner VKey does not match recorded owner payment key/);
+});
+
+test('independent handoff rejects a current seed address controlled by another key',()=>{
+ const x=fixture();
+ const alien=Cardano.EnterpriseAddress.new(
+   0, Cardano.Credential.from_keyhash(Cardano.Ed25519KeyHash.from_hex('8'.repeat(56)))
+ ).to_address().to_bech32();
+ x.preSubmitEvidence.currentInputs.seed.address=alien;
+ x.preSubmitEvidence.ledgerInputSnapshot.utxos.seed.address=alien;
+ x.preSubmitEvidence.ledgerInputSnapshotSha256=hashCardanoEvidence(x.preSubmitEvidence.ledgerInputSnapshot);
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/seed payment credential must match/);
+});
+
+test('independent handoff accepts cryptographically bound owner signature and seed address',()=>{
+ const x=fixture();
+ const request=create(x);
+ assert.equal(request.ledgerContext.utxoCommitments.seed.address,ownerAddress);
+ assert.equal(request.completePhaseOneValidated,false);
+ assert.equal(request.transactionSubmissionAuthorized,false);
 });
