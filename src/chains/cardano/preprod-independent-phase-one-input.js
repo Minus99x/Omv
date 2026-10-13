@@ -282,7 +282,7 @@ export function createCardanoPreprodIndependentPhaseOneInput({
   const declaredFee = preSubmit.signedTransaction?.feeLovelace;
   const currentMinimumFee = preSubmit.signedTransaction?.currentMinimumFeeLovelace;
   if (feeLovelace !== declaredFee || typeof currentMinimumFee !== 'string' ||
-      !/^(0|[1-9]\\d*)$/.test(currentMinimumFee) || currentMinimumFee.length > 20 ||
+      !/^(0|[1-9]\d*)$/.test(currentMinimumFee) || currentMinimumFee.length > 20 ||
       BigInt(feeLovelace) < BigInt(currentMinimumFee)) {
     throw new Error('Signed initialize fee does not match its current pre-submit fee commitment.');
   }
