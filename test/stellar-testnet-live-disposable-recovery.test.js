@@ -5,6 +5,7 @@ import { buildRecoveryEnvelopeArtifact, createRecoveryEnvelopePlan, verifySigned
 import {
   runStellarDisposableTestnetRecovery,
   disposableStellarContactCount,
+  disposableStellarFeeSponsorMode,
   requireStellarTestnetTooEarly
 } from '../scripts/stellar-testnet-live-disposable-recovery.js';
 
@@ -86,4 +87,26 @@ test('exact native 2-of-2 requires two independent contact signatures',()=>{
  assert.equal(full.valid,true,full.errors.join('; '));
  assert.equal(plan.signerPolicy.contactAccountSignerWeight,0);
  assert.equal(plan.signerPolicy.threshold,2);
+});
+
+test('disposable Testnet fee sponsor defaults off and needs explicit exact opt-in', async()=>{
+  const gate={OMEGAVAULT_STELLAR_DISPOSABLE_TESTNET:'DISPOSABLE_FAKE_XLM_ONLY'};
+  assert.equal(disposableStellarFeeSponsorMode(gate),false);
+  assert.equal(disposableStellarFeeSponsorMode({...gate,OMEGAVAULT_STELLAR_DISPOSABLE_SPONSOR:'OFF'}),false);
+  assert.equal(disposableStellarFeeSponsorMode({...gate,OMEGAVAULT_STELLAR_DISPOSABLE_SPONSOR:'SPONSORED_FAKE_XLM_ONLY'}),true);
+  for (const bad of ['TRUE','sponsored_fake_xlm_only','ON',true,'SPONSORED_FAKE_XLM_ONLY_AND_MAINNET']) {
+    assert.throws(()=>disposableStellarFeeSponsorMode({...gate,OMEGAVAULT_STELLAR_DISPOSABLE_SPONSOR:bad}),/exact Testnet-only opt-in/);
+  }
+  assert.throws(()=>disposableStellarFeeSponsorMode({OMEGAVAULT_STELLAR_DISPOSABLE_SPONSOR:'SPONSORED_FAKE_XLM_ONLY'}),/live execution is disabled/);
+});
+
+test('sponsor and two-guardian mode reject malformed configured values before requesting network funds',async()=>{
+ let touched=0;
+ await assert.rejects(
+   runStellarDisposableTestnetRecovery({
+     env:{OMEGAVAULT_STELLAR_DISPOSABLE_TESTNET:'DISPOSABLE_FAKE_XLM_ONLY',OMEGAVAULT_STELLAR_DISPOSABLE_CONTACTS:'2',OMEGAVAULT_STELLAR_DISPOSABLE_SPONSOR:'NOT_ALLOWED'},
+     fetchImpl:async()=>{touched++;throw Error('network must not run')}
+   }),/explicit, exact Testnet-only opt-in/
+ );
+ assert.equal(touched,0);
 });
