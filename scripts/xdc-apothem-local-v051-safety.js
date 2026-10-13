@@ -35,6 +35,22 @@ function compile(){
  if(!candidate.abi.some(x=>x.name==='recoverLateNative'&&x.type==='function'))throw Error('Late-native recovery method not compiled');
  return {abi:candidate.abi,bytecode:'0x'+candidate.evm.bytecode.object,compiler:version};
 }
+function compileRefusingRescue(){
+ const name='RefusingRescue',file='DisposableRefusingRescue.sol';
+ const source='// SPDX-License-Identifier: MIT\npragma solidity ^0.8.24;\ncontract RefusingRescue { receive() external payable { revert("REFUSE_NATIVE"); } }';
+ const input={language:'Solidity',sources:{[file]:{content:source}},settings:{
+  evmVersion:'paris',optimizer:{enabled:true,runs:200},
+  outputSelection:{'*':{'*':['abi','evm.bytecode.object']}}
+ }};
+ const output=execFileSync('npx',['--yes','solc@0.8.24','--standard-json'],{
+  input:JSON.stringify(input),encoding:'utf8',maxBuffer:5*1024*1024,timeout:120000
+ });
+ const parsed=JSON.parse(output.slice(output.indexOf('{')));
+ if((parsed.errors??[]).some(e=>e.severity==='error'))throw Error('Refusing recipient fixture compile failed');
+ const deployed=parsed.contracts?.[file]?.[name];
+ if(!Array.isArray(deployed?.abi)||!deployed?.evm?.bytecode?.object)throw Error('Refusing recipient fixture missing');
+ return {abi:deployed.abi,bytecode:'0x'+deployed.evm.bytecode.object};
+}
 async function mined(prom){
  const receipt=await (await prom).wait();
  if(receipt?.status!==1)throw Error('Expected mined successful transaction');
@@ -79,6 +95,32 @@ export async function verifyLateNativeRecoveryLocally(){
   await mined(vault.connect(guardianB).recoverLateNative());
   assert.equal(await provider.getBalance(contract),0n);
   assert.equal(await provider.getBalance(destination),afterSweep,'Empty second sweep must not transfer value');
+
+  // A rescue contract may reject a native transfer. A failed payout must not
+  // consume approvals, mark recovered or drain the vault. This also makes
+  // contract-recipient acceptance a distinct operator validation requirement.
+  const refuse=compileRefusingRescue();
+  const recipient=await new ContractFactory(refuse.abi,refuse.bytecode,owner).deploy();
+  await recipient.waitForDeployment();
+  const refusingAddress=await recipient.getAddress();
+  const rejectingVault=await new ContractFactory(compiled.abi,compiled.bytecode,owner)
+    .deploy([a,b],2,45,refusingAddress);
+  await rejectingVault.waitForDeployment();
+  const rejectingAddress=await rejectingVault.getAddress();
+  await mined(owner.sendTransaction({to:rejectingAddress,value:parseEther('1')}));
+  await local.request({method:'evm_increaseTime',params:[46]});
+  await local.request({method:'evm_mine',params:[]});
+  await mined(rejectingVault.connect(guardianA).approveRecovery());
+  await mined(rejectingVault.connect(guardianB).approveRecovery());
+  await assert.rejects(()=>rejectingVault.connect(observer).executeRecovery.staticCall(),
+    /revert|CALL_EXCEPTION|execution/i,'Refusing rescue recipient must block withdrawal atomically');
+  assert.equal(await rejectingVault.recovered(),false,'Failed recipient cannot finalize recovery');
+  assert.equal(await rejectingVault.approvalCount(),2n,'Failed recipient cannot consume guardian approvals');
+  assert.equal(await provider.getBalance(rejectingAddress),parseEther('1'),
+    'Failed recipient cannot withdraw vault value');
+  assert.equal(await provider.getBalance(refusingAddress),0n,
+    'Rejecting receiver cannot receive credited native funds');
+
   return Object.freeze({
    schema:'omegavault.xdc.local-v051-late-native-proof.v1',
    network:'isolated Ganache chain 51 only',liveXdcNetworkUsed:false,
@@ -87,6 +129,10 @@ export async function verifyLateNativeRecoveryLocally(){
    originalRescueAmountWei:parseEther('1').toString(),
    lateNativeAmountWei:delayed.toString(),
    lateNativePaidToImmutableRescue:true,emptySecondSweepSafe:true,
+   refusingSmartContractRecipientRejected:true,
+   failedRescueLeavesVaultUnrecovered:true,
+   failedRescuePreservesTwoGuardianApprovals:true,
+   failedRescuePreservesNativeBalance:true,
    localProofPassed:true,publicApothemProven:false,productionReady:false
   });
  }finally{await local.disconnect();}
