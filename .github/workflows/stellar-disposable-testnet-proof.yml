@@ -1,4 +1,4 @@
-name: Stellar disposable 2-of-2 Testnet recovery proof
+name: Stellar sponsored 2-of-2 native Testnet recovery proof
 on:
   push:
     branches:
@@ -14,6 +14,7 @@ jobs:
     env:
       OMEGAVAULT_STELLAR_DISPOSABLE_TESTNET: DISPOSABLE_FAKE_XLM_ONLY
       OMEGAVAULT_STELLAR_DISPOSABLE_CONTACTS: '2'
+      OMEGAVAULT_STELLAR_DISPOSABLE_SPONSOR: SPONSORED_FAKE_XLM_ONLY
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,5 +29,5 @@ jobs:
         run: node --check scripts/stellar-testnet-live-disposable-recovery.js
       # Real Testnet only; freshly generated disposable guardian identities.
       # Native min-sequence-age failures are tx_bad_minseq_age_or_gap, not txTOO_EARLY.
-      - name: Prove minSeqAge rejection, on-chain heartbeat reset and native recovery on public Testnet
+      - name: Prove owner heartbeat, native 2-of-2 recovery and real sponsor fee payment
         run: node scripts/stellar-testnet-live-disposable-recovery.js
