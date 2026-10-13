@@ -24,7 +24,7 @@ function fixture(overrides = {}) {
       observedAt: '2026-10-03T00:00:00Z',
       includedInLedger: false,
       successful: false,
-      resultCode: 'txTOO_EARLY'
+      resultCode: 'tx_bad_minseq_age_or_gap'
     },
     heartbeat: {
       transactionHashHex: H('b'),
@@ -40,7 +40,7 @@ function fixture(overrides = {}) {
       observedAt: '2026-10-03T00:02:00Z',
       includedInLedger: false,
       successful: false,
-      resultCode: 'txTOO_EARLY'
+      resultCode: 'tx_bad_minseq_age_or_gap'
     },
     eligibleSubmission: {
       innerTransactionHashHex: recoveryTransactionHashHex,
@@ -153,7 +153,10 @@ test('tampered Stellar Testnet evidence digest fails closed', () => {
 test('Stellar Testnet evidence requires exact too-early and success result codes', () => {
   const wrongEarly = fixture();
   wrongEarly.initialTooEarly = { ...wrongEarly.initialTooEarly, resultCode:'txFAILED' };
-  assert.throws(() => createStellarTestnetRecoveryEvidenceBundle(wrongEarly), /txTOO_EARLY/);
+  assert.throws(() => createStellarTestnetRecoveryEvidenceBundle(wrongEarly), /tx_bad_minseq_age_or_gap/);
+  const wrongAbsoluteTimebound = fixture();
+  wrongAbsoluteTimebound.initialTooEarly = { ...wrongAbsoluteTimebound.initialTooEarly, resultCode:'txTOO_EARLY' };
+  assert.throws(() => createStellarTestnetRecoveryEvidenceBundle(wrongAbsoluteTimebound), /tx_bad_minseq_age_or_gap/);
 
   const wrongSuccess = fixture();
   wrongSuccess.eligibleSubmission = { ...wrongSuccess.eligibleSubmission, resultCode:'txFAILED' };
