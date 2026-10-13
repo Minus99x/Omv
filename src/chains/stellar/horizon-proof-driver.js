@@ -164,7 +164,7 @@ function resultCodeFromError(error) {
 
 export function normalizeHorizonSubmissionError({ error, expectedTransactionHashHex, observedAt }) {
   const resultCode = resultCodeFromError(error);
-  if (resultCode !== 'txTOO_EARLY') {
+  if (resultCode !== 'tx_bad_minseq_age_or_gap') {
     throw new Error(`Horizon rejected the transaction with unsupported proof result code: ${resultCode ?? 'unknown'}`);
   }
   return Object.freeze({
@@ -172,7 +172,7 @@ export function normalizeHorizonSubmissionError({ error, expectedTransactionHash
     observedAt: isoTime(observedAt, 'observedAt'),
     includedInLedger: false,
     successful: false,
-    resultCode: 'txTOO_EARLY'
+    resultCode: 'tx_bad_minseq_age_or_gap'
   });
 }
 
