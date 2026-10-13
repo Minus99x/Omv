@@ -39,6 +39,14 @@ function requireGate(env) {
     throw new Error('Disposable Stellar Testnet live execution is disabled; explicit testnet gate is required.');
   }
 }
+export function disposableStellarContactCount(env) {
+  requireGate(env);
+  const value=env?.OMEGAVAULT_STELLAR_DISPOSABLE_CONTACTS ?? '1';
+  if(value!=='1' && value!=='2'){
+    throw new Error('Disposable Stellar Testnet supports exactly one or two independent ephemeral contacts.');
+  }
+  return Number(value);
+}
 function amountUnits(amount) {
   const match = /^(0|[1-9]\d*)\.(\d{7})$/.exec(amount);
   if (!match) throw new TypeError('Horizon amount must have exactly seven decimal places.');
@@ -134,8 +142,14 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   requireGate(env);
   if(typeof fetchImpl!=='function') throw new TypeError('Live Testnet proof requires fetch().');
   if(Networks.TESTNET!=='Test SDF Network ; September 2015') throw new Error('Stellar Testnet identity mismatch.');
-  // Fresh disposable identities, never sourced from the environment or stored.
-  const vault=Keypair.random(), rescue=Keypair.random(), contact=Keypair.random();
+  const contactCount=disposableStellarContactCount(env);
+  // Fresh independent, disposable identities. Never load any key material.
+  const vault=Keypair.random(), rescue=Keypair.random();
+  const contacts=Array.from({length:contactCount},()=>Keypair.random());
+  const contactAddresses=contacts.map(contact=>contact.publicKey());
+  if(new Set([vault.publicKey(),rescue.publicKey(),...contactAddresses]).size!==contactCount+2){
+    throw new Error('Discovered duplicate disposable Stellar signer identities.');
+  }
   const transport=createStellarTestnetHorizonHttpTransport({
     fetchImpl,pollIntervalMs:2000,maxEligibilityAttempts:90
   });
@@ -150,8 +164,8 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     rescueDestination:rescue.publicKey(),
     currentSequence:String(initialVault.sequence),
     inactivitySeconds:INACTIVITY_SECONDS,
-    contacts:[contact.publicKey()],
-    threshold:1,
+    contacts:contactAddresses,
+    threshold:contactCount,
     assets:['native'],
     amounts:{native:TEST_XLM}
   });
@@ -159,7 +173,7 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
   const signedRecovery=TransactionBuilder.fromXdr(
     recoveryArtifact.transactionXdr,Networks.TESTNET
   );
-  signedRecovery.sign(contact);
+  signedRecovery.sign(...contacts);
   const verified=verifySignedRecoveryEnvelopeArtifact({
     plan:recoveryPlan,artifact:recoveryArtifact,signedTransactionXdr:signedRecovery.toXdr()
   });
@@ -291,7 +305,8 @@ export async function runStellarDisposableTestnetRecovery({ env=process.env,fetc
     method:'stellar-native-preauth-sequence-age-extra-signer',
     owner:vault.publicKey(),
     rescue:rescue.publicKey(),
-    contact:contact.publicKey(),
+    contacts:contactAddresses,
+    threshold:contactCount,
     setupTransactionHash:setupHash,
     setupLedger:setupResult.ledger,
     initialEarlyRejection:initialRejection,
