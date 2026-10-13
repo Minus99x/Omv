@@ -1,4 +1,4 @@
-name: Stellar sponsored 2-of-2 native Testnet recovery proof
+name: Stellar sponsored 2-of-2 Testnet verified-XDR recovery proof
 on:
   push:
     branches:
@@ -28,6 +28,7 @@ jobs:
       - name: Validate live proof source syntax
         run: node --check scripts/stellar-testnet-live-disposable-recovery.js
       # Real Testnet only; freshly generated disposable guardian identities.
+      # Verify returned canonical on-ledger fee-bump XDR, not only Horizon metadata.
       # Native min-sequence-age failures are tx_bad_minseq_age_or_gap, not txTOO_EARLY.
       - name: Prove owner heartbeat, native 2-of-2 recovery and real sponsor fee payment
         run: node scripts/stellar-testnet-live-disposable-recovery.js
