@@ -5,7 +5,7 @@ import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Wallet} from 'ethers';
 import {createEncryptedDisposableBundle,validateDisposablePublicManifest,
- inspectDisposableFunding} from './xdc-apothem-disposable-wallet.js';
+ inspectDisposableFunding,requirePrivateDirectoryOutsideGit} from './xdc-apothem-disposable-wallet.js';
 import {requireLiveTrialGate,executeDisposableApothemTrial} from './xdc-apothem-disposable-live.js';
 const pass='local-fixture-password-not-for-real-wallets';
 test('disposable private keys are encrypted, four roles distinct and never returned as naked secrets',async()=>{
@@ -67,4 +67,16 @@ test('live trial remains disabled unless operator supplies exact opt-in',async()
  assert.equal(requireLiveTrialGate({
   OMEGAVAULT_XDC_APOTHEM_DISPOSABLE_LIVE:'PUBLIC_APOTHEM_FAKE_TXDC_ONLY'
  }),true);
+});
+
+test('preparation forbids plaintext and encrypted test wallet artifacts within any Git worktree',()=>{
+ const tmp=mkdtempSync(join(tmpdir(),'omv-xdc-worktree-test-'));
+ try{
+  mkdirSync(join(tmp,'.git'));
+  const child=join(tmp,'subdir','private');
+  assert.throws(()=>requirePrivateDirectoryOutsideGit(child),/cannot be saved inside a Git repository/);
+  const outside=mkdtempSync(join(tmpdir(),'omv-xdc-private-test-'));
+  try{assert.equal(requirePrivateDirectoryOutsideGit(outside),outside);}
+  finally{rmSync(outside,{recursive:true,force:true});}
+ }finally{rmSync(tmp,{recursive:true,force:true});}
 });
