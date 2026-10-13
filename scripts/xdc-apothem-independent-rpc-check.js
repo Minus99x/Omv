@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import { getNetwork } from '../src/chains/network-registry.js';
 export const APOTHEM_ENDPOINTS = Object.freeze([
   'https://rpc.apothem.network',
-  'https://rpc.apothem.blocksscan.io'
+  'https://erpc.apothem.network'
 ]);
 const Q=/^0x(?:0|[1-9a-f][0-9a-f]*)$/i;
 const H=/^0x[a-fA-F0-9]{64}$/;
@@ -23,11 +23,16 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch}={}
     if(!APOTHEM_ENDPOINTS.includes(endpoint)||
        !['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_gasPrice'].includes(method))throw Error('RPC method or host not allowlisted');
     const id=++n;
-    const response=await fetchImpl(endpoint,{
-      method:'POST',headers:{accept:'application/json','content-type':'application/json'},
-      body:JSON.stringify({jsonrpc:'2.0',id,method,params}),
-      signal:AbortSignal.timeout(15000)
-    });
+    let response;
+    try {
+      response=await fetchImpl(endpoint,{
+        method:'POST',headers:{accept:'application/json','content-type':'application/json'},
+        body:JSON.stringify({jsonrpc:'2.0',id,method,params}),
+        signal:AbortSignal.timeout(15000)
+      });
+    } catch (error) {
+      throw new Error('Apothem RPC transport unavailable at '+endpoint+' for '+method+': '+String(error?.message??error));
+    }
     if(response?.ok!==true)throw new Error('Apothem provider HTTP status '+String(response?.status??'unknown'));
     let body;try{body=await response.json();}catch{throw Error('Apothem provider invalid JSON');}
     if(body?.jsonrpc!=='2.0'||body.id!==id||Object.hasOwn(body,'error')||!Object.hasOwn(body,'result'))throw Error('Apothem provider malformed response');
