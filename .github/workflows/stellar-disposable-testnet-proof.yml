@@ -25,5 +25,6 @@ jobs:
         run: node --test test/stellar-testnet-live-disposable-recovery.test.js
       - name: Validate live proof source syntax
         run: node --check scripts/stellar-testnet-live-disposable-recovery.js
-      - name: Prove early rejection, on-chain heartbeat reset and native recovery on public Testnet
+      # Native min-sequence-age failures are tx_bad_minseq_age_or_gap, not txTOO_EARLY.
+      - name: Prove minSeqAge rejection, on-chain heartbeat reset and native recovery on public Testnet
         run: node scripts/stellar-testnet-live-disposable-recovery.js
