@@ -111,6 +111,58 @@ export async function verifyPrematureGuardianAtHeartbeat({
   blockHash:heartbeatReceipt.blockHash.toLowerCase(),
   heartbeatTimestamp:String(anchor),historicalBlockCall:true});
 }
+/**
+ * Before marking public recovery proven, independently re-read EVERY expected
+ * included receipt and its canonical block from both fixed Apothem RPCs.
+ * This is cross-provider agreement at observation time, not XDPoS finality.
+ * No signing, keys, or replay are performed by this read-only reconciliation.
+ */
+export async function reconcileApothemPublicTrialReceipts({journal,primary,secondary}){
+ const sequence=['deploy-v051','fund-guardian-a','fund-guardian-b','deposit-vault',
+  'owner-heartbeat','guardian-a-approval','guardian-b-approval',
+  'execute-two-guardian-recovery','late-native-post-recovery-deposit','sweep-late-native'];
+ if(!Array.isArray(journal?.steps)||journal.steps.length!==sequence.length)
+  throw Error('Complete ten-transaction Apothem recovery journal required for final receipt audit.');
+ const [firstChain,secondChain]=await Promise.all([
+  primary.send('eth_chainId',[]),secondary.send('eth_chainId',[])
+ ]);
+ requirePublicApothemChainId(firstChain);requirePublicApothemChainId(secondChain);
+ let total=0n;
+ for(let i=0;i<sequence.length;i++){
+  const step=journal.steps[i];
+  if(step?.label!==sequence[i]||step.status!=='confirmed'||
+    typeof step.txHash!=='string'||!step.receipt)
+   throw Error('Apothem journal missing expected confirmed step '+sequence[i]);
+  const receipts=await Promise.all([
+   primary.getTransactionReceipt(step.txHash),
+   secondary.getTransactionReceipt(step.txHash)
+  ]);
+  const normalized=receipts.map(receipt=>verifyApothemReceipt({
+   receipt,transactionHash:step.txHash,
+   expectedContract:i===0?journal.contractAddress:null
+  }));
+  for(const key of ['txHash','blockNumber','blockHash','gasUsed','gasPriceWei',
+   'actualFeeWei','contractAddress']){
+   if(String(normalized[0][key]??'').toLowerCase()!==String(normalized[1][key]??'').toLowerCase()||
+      String(normalized[0][key]??'').toLowerCase()!==String(step.receipt[key]??'').toLowerCase())
+    throw Error('Apothem cross-provider/journal receipt mismatch at '+sequence[i]+': '+key);
+  }
+  const blocks=await Promise.all([
+   primary.getBlock(receipts[0].blockNumber),
+   secondary.getBlock(receipts[1].blockNumber)
+  ]);
+  if(blocks.some(b=>!b||String(b.hash??'').toLowerCase()!==normalized[0].blockHash))
+   throw Error('Apothem receipt block is no longer canonical on both providers at '+sequence[i]);
+  total+=BigInt(normalized[0].actualFeeWei);
+  if(total>XDC_PUBLIC_TRIAL_FEE_LIMIT_WEI)
+   throw Error('Apothem reconciled total fees exceed five fake TXDC.');
+ }
+ if(total!==BigInt(journal.totalActualFeeWei))
+  throw Error('Apothem journal cumulative fee total differs from canonical receipts.');
+ return Object.freeze({readOnly:true,transactionCount:sequence.length,
+  bothProvidersChain51:true,bothProvidersReceiptsAndBlocksAgree:true,
+  totalActualFeeWei:total.toString(),independentXdposFinalityProven:false});
+}
 async function decryptRoles(dir,password,expected){
  const saved=JSON.parse(readFileSync(join(dir,'secrets.json'),'utf8'));
  if(saved?.schema!=='omegavault.xdc.apothem-encrypted-identities.v1'||saved.chainId!==51)
@@ -275,6 +327,22 @@ export async function executeDisposableApothemTrial({
   if(lateAfter-lateBefore!==LATE_NATIVE_AMOUNT||lateVault!==0n)
    throw Error('Late-native payout failed recipient or empty-vault conservation.');
   journal.lateNativeRecoveryVerified=true;
+  // A second public RPC must agree on every included transaction, block and
+  // actual fee before the journal can claim public native-recovery evidence.
+  const secondary=new JsonRpcProvider('https://erpc.apothem.network',undefined,{batchMaxCount:1});
+  journal.finalReceiptAudit=await reconcileApothemPublicTrialReceipts({
+   journal,primary:network,secondary
+  });
+  verifyApothemRuntimeBytecode({
+   compiledRuntime:'0x'+compiled.runtime,
+   immutableReferences:compiled.immutableReferences,
+   actualRuntime:await secondary.getCode(contractAddress)
+  });
+  const secondaryVault=new Contract(contractAddress,compiled.abi,secondary);
+  if(await secondaryVault.recovered()!==true||
+     await secondary.getBalance(contractAddress)!==0n)
+   throw Error('Second Apothem provider does not confirm recovered vault with zero native balance.');
+  journal.secondaryRecoveredStateVerified=true;
   journal.status='public-testnet-native-recovery-proven';
   journal.ownerHeartbeatVerified=true;
   journal.twoIndependentGuardiansVerified=true;
