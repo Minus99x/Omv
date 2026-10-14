@@ -697,3 +697,27 @@ test('XDC payout proof rejects a log with the wrong event topic',()=>{
   rescueAddress:f.rescue,eventName:'RecoveryExecuted',amountWei:100000000000000000n
  }),/exactly one RecoveryExecuted/);
 });
+
+test('XDC final audit rejects receipt canonical block missing on either RPC',async()=>{
+ const f=canonicalXdcFixture();
+ for(const side of ['primary','secondary']){
+  const original=f.provider();
+  const altered={...original,getBlock:async n=>
+   n===f.receipts[8].blockNumber?null:original.getBlock(n)};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,
+   primary:side==='primary'?altered:f.provider(),
+   secondary:side==='secondary'?altered:f.provider(),
+   contractInterface:f.eventInterface
+  }),/no longer canonical/);
+ }
+});
+test('XDC final audit rejects journal receipt gas-use tampering',async()=>{
+ const f=canonicalXdcFixture();
+ const steps=f.journal.steps.map(step=>({...step}));
+ steps[2]={...steps[2],receipt:{...steps[2].receipt,gasUsed:'1'}};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,steps},primary:f.provider(),secondary:f.provider(),
+  contractInterface:f.eventInterface
+ }),/receipt mismatch at fund-guardian-b: gasUsed/);
+});
