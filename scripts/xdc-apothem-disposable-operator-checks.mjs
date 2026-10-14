@@ -553,3 +553,18 @@ test('final XDC proof rejects forged guardian, altered nonce, calldata and desti
   }}
  }),/block\/fee differs/);
 });
+
+test('XDC payout proof rejects malformed vault log and ignores unrelated emitter',()=>{
+ const f=canonicalXdcFixture();
+ const valid=f.receipts[7].logs[0];
+ assert.throws(()=>verifyApothemPayoutEvent({
+  receipt:{logs:[{...valid,data:'0x12'}]},
+  contractInterface:f.eventInterface,contractAddress:f.contractAddress,
+  rescueAddress:f.rescue,eventName:'RecoveryExecuted',amountWei:100000000000000000n
+ }),/could not be decoded/);
+ assert.throws(()=>verifyApothemPayoutEvent({
+  receipt:{logs:[{...valid,address:'0x'+'ab'.repeat(20)}]},
+  contractInterface:f.eventInterface,contractAddress:f.contractAddress,
+  rescueAddress:f.rescue,eventName:'RecoveryExecuted',amountWei:100000000000000000n
+ }),/exactly one RecoveryExecuted/);
+});
