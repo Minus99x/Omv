@@ -197,6 +197,32 @@ test('populated nonce cannot silently override an explicit transaction nonce',as
  assert.equal(broadcasts,0);
 });
 
+test('provider-populated nonce is preserved and journaled for unsigned nonce intent',async()=>{
+ const wallet=Wallet.createRandom();
+ const tx={chainId:51,type:0,gasPrice:625000000000n,
+  gasLimit:25000n,to:Wallet.createRandom().address,value:0n};
+ let recorded=null,broadcasts=0;
+ const signer={
+  getAddress:async()=>wallet.address,
+  populateTransaction:async x=>({...x,from:wallet.address,nonce:3}),
+  signTransaction:async x=>wallet.signTransaction(x)
+ };
+ const response=await broadcastSignedApothemTransaction({
+  signer,transaction:tx,
+  recordBeforeBroadcast:async x=>{recorded=x;},
+  network:{broadcastTransaction:async raw=>{
+   broadcasts++;
+   const signed=Transaction.from(raw);
+   assert.equal(signed.nonce,3);
+   assert.equal(recorded.nonce,3);
+   assert.equal(recorded.txHash,signed.hash);
+   return {hash:signed.hash};
+  }}
+ });
+ assert.equal(response.hash,recorded.txHash);
+ assert.equal(broadcasts,1);
+});
+
 test('premature guardian rejection is pinned to heartbeat inclusion block, not drifting latest',async()=>{
  const guardian={role:'guardianA'};
  const historicalBlock=812345;
