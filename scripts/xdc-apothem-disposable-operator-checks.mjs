@@ -581,3 +581,15 @@ test('XDC payout proof rejects missing receipt logs and invalid beneficiary',()=
  assert.throws(()=>verifyApothemPayoutEvent({...args,eventName:'ERC20Recovered'}),
   /missing verified ABI, addresses or receipt logs/);
 });
+
+test('XDC payout proof rejects wrong native amount and duplicate vault logs',()=>{
+ const f=canonicalXdcFixture();
+ const args={receipt:f.receipts[7],contractInterface:f.eventInterface,
+  contractAddress:f.contractAddress,rescueAddress:f.rescue,
+  eventName:'RecoveryExecuted',amountWei:100000000000000000n};
+ assert.throws(()=>verifyApothemPayoutEvent({...args,amountWei:137n}),
+  /beneficiary or amount differs/);
+ assert.throws(()=>verifyApothemPayoutEvent({...args,
+  receipt:{logs:[f.receipts[7].logs[0],f.receipts[7].logs[0]]}}),
+  /exactly one RecoveryExecuted/);
+});
