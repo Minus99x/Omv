@@ -167,6 +167,55 @@ export function verifyApothemPayoutEvent({
  return Object.freeze({eventName,recipient:rescueAddress.toLowerCase(),
   amountWei:String(amountWei),matched:true});
 }
+/**
+ * Receipt existence alone does not establish which wallet signed a transaction.
+ * Confirm every included native transfer and no-argument recovery call against
+ * the operator's public-only role manifest, signed nonce, and expected target.
+ * This is an on-chain identity audit; it cannot inspect private keys.
+ */
+export function verifyApothemIncludedTransaction({
+ transaction,step,roles,contractAddress,contractInterface
+}){
+ const kinds=Object.freeze({
+  'deploy-v051': ['owner',null,0n,null],
+  'fund-guardian-a':['owner','guardianA',GUARDIAN_TOPUP,null],
+  'fund-guardian-b':['owner','guardianB',GUARDIAN_TOPUP,null],
+  'deposit-vault':['owner','vault',XDC_PUBLIC_TRIAL_DEPOSIT_WEI,null],
+  'owner-heartbeat':['owner','vault',0n,'heartbeat'],
+  'guardian-a-approval':['guardianA','vault',0n,'approveRecovery'],
+  'guardian-b-approval':['guardianB','vault',0n,'approveRecovery'],
+  'execute-two-guardian-recovery':['owner','vault',0n,'executeRecovery'],
+  'late-native-post-recovery-deposit':['owner','vault',LATE_NATIVE_AMOUNT,null],
+  'sweep-late-native':['owner','vault',0n,'recoverLateNative']
+ });
+ const policy=kinds[step?.label];
+ if(!policy||!transaction||!roles||!contractInterface)
+  throw Error('Apothem included transaction identity proof is incomplete.');
+ const [actor,target,value,method]=policy;
+ const expectedFrom=roles[actor];
+ const expectedTo=target==='vault'?contractAddress:target?roles[target]:null;
+ const from=String(transaction.from??'').toLowerCase();
+ const to=transaction.to==null?null:String(transaction.to).toLowerCase();
+ const data=String(transaction.data??'').toLowerCase();
+ const selector=method?contractInterface.getFunction(method)?.selector:null;
+ if(!expectedFrom||!/^0x[0-9a-f]{40}$/i.test(expectedFrom)||
+    (expectedTo!=null&&!/^0x[0-9a-f]{40}$/i.test(expectedTo))||
+    String(step.from??'').toLowerCase()!==expectedFrom.toLowerCase()||
+    from!==expectedFrom.toLowerCase()||
+    to!==(expectedTo==null?null:expectedTo.toLowerCase())||
+    String(transaction.hash??'').toLowerCase()!==String(step.txHash).toLowerCase()||
+    BigInt(transaction.chainId??-1)!==51n||
+    transaction.type!==0||
+    !Number.isSafeInteger(step.nonce)||transaction.nonce!==step.nonce||
+    BigInt(transaction.value??-1)!==value||
+    BigInt(step.valueWei??-1)!==value||
+    (method?(!selector||data!==selector.toLowerCase()):
+      (target===null?!/^0x[0-9a-f]{4,}$/i.test(data):data!=='0x')))
+  throw Error('Apothem included transaction signer, nonce, target, value or call data violates disposable role policy at '+step.label);
+ return Object.freeze({label:step.label,signedBy:expectedFrom.toLowerCase(),
+  nonce:transaction.nonce,recipient:expectedTo?.toLowerCase()??null,
+  valueWei:value.toString(),readOnly:true});
+}
 export async function reconcileApothemPublicTrialReceipts({journal,primary,secondary,contractInterface}){
  const sequence=['deploy-v051','fund-guardian-a','fund-guardian-b','deposit-vault',
   'owner-heartbeat','guardian-a-approval','guardian-b-approval',
@@ -181,19 +230,35 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
  ]);
  requirePublicApothemChainId(firstChain);requirePublicApothemChainId(secondChain);
  let total=0n;
+ const observedHashes=new Set();
  for(let i=0;i<sequence.length;i++){
   const step=journal.steps[i];
   if(step?.label!==sequence[i]||step.status!=='confirmed'||
     typeof step.txHash!=='string'||!step.receipt)
    throw Error('Apothem journal missing expected confirmed step '+sequence[i]);
-  const receipts=await Promise.all([
-   primary.getTransactionReceipt(step.txHash),
-   secondary.getTransactionReceipt(step.txHash)
+  const txHash=step.txHash.toLowerCase();
+  if(observedHashes.has(txHash))
+   throw Error('Apothem final proof cannot count the same transaction twice.');
+  observedHashes.add(txHash);
+  const [receipts,transactions]=await Promise.all([
+   Promise.all([primary.getTransactionReceipt(step.txHash),
+    secondary.getTransactionReceipt(step.txHash)]),
+   Promise.all([primary.getTransaction(step.txHash),
+    secondary.getTransaction(step.txHash)])
   ]);
   const normalized=receipts.map(receipt=>verifyApothemReceipt({
    receipt,transactionHash:step.txHash,
    expectedContract:i===0?journal.contractAddress:null
   }));
+  for(let providerIndex=0;providerIndex<2;providerIndex++){
+   const transaction=transactions[providerIndex];
+   verifyApothemIncludedTransaction({transaction,step,roles:journal.roles,
+    contractAddress:journal.contractAddress,contractInterface});
+   if(String(transaction.blockHash??'').toLowerCase()!==normalized[providerIndex].blockHash||
+      String(transaction.blockNumber??'')!==normalized[providerIndex].blockNumber||
+      BigInt(transaction.gasPrice??-1)!==BigInt(normalized[providerIndex].gasPriceWei))
+    throw Error('Apothem included transaction block/fee differs from its receipt at '+sequence[i]);
+  }
   for(const key of ['txHash','blockNumber','blockHash','gasUsed','gasPriceWei',
    'actualFeeWei','contractAddress']){
    if(String(normalized[0][key]??'').toLowerCase()!==String(normalized[1][key]??'').toLowerCase()||
@@ -224,6 +289,7 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
  return Object.freeze({readOnly:true,transactionCount:sequence.length,
   bothProvidersChain51:true,bothProvidersReceiptsAndBlocksAgree:true,
   bothProvidersNativePayoutEventsVerified:true,
+  allTenSignedRoleIdentitiesAndNoncesVerified:true,
   nativeRecoveryAmountWei:XDC_PUBLIC_TRIAL_DEPOSIT_WEI.toString(),
   lateNativeRecoveryAmountWei:LATE_NATIVE_AMOUNT.toString(),
   totalActualFeeWei:total.toString(),independentXdposFinalityProven:false});
