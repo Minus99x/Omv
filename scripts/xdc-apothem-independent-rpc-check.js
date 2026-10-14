@@ -14,8 +14,10 @@ const Q=/^0x(?:0|[1-9a-f][0-9a-f]*)$/i;
 const H=/^0x[a-fA-F0-9]{64}$/;
 const q=(v,label)=>{if(typeof v!=='string'||!Q.test(v))throw new TypeError(label+' not canonical hex');return BigInt(v);};
 const h=(v,label)=>{if(typeof v!=='string'||!H.test(v))throw new TypeError(label+' not a 32-byte hash');return v.toLowerCase();};
-export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch}={}){
+export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,nowSeconds=Math.floor(Date.now()/1000)}={}){
   if(typeof fetchImpl!=='function')throw new TypeError('fetchImpl is required');
+  if(!Number.isSafeInteger(nowSeconds)||nowSeconds<=0)throw new TypeError('nowSeconds must be a positive safe integer');
+  const clock=BigInt(nowSeconds);
   const profile=getNetwork('xdc:apothem');
   if(profile?.chainIdHex!=='0x33'||profile.environment!=='testnet')throw Error('Apothem chain identity is not fixed to 51');
   let n=0;
@@ -56,13 +58,21 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch}={}
   if(q(blockA?.number,'first common block')!==common||q(blockB?.number,'second common block')!==common)throw Error('Apothem provider returned wrong shared block number');
   const hashA=h(blockA?.hash,'first block'),hashB=h(blockB?.hash,'second block');
   if(hashA!==hashB)throw Error('Apothem provider consensus mismatch: common block hash differs');
+  // Matching hashes at a historical height do not establish a live, healthy head.
+  // Fail closed when the agreed block is old or implausibly ahead of local time.
+  const timestampA=q(blockA?.timestamp,'first common block timestamp');
+  const timestampB=q(blockB?.timestamp,'second common block timestamp');
+  if(timestampA<=0n||timestampA!==timestampB)throw Error('Apothem provider common block timestamp mismatch');
+  if(clock-timestampA>900n)throw Error('Apothem shared block is older than 15 minutes');
+  if(timestampA-clock>120n)throw Error('Apothem shared block timestamp exceeds clock by more than 2 minutes');
   const feeA=q(gasA,'first fee quote'),feeB=q(gasB,'second fee quote');
   const delta=feeA>feeB?feeA-feeB:feeB-feeA;
   const min=feeA<feeB?feeA:feeB;
   return Object.freeze({
     schema:'omegavault.xdc.apothem-two-rpc-readonly.v1',
     networkRef:profile.id,chainIdDecimal:51,sharedHeight:common.toString(),
-    blockHash:hashA,
+    blockHash:hashA,sharedBlockTimestampSeconds:timestampA.toString(),
+    sharedBlockFreshnessVerified:true,
     endpoints:Object.freeze([a,b]),
     latestHeights:Object.freeze([ah.toString(),bh.toString()]),
     gasPriceWei:Object.freeze([feeA.toString(),feeB.toString()]),
