@@ -741,3 +741,26 @@ test('XDC final audit fails closed on block reorganization during verification',
   }),/block changed during evidence verification at execute-two-guardian-recovery/);
  }
 });
+
+test('XDC final audit rejects transaction signer substitution on secondary RPC',async()=>{
+ const f=canonicalXdcFixture(),original=f.provider();
+ const altered={...original,getTransaction:async hash=>{
+  const tx=await original.getTransaction(hash);
+  return hash===f.receipts[5].hash?{...tx,from:f.roles.owner}:tx;
+ }};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:f.provider(),secondary:altered,
+  contractInterface:f.eventInterface
+ }),/signer, nonce, target, value or call data violates disposable role policy/);
+});
+test('XDC final audit rejects forged nonce on primary RPC',async()=>{
+ const f=canonicalXdcFixture(),original=f.provider();
+ const altered={...original,getTransaction:async hash=>{
+  const tx=await original.getTransaction(hash);
+  return hash===f.receipts[6].hash?{...tx,nonce:tx.nonce+1}:tx;
+ }};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:altered,secondary:f.provider(),
+  contractInterface:f.eventInterface
+ }),/signer, nonce, target, value or call data violates disposable role policy/);
+});
