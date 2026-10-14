@@ -43,15 +43,31 @@ function rewriteAtomic(path,data){
  finally{closeSync(fd);}
  renameSync(temporary,path);
 }
-async function ensureRevert(promise,label){
+/**
+ * A generic revert is NOT proof that the intended security invariant held.
+ * Decode the exact custom Solidity error. Missing/malformed revert data, an
+ * RPC transport error, or a different error must halt the evidence campaign.
+ */
+export async function requireExpectedVaultRevert(promise,{contractInterface,errorName,label}){
+ if(!contractInterface||typeof contractInterface.parseError!=='function'||
+    !['InactivityNotElapsed','ThresholdNotMet'].includes(errorName))
+  throw Error('Expected recovery error ABI and supported error name required.');
+ let failure;
  try{await promise;}
- catch(e){
-  if(e?.code==='CALL_EXCEPTION'||/execution reverted|revert|missing revert data/i.test(String(e?.message??''))){
-   return Object.freeze({rejected:true,reason:label});
-  }
-  throw Error(label+' could not be established because the read-only call failed unexpectedly: '+String(e?.message??e));
+ catch(error){failure=error;}
+ if(!failure)throw Error(label+' unexpectedly succeeded; execution blocked.');
+ if(failure.code!=='CALL_EXCEPTION')
+  throw Error(label+' could not be proven: RPC/transport failure is not an EVM contract revert.');
+ const possible=[failure.data,failure.error?.data,failure.info?.error?.data];
+ for(const data of possible){
+  if(typeof data!=='string'||!/^0x[0-9a-fA-F]{8,}$/.test(data))continue;
+  let parsed;
+  try{parsed=contractInterface.parseError(data);}catch{continue;}
+  if(parsed?.name===errorName&&parsed?.signature===errorName+'()')
+   return Object.freeze({rejected:true,errorName,signature:parsed.signature,verifiedCustomError:true});
+  if(parsed?.name)throw Error(label+' rejected for '+parsed.name+' rather than '+errorName+'.');
  }
- throw Error(label+' unexpectedly succeeded; execution blocked.');
+ throw Error(label+' could not prove '+errorName+'(): missing or unrecognized custom revert data.');
 }
 /**
  * Sign the exact bounded chain-51 legacy transaction locally and persist its
@@ -103,9 +119,10 @@ export async function verifyPrematureGuardianAtHeartbeat({
  if(BigInt(block.timestamp)!==BigInt(anchor))
   throw Error('Heartbeat anchor does not match public inclusion-block timestamp.');
  const blockTag=heartbeatReceipt.blockNumber;
- const proof=await ensureRevert(
+ const proof=await requireExpectedVaultRevert(
   vault.connect(guardian).approveRecovery.staticCall({blockTag}),
-  'Guardian approval at heartbeat inclusion block must revert'
+  {contractInterface:vault.interface,errorName:'InactivityNotElapsed',
+   label:'Guardian approval at heartbeat inclusion block'}
  );
  return Object.freeze({...proof,blockNumber:String(blockTag),
   blockHash:heartbeatReceipt.blockHash.toLowerCase(),
@@ -302,9 +319,12 @@ export async function executeDisposableApothemTrial({
   if(!eligible)throw Error('Inactivity was not established from recent Apothem block timestamps.');
   await send('guardian-a-approval',a,await vault.connect(a).approveRecovery.populateTransaction());
   if(await vault.approvalCount()!==1n)throw Error('First guardian did not produce exactly one approval.');
-  journal.oneGuardianGuard=await ensureRevert(
-   vault.executeRecovery.staticCall(),'One guardian alone must not execute 2-of-2 recovery'
+  journal.oneGuardianGuard=await requireExpectedVaultRevert(
+   vault.executeRecovery.staticCall(),
+   {contractInterface:vault.interface,errorName:'ThresholdNotMet',
+    label:'One guardian alone must not execute 2-of-2 recovery'}
   );
+  save();
   await send('guardian-b-approval',b,await vault.connect(b).approveRecovery.populateTransaction());
   if(await vault.approvalCount()!==2n)throw Error('Two independent guardian approvals not established.');
   const recipientBefore=await network.getBalance(roles.rescue);
