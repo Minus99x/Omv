@@ -764,3 +764,32 @@ test('XDC final audit rejects forged nonce on primary RPC',async()=>{
   contractInterface:f.eventInterface
  }),/signer, nonce, target, value or call data violates disposable role policy/);
 });
+
+test('XDC final audit rejects wrong chain and transaction call selector on either RPC',async()=>{
+ const f=canonicalXdcFixture();
+ for(const [index,change] of [[4,{chainId:50n}],[7,{data:'0xdeadbeef'}]]){
+  const original=f.provider();
+  const altered={...original,getTransaction:async hash=>{
+   const tx=await original.getTransaction(hash);
+   return hash===f.receipts[index].hash?{...tx,...change}:tx;
+  }};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,primary:f.provider(),secondary:altered,
+   contractInterface:f.eventInterface
+  }),/signer, nonce, target, value or call data violates disposable role policy/);
+ }
+});
+test('XDC final audit rejects a different recipient and native transfer value',async()=>{
+ const f=canonicalXdcFixture();
+ for(const [index,change] of [[1,{to:f.roles.rescue}],[3,{value:1n}]]){
+  const original=f.provider();
+  const altered={...original,getTransaction:async hash=>{
+   const tx=await original.getTransaction(hash);
+   return hash===f.receipts[index].hash?{...tx,...change}:tx;
+  }};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,primary:altered,secondary:f.provider(),
+   contractInterface:f.eventInterface
+  }),/signer, nonce, target, value or call data violates disposable role policy/);
+ }
+});
