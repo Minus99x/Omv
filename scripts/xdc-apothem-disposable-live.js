@@ -306,15 +306,16 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
  }
  if(total!==BigInt(journal.totalActualFeeWei))
   throw Error('Apothem journal cumulative fee total differs from canonical receipts.');
- // Revalidate all audited blocks at publication, including earlier steps.
- for(const step of journal.steps){
-  const [a,b]=await Promise.all([
-   primary.getBlock(Number(step.receipt.blockNumber)),
-   secondary.getBlock(Number(step.receipt.blockNumber))
-  ]);
-  if(!a||!b||[a.hash,b.hash].some(hash=>String(hash??'').toLowerCase()!==String(step.receipt.blockHash).toLowerCase()))
-   throw Error('Apothem canonical inclusion changed before final proof publication.');
- }
+ // Revalidate every audited block at publication. Query both providers and
+ // all heights concurrently to avoid ten sequential network round trips.
+ const publicationBlocks=await Promise.all(journal.steps.map(async step=>{
+  const height=Number(step.receipt.blockNumber);
+  const blocks=await Promise.all([primary.getBlock(height),secondary.getBlock(height)]);
+  return blocks.every(block=>block&&
+   String(block.hash??'').toLowerCase()===String(step.receipt.blockHash).toLowerCase());
+ }));
+ if(publicationBlocks.some(valid=>!valid))
+  throw Error('Apothem canonical inclusion changed before final proof publication.');
  // Reconfirm both RPC endpoints still identify as public Apothem at publication.
  const finalChains=await Promise.all([
   primary.send('eth_chainId',[]),secondary.send('eth_chainId',[])
