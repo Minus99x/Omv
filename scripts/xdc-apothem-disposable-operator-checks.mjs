@@ -870,3 +870,20 @@ test('XDC final audit rejects an unconfirmed journal step without consulting its
  }),/missing expected confirmed step execute-two-guardian-recovery/);
  assert.equal(recoveryReads,0);
 });
+
+test('XDC payout evidence rejects a correct event sent to a different rescue wallet',()=>{
+ const f=canonicalXdcFixture();
+ assert.throws(()=>verifyApothemPayoutEvent({
+  receipt:f.receipts[7],contractInterface:f.eventInterface,
+  contractAddress:f.contractAddress,rescueAddress:f.roles.owner,
+  eventName:'RecoveryExecuted',amountWei:100000000000000000n
+ }),/beneficiary or amount differs/);
+});
+test('XDC final audit refuses a secondary provider whose chain changes during proof setup',async()=>{
+ const f=canonicalXdcFixture();
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:f.provider(),
+  secondary:{...f.provider(),send:async()=> '0x32'},
+  contractInterface:f.eventInterface
+ }),/chain ID 51/);
+});
