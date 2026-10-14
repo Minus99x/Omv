@@ -6,9 +6,9 @@
  * STATUS: reads PUBLIC manifest only; does not decrypt or sign.
  * The real-network transaction executor is a separate explicitly gated command.
  */
-import {mkdirSync,openSync,writeFileSync,closeSync,readFileSync,existsSync} from 'node:fs';
+import {mkdirSync,openSync,writeFileSync,closeSync,readFileSync,existsSync,realpathSync} from 'node:fs';
 import {homedir} from 'node:os';
-import {join,resolve,dirname} from 'node:path';
+import {join,resolve,dirname,basename} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {Wallet} from 'ethers';
 import {validateApothemTrialRoles,requirePublicApothemChainId,
@@ -17,14 +17,25 @@ import {validateApothemTrialRoles,requirePublicApothemChainId,
 const DEFAULT_DIR=join(homedir(),'.omegavault-test','xdc-apothem-disposable');
 const NAMES=['owner','guardianA','guardianB','rescue'];
 export function requirePrivateDirectoryOutsideGit(directory){
- let path=resolve(directory);
+ // Canonicalize the closest existing ancestor so directory symlinks cannot
+ // disguise a Git checkout as an apparently safe external wallet directory.
+ let ancestor=resolve(directory);
+ const missing=[];
+ while(!existsSync(ancestor)){
+  const parent=dirname(ancestor);
+  if(parent===ancestor)throw Error('Disposable wallet directory has no accessible parent.');
+  missing.unshift(basename(ancestor));
+  ancestor=parent;
+ }
+ const canonical=resolve(realpathSync(ancestor),...missing);
+ let path=canonical;
  while(true){
   if(existsSync(join(path,'.git')))throw new Error('Disposable encrypted Testnet wallets cannot be saved inside a Git repository.');
   const parent=dirname(path);
   if(parent===path)break;
   path=parent;
  }
- return resolve(directory);
+ return canonical;
 }
 function fileIn(dir,name){return join(dir,name);}
 function writeExclusive(path,obj){
@@ -143,17 +154,20 @@ async function main(){
  const command=process.argv[2]??'';
  const dir=process.argv[3]?resolve(process.argv[3]):DEFAULT_DIR;
  if(command==='prepare'){
-   requirePrivateDirectoryOutsideGit(dir);
+   const checkedDir=requirePrivateDirectoryOutsideGit(dir);
    const pass=await hiddenPassword('New disposable-wallet encryption passphrase: ');
    const confirm=await hiddenPassword('Re-enter encryption passphrase: ');
    if(pass!==confirm)throw Error('Passphrases do not match.');
    const result=await createEncryptedDisposableBundle({password:pass});
-   mkdirSync(dir,{recursive:true,mode:0o700});
+   // Validate again after interactive prompts, before writing encrypted material.
+   requirePrivateDirectoryOutsideGit(checkedDir);
+   mkdirSync(checkedDir,{recursive:true,mode:0o700});
+   requirePrivateDirectoryOutsideGit(checkedDir);
    // First write encrypted secrets; only then publish the funding address.
-   writeExclusive(fileIn(dir,'secrets.json'),result.secrets);
-   writeExclusive(fileIn(dir,'public.json'),result.publicManifest);
+   writeExclusive(fileIn(checkedDir,'secrets.json'),result.secrets);
+   writeExclusive(fileIn(checkedDir,'public.json'),result.publicManifest);
    console.log(JSON.stringify({
-     savedDirectory:dir,network:'xdc:apothem',
+     savedDirectory:checkedDir,network:'xdc:apothem',
      faucetAddress:result.publicManifest.roles.owner,
      guardians:[result.publicManifest.roles.guardianA,result.publicManifest.roles.guardianB],
      rescue:result.publicManifest.roles.rescue,
