@@ -160,6 +160,43 @@ test('Apothem signed transaction mismatches and missing journal durability block
  assert.equal(broadcastCount,0);
 });
 
+test('tampered signed nonce cannot be journaled or broadcast',async()=>{
+ const wallet=Wallet.createRandom();
+ const tx={chainId:51,type:0,nonce:7,gasPrice:625000000000n,
+  gasLimit:25000n,to:Wallet.createRandom().address,value:0n};
+ let journalWrites=0,broadcasts=0;
+ const network={broadcastTransaction:async()=>{broadcasts++;throw Error('unexpected broadcast');}};
+ const signer={
+  getAddress:async()=>wallet.address,
+  populateTransaction:async x=>({...x,from:wallet.address}),
+  signTransaction:async x=>wallet.signTransaction({...x,nonce:8})
+ };
+ await assert.rejects(broadcastSignedApothemTransaction({
+  signer,network,transaction:tx,recordBeforeBroadcast:async()=>{journalWrites++;}
+ }),/differs from bounded chain-51 intent/);
+ assert.equal(journalWrites,0);
+ assert.equal(broadcasts,0);
+});
+
+test('populated nonce cannot silently override an explicit transaction nonce',async()=>{
+ const wallet=Wallet.createRandom();
+ const tx={chainId:51,type:0,nonce:7,gasPrice:625000000000n,
+  gasLimit:25000n,to:Wallet.createRandom().address,value:0n};
+ let journalWrites=0,broadcasts=0;
+ const signer={
+  getAddress:async()=>wallet.address,
+  populateTransaction:async x=>({...x,from:wallet.address,nonce:8}),
+  signTransaction:async x=>wallet.signTransaction(x)
+ };
+ await assert.rejects(broadcastSignedApothemTransaction({
+  signer,transaction:tx,
+  network:{broadcastTransaction:async()=>{broadcasts++;throw Error('unexpected broadcast');}},
+  recordBeforeBroadcast:async()=>{journalWrites++;}
+ }),/differs from bounded chain-51 intent/);
+ assert.equal(journalWrites,0);
+ assert.equal(broadcasts,0);
+});
+
 test('premature guardian rejection is pinned to heartbeat inclusion block, not drifting latest',async()=>{
  const guardian={role:'guardianA'};
  const historicalBlock=812345;
