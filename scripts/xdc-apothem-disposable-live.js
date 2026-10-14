@@ -93,11 +93,14 @@ export async function broadcastSignedApothemTransaction({
 export async function verifyPrematureGuardianAtHeartbeat({
  network,vault,guardian,heartbeatReceipt,anchor
 }){
- if(!heartbeatReceipt||heartbeatReceipt.blockNumber==null)
-  throw Error('Heartbeat inclusion block required for early guardian proof.');
+ if(!heartbeatReceipt||heartbeatReceipt.blockNumber==null||
+    !/^0x[0-9a-f]{64}$/i.test(String(heartbeatReceipt.blockHash??'')))
+  throw Error('Heartbeat inclusion block and block hash required for early guardian proof.');
  const block=await network.getBlock(heartbeatReceipt.blockNumber);
  if(!block||block.timestamp==null||
-    BigInt(block.timestamp)!==BigInt(anchor))
+    String(block.hash??'').toLowerCase()!==heartbeatReceipt.blockHash.toLowerCase())
+  throw Error('Heartbeat inclusion block hash differs from receipt; possible reorganization. Stop and reconcile.');
+ if(BigInt(block.timestamp)!==BigInt(anchor))
   throw Error('Heartbeat anchor does not match public inclusion-block timestamp.');
  const blockTag=heartbeatReceipt.blockNumber;
  const proof=await ensureRevert(
@@ -105,6 +108,7 @@ export async function verifyPrematureGuardianAtHeartbeat({
   'Guardian approval at heartbeat inclusion block must revert'
  );
  return Object.freeze({...proof,blockNumber:String(blockTag),
+  blockHash:heartbeatReceipt.blockHash.toLowerCase(),
   heartbeatTimestamp:String(anchor),historicalBlockCall:true});
 }
 async function decryptRoles(dir,password,expected){
