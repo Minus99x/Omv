@@ -593,3 +593,13 @@ test('XDC payout proof rejects wrong native amount and duplicate vault logs',()=
   receipt:{logs:[f.receipts[7].logs[0],f.receipts[7].logs[0]]}}),
   /exactly one RecoveryExecuted/);
 });
+
+test('XDC final receipt audit rejects duplicated transaction hashes',async()=>{
+ const f=canonicalXdcFixture();
+ const steps=f.journal.steps.map(step=>({...step}));
+ steps[1]={...steps[1],txHash:steps[0].txHash};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,steps},primary:f.provider(),secondary:f.provider(),
+  contractInterface:f.eventInterface
+ }),/cannot count the same transaction twice/);
+});
