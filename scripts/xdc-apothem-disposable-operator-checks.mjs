@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
-import {Wallet,Transaction} from 'ethers';
+import {Wallet,Transaction,Interface} from 'ethers';
 import {createEncryptedDisposableBundle,validateDisposablePublicManifest,
  inspectDisposableFunding,requirePrivateDirectoryOutsideGit} from './xdc-apothem-disposable-wallet.js';
-import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction,verifyPrematureGuardianAtHeartbeat,reconcileApothemPublicTrialReceipts} from './xdc-apothem-disposable-live.js';
+import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction,verifyPrematureGuardianAtHeartbeat,reconcileApothemPublicTrialReceipts,requireExpectedVaultRevert} from './xdc-apothem-disposable-live.js';
 const pass='local-fixture-password-not-for-real-wallets';
+const revertAbi=new Interface(['error InactivityNotElapsed()','error ThresholdNotMet()','error NotTrustedContact()']);
 test('disposable private keys are encrypted, four roles distinct and never returned as naked secrets',async()=>{
  const bundle=await createEncryptedDisposableBundle({password:pass});
  const roles=validateDisposablePublicManifest(bundle.publicManifest).roles;
@@ -146,13 +147,13 @@ test('premature guardian rejection is pinned to heartbeat inclusion block, not d
  const historicalBlock=812345;
  const heartbeatBlockHash='0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
  const observed=[];
- const vault={connect:role=>{
+ const vault={interface:revertAbi,connect:role=>{
   assert.equal(role,guardian);
   return {approveRecovery:{staticCall:async overrides=>{
    observed.push(overrides);
    assert.deepEqual(overrides,{blockTag:historicalBlock});
    const error=new Error('execution reverted: InactivityNotElapsed');
-   error.code='CALL_EXCEPTION';
+   error.code='CALL_EXCEPTION';error.data=revertAbi.encodeErrorResult('InactivityNotElapsed',[]);
    throw error;
   }}};
  }};
@@ -174,7 +175,7 @@ test('premature guardian proof fails closed on heartbeat block mismatch or unexp
  const hash='0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',otherHash='0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2';
  let calls=0;
  const guardian={role:'guardianA'};
- const vault={connect:()=>({approveRecovery:{staticCall:async()=>{calls++;return true;}}})};
+ const vault={interface:revertAbi,connect:()=>({approveRecovery:{staticCall:async()=>{calls++;return true;}}})};
  await assert.rejects(verifyPrematureGuardianAtHeartbeat({
   network:{getBlock:async()=>({timestamp:5001,hash})},
   vault,guardian,heartbeatReceipt:{blockNumber:55,blockHash:hash},anchor:5000n
@@ -277,4 +278,31 @@ test('XDC receipt audit rejects incomplete journal and tampered aggregate fee',a
   journal:{...f.journal,steps:f.journal.steps.map((v,i)=>i===2?{...v,status:'submitted'}:v)},
   primary,secondary
  }),/missing expected confirmed step/);
+});
+
+test('security-gate evidence requires exact decoded custom errors, never a generic revert',async()=>{
+ const expected=(name)=>Object.assign(new Error('EVM reverted'),{
+  code:'CALL_EXCEPTION',data:revertAbi.encodeErrorResult(name,[])
+ });
+ const accepted=await requireExpectedVaultRevert(Promise.reject(expected('ThresholdNotMet')),{
+  contractInterface:revertAbi,errorName:'ThresholdNotMet',label:'one guardian'
+ });
+ assert.equal(accepted.verifiedCustomError,true);
+ assert.equal(accepted.errorName,'ThresholdNotMet');
+ await assert.rejects(requireExpectedVaultRevert(
+  Promise.reject(expected('NotTrustedContact')),
+  {contractInterface:revertAbi,errorName:'InactivityNotElapsed',label:'premature guardian'}
+ ),/NotTrustedContact rather than InactivityNotElapsed/);
+ await assert.rejects(requireExpectedVaultRevert(
+  Promise.reject(Object.assign(new Error('execution reverted'),{code:'CALL_EXCEPTION',data:'0x'})),
+  {contractInterface:revertAbi,errorName:'ThresholdNotMet',label:'one guardian'}
+ ),/missing or unrecognized custom revert data/);
+ await assert.rejects(requireExpectedVaultRevert(
+  Promise.reject(Object.assign(new Error('timeout'),{code:'NETWORK_ERROR'})),
+  {contractInterface:revertAbi,errorName:'ThresholdNotMet',label:'one guardian'}
+ ),/transport failure is not an EVM contract revert/);
+ await assert.rejects(requireExpectedVaultRevert(
+  Promise.resolve(true),
+  {contractInterface:revertAbi,errorName:'ThresholdNotMet',label:'one guardian'}
+ ),/unexpectedly succeeded/);
 });
