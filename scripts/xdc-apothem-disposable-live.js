@@ -304,6 +304,15 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
  }
  if(total!==BigInt(journal.totalActualFeeWei))
   throw Error('Apothem journal cumulative fee total differs from canonical receipts.');
+ // Revalidate all audited blocks at publication, including earlier steps.
+ for(const step of journal.steps){
+  const [a,b]=await Promise.all([
+   primary.getBlock(Number(step.receipt.blockNumber)),
+   secondary.getBlock(Number(step.receipt.blockNumber))
+  ]);
+  if(!a||!b||[a.hash,b.hash].some(hash=>String(hash??'').toLowerCase()!==String(step.receipt.blockHash).toLowerCase()))
+   throw Error('Apothem canonical inclusion changed before final proof publication.');
+ }
  return Object.freeze({readOnly:true,transactionCount:sequence.length,
   bothProvidersChain51:true,bothProvidersReceiptsAndBlocksAgree:true,
   bothProvidersNativePayoutEventsVerified:true,
