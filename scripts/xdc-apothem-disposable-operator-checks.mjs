@@ -907,3 +907,24 @@ test('XDC final publication rejects an earlier block reorganized after its step 
   }),/canonical inclusion changed before final proof publication/);
  }
 });
+
+test('XDC final audit rejects duplicate role addresses before querying either RPC',async()=>{
+ const f=canonicalXdcFixture();
+ let calls=0;
+ const provider={...f.provider(),send:async()=>{calls++;return '0x33';}};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,roles:{...f.roles,rescue:f.roles.owner}},
+  primary:provider,secondary:provider,contractInterface:f.eventInterface
+ }),/must be distinct accounts/);
+ assert.equal(calls,0);
+});
+test('XDC final audit rejects zero guardian address before querying either RPC',async()=>{
+ const f=canonicalXdcFixture();
+ let calls=0;
+ const provider={...f.provider(),send:async()=>{calls++;return '0x33';}};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,roles:{...f.roles,guardianB:'0x'+'00'.repeat(20)}},
+  primary:provider,secondary:provider,contractInterface:f.eventInterface
+ }),/Invalid nonzero EVM account/);
+ assert.equal(calls,0);
+});
