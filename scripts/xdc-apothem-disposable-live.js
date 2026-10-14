@@ -124,6 +124,13 @@ export async function verifyPrematureGuardianAtHeartbeat({
   {contractInterface:vault.interface,errorName:'InactivityNotElapsed',
    label:'Guardian approval at heartbeat inclusion block'}
  );
+ // A numeric eth_call blockTag may resolve to a different block if a
+ // reorganization occurs during the call. Fail closed on that race.
+ const after=await network.getBlock(blockTag);
+ if(!after||
+    String(after.hash??'').toLowerCase()!==heartbeatReceipt.blockHash.toLowerCase()||
+    BigInt(after.timestamp??-1)!==BigInt(anchor))
+  throw Error('Heartbeat inclusion block changed during historical call; stop and reconcile.');
  return Object.freeze({...proof,blockNumber:String(blockTag),
   blockHash:heartbeatReceipt.blockHash.toLowerCase(),
   heartbeatTimestamp:String(anchor),historicalBlockCall:true});
