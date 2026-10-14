@@ -603,3 +603,35 @@ test('XDC final receipt audit rejects duplicated transaction hashes',async()=>{
   contractInterface:f.eventInterface
  }),/cannot count the same transaction twice/);
 });
+
+test('XDC final audit rejects wrong journal ordering before RPC calls',async()=>{
+ const f=canonicalXdcFixture();
+ let calls=0;
+ const provider={...f.provider(),send:async()=>{calls++;return '0x33';}};
+ const steps=f.journal.steps.map(step=>({...step}));
+ [steps[0],steps[1]]=[steps[1],steps[0]];
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,steps},primary:provider,secondary:provider,
+  contractInterface:f.eventInterface
+ }),/missing expected confirmed step deploy-v051/);
+ assert.equal(calls,2);
+});
+test('XDC final audit rejects mismatched journal receipt block hash',async()=>{
+ const f=canonicalXdcFixture();
+ const steps=f.journal.steps.map(step=>({...step}));
+ steps[4]={...steps[4],receipt:{...steps[4].receipt,
+  blockHash:'0x'+'ff'.repeat(32)}};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,steps},primary:f.provider(),secondary:f.provider(),
+  contractInterface:f.eventInterface
+ }),/receipt mismatch at owner-heartbeat: blockHash/);
+});
+test('XDC final audit rejects missing second-provider transaction',async()=>{
+ const f=canonicalXdcFixture(),secondary=f.provider();
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:f.provider(),
+  secondary:{...secondary,getTransaction:async hash=>
+   hash===f.receipts[6].hash?null:secondary.getTransaction(hash)},
+  contractInterface:f.eventInterface
+ }),/included transaction identity proof is incomplete/);
+});
