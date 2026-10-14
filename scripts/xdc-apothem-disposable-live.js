@@ -315,6 +315,11 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
   if(!a||!b||[a.hash,b.hash].some(hash=>String(hash??'').toLowerCase()!==String(step.receipt.blockHash).toLowerCase()))
    throw Error('Apothem canonical inclusion changed before final proof publication.');
  }
+ // Reconfirm both RPC endpoints still identify as public Apothem at publication.
+ const finalChains=await Promise.all([
+  primary.send('eth_chainId',[]),secondary.send('eth_chainId',[])
+ ]);
+ for(const chain of finalChains)requirePublicApothemChainId(chain);
  return Object.freeze({readOnly:true,transactionCount:sequence.length,
   bothProvidersChain51:true,bothProvidersReceiptsAndBlocksAgree:true,
   bothProvidersNativePayoutEventsVerified:true,
