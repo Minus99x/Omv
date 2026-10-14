@@ -568,3 +568,16 @@ test('XDC payout proof rejects malformed vault log and ignores unrelated emitter
   rescueAddress:f.rescue,eventName:'RecoveryExecuted',amountWei:100000000000000000n
  }),/exactly one RecoveryExecuted/);
 });
+
+test('XDC payout proof rejects missing receipt logs and invalid beneficiary',()=>{
+ const f=canonicalXdcFixture();
+ const args={receipt:f.receipts[7],contractInterface:f.eventInterface,
+  contractAddress:f.contractAddress,rescueAddress:f.rescue,
+  eventName:'RecoveryExecuted',amountWei:100000000000000000n};
+ assert.throws(()=>verifyApothemPayoutEvent({...args,receipt:{}}),
+  /missing verified ABI, addresses or receipt logs/);
+ assert.throws(()=>verifyApothemPayoutEvent({...args,rescueAddress:'0x1234'}),
+  /missing verified ABI, addresses or receipt logs/);
+ assert.throws(()=>verifyApothemPayoutEvent({...args,eventName:'ERC20Recovered'}),
+  /missing verified ABI, addresses or receipt logs/);
+});
