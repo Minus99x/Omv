@@ -290,6 +290,14 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
      eventName,amountWei});
    }
   }
+  // Recheck canonical inclusion after event decoding and other asynchronous
+  // evidence work: a reorganization during the audit must fail closed.
+  const finalBlocks=await Promise.all([
+   primary.getBlock(receipts[0].blockNumber),
+   secondary.getBlock(receipts[1].blockNumber)
+  ]);
+  if(finalBlocks.some(b=>!b||String(b.hash??'').toLowerCase()!==normalized[0].blockHash))
+   throw Error('Apothem receipt block changed during evidence verification at '+sequence[i]);
   total+=BigInt(normalized[0].actualFeeWei);
   if(total>XDC_PUBLIC_TRIAL_FEE_LIMIT_WEI)
    throw Error('Apothem reconciled total fees exceed five fake TXDC.');
