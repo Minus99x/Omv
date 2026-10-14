@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {Wallet,Transaction} from 'ethers';
 import {createEncryptedDisposableBundle,validateDisposablePublicManifest,
  inspectDisposableFunding,requirePrivateDirectoryOutsideGit} from './xdc-apothem-disposable-wallet.js';
-import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction,verifyPrematureGuardianAtHeartbeat} from './xdc-apothem-disposable-live.js';
+import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction,verifyPrematureGuardianAtHeartbeat,reconcileApothemPublicTrialReceipts} from './xdc-apothem-disposable-live.js';
 const pass='local-fixture-password-not-for-real-wallets';
 test('disposable private keys are encrypted, four roles distinct and never returned as naked secrets',async()=>{
  const bundle=await createEncryptedDisposableBundle({password:pass});
@@ -194,4 +194,87 @@ test('premature guardian proof fails closed on heartbeat block mismatch or unexp
   network:{getBlock:async()=>({timestamp:5000})},
   vault,guardian,heartbeatReceipt:{},anchor:5000n
  }),/inclusion block and block hash required/);
+});
+
+const xdcProofSequence=['deploy-v051','fund-guardian-a','fund-guardian-b','deposit-vault',
+ 'owner-heartbeat','guardian-a-approval','guardian-b-approval',
+ 'execute-two-guardian-recovery','late-native-post-recovery-deposit','sweep-late-native'];
+function canonicalXdcFixture(){
+ const contractAddress='0x'+'dd'.repeat(20);
+ const receipts=xdcProofSequence.map((_,i)=>{
+  const hash='0x'+(i+1).toString(16).padStart(2,'0').repeat(32);
+  const blockHash='0x'+(i+21).toString(16).padStart(2,'0').repeat(32);
+  return {hash,blockHash,blockNumber:9000+i,status:1,gasUsed:35000n,
+   gasPrice:500000000000n,contractAddress:i===0?contractAddress:null};
+ });
+ const total=(receipts.reduce((sum,r)=>sum+r.gasUsed*r.gasPrice,0n)).toString();
+ const journal={contractAddress,totalActualFeeWei:total,steps:receipts.map((r,i)=>({
+  label:xdcProofSequence[i],status:'confirmed',txHash:r.hash,receipt:{
+   txHash:r.hash,blockNumber:String(r.blockNumber),blockHash:r.blockHash,
+   gasUsed:String(r.gasUsed),gasPriceWei:String(r.gasPrice),
+   actualFeeWei:String(r.gasUsed*r.gasPrice),contractAddress:r.contractAddress
+  }
+ }))};
+ const provider=()=>({
+  send:async()=> '0x33',
+  getTransactionReceipt:async hash=>receipts.find(r=>r.hash===hash)??null,
+  getBlock:async blockNumber=>({
+   hash:receipts.find(r=>r.blockNumber===blockNumber)?.blockHash
+  })
+ });
+ return {journal,receipts,provider,total};
+}
+test('final XDC live evidence requires all ten canonical receipts matching two Apothem RPCs',async()=>{
+ const fixture=canonicalXdcFixture();
+ const proof=await reconcileApothemPublicTrialReceipts({
+  journal:fixture.journal,primary:fixture.provider(),secondary:fixture.provider()
+ });
+ assert.equal(proof.transactionCount,10);
+ assert.equal(proof.totalActualFeeWei,fixture.total);
+ assert.equal(proof.bothProvidersReceiptsAndBlocksAgree,true);
+ assert.equal(proof.independentXdposFinalityProven,false);
+ assert.equal(proof.readOnly,true);
+});
+test('XDC receipt audit rejects altered receipt, missing tx, detached block and wrong chain',async()=>{
+ const f=canonicalXdcFixture();
+ const primary=f.provider(),secondary=f.provider();
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary,secondary:{
+   ...secondary,
+   getTransactionReceipt:async hash=>{
+    const original=await secondary.getTransactionReceipt(hash);
+    return hash===f.receipts[2].hash?{...original,gasUsed:39000n}:original;
+   }
+  }
+ }),/receipt mismatch/);
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary,secondary:{
+   ...secondary,
+   getTransactionReceipt:async hash=>
+    hash===f.receipts[4].hash?null:secondary.getTransactionReceipt(hash)
+  }
+ }),/Receipt/);
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary,secondary:{
+   ...secondary,
+   getBlock:async n=>n===f.receipts[5].blockNumber?
+    {hash:'0x'+'ff'.repeat(32)}:secondary.getBlock(n)
+  }
+ }),/no longer canonical/);
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary,secondary:{...secondary,send:async()=> '0x32'}
+ }),/chain ID 51/);
+});
+test('XDC receipt audit rejects incomplete journal and tampered aggregate fee',async()=>{
+ const f=canonicalXdcFixture(),primary=f.provider(),secondary=f.provider();
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,steps:f.journal.steps.slice(1)},primary,secondary
+ }),/ten-transaction/);
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,totalActualFeeWei:'1'},primary,secondary
+ }),/cumulative fee total/);
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,steps:f.journal.steps.map((v,i)=>i===2?{...v,status:'submitted'}:v)},
+  primary,secondary
+ }),/missing expected confirmed step/);
 });
