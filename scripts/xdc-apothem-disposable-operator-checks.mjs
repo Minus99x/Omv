@@ -793,3 +793,31 @@ test('XDC final audit rejects a different recipient and native transfer value',a
   }),/signer, nonce, target, value or call data violates disposable role policy/);
  }
 });
+
+test('XDC receipt audit rejects transaction hash mismatch on independent RPC',async()=>{
+ const f=canonicalXdcFixture();
+ for(const side of ['primary','secondary']){
+  const original=f.provider();
+  const altered={...original,getTransaction:async hash=>{
+   const tx=await original.getTransaction(hash);
+   return hash===f.receipts[8].hash?{...tx,hash:'0x'+'fa'.repeat(32)}:tx;
+  }};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,
+   primary:side==='primary'?altered:f.provider(),
+   secondary:side==='secondary'?altered:f.provider(),
+   contractInterface:f.eventInterface
+  }),/signer, nonce, target, value or call data violates disposable role policy/);
+ }
+});
+test('XDC receipt audit rejects changed signed transaction type',async()=>{
+ const f=canonicalXdcFixture(),original=f.provider();
+ const altered={...original,getTransaction:async hash=>{
+  const tx=await original.getTransaction(hash);
+  return hash===f.receipts[9].hash?{...tx,type:2}:tx;
+ }};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:altered,secondary:f.provider(),
+  contractInterface:f.eventInterface
+ }),/signer, nonce, target, value or call data violates disposable role policy/);
+});
