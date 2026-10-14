@@ -5,6 +5,10 @@ on:
       - dev/0.6.60-reconcile-overnight-bitcoin
     paths:
       - .github/workflows/xdc-apothem-readonly-proof.yml
+      - scripts/xdc-apothem-readonly-probe.js
+      - scripts/xdc-apothem-independent-rpc-check.js
+      - test/xdc-apothem-readonly-probe.test.js
+      - test/xdc-apothem-independent-rpc-check.test.js
 permissions:
   contents: read
 jobs:
