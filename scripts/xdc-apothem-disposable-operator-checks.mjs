@@ -665,3 +665,15 @@ test('XDC final audit rejects incorrect receipt transaction hash',async()=>{
   contractInterface:f.eventInterface
  }),/transaction hash|Receipt|receipt/i);
 });
+
+test('XDC final audit rejects fee manipulation in one provider transaction',async()=>{
+ const f=canonicalXdcFixture(),original=f.provider();
+ const tampered={...original,getTransaction:async hash=>{
+  const tx=await original.getTransaction(hash);
+  return hash===f.receipts[2].hash?{...tx,gasPrice:tx.gasPrice+1n}:tx;
+ }};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:f.provider(),secondary:tampered,
+  contractInterface:f.eventInterface
+ }),/block\/fee differs from its receipt/);
+});
