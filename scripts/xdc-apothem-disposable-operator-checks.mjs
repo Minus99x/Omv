@@ -144,6 +144,7 @@ test('Apothem signed transaction mismatches and missing journal durability block
 test('premature guardian rejection is pinned to heartbeat inclusion block, not drifting latest',async()=>{
  const guardian={role:'guardianA'};
  const historicalBlock=812345;
+ const heartbeatBlockHash='0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1';
  const observed=[];
  const vault={connect:role=>{
   assert.equal(role,guardian);
@@ -158,29 +159,36 @@ test('premature guardian rejection is pinned to heartbeat inclusion block, not d
  const result=await verifyPrematureGuardianAtHeartbeat({
   network:{getBlock:async n=>{
    assert.equal(n,historicalBlock);
-   return {timestamp:987654};
+   return {timestamp:987654,hash:heartbeatBlockHash};
   }},
-  vault,guardian,heartbeatReceipt:{blockNumber:historicalBlock},anchor:987654n
+  vault,guardian,heartbeatReceipt:{blockNumber:historicalBlock,blockHash:heartbeatBlockHash},anchor:987654n
  });
  assert.equal(result.rejected,true);
  assert.equal(result.historicalBlockCall,true);
  assert.equal(result.blockNumber,String(historicalBlock));
+ assert.equal(result.blockHash,heartbeatBlockHash);
  assert.equal(result.heartbeatTimestamp,'987654');
  assert.equal(observed.length,1);
 });
 test('premature guardian proof fails closed on heartbeat block mismatch or unexpected approval',async()=>{
+ const hash='0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',otherHash='0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2';
  let calls=0;
  const guardian={role:'guardianA'};
  const vault={connect:()=>({approveRecovery:{staticCall:async()=>{calls++;return true;}}})};
  await assert.rejects(verifyPrematureGuardianAtHeartbeat({
-  network:{getBlock:async()=>({timestamp:5001})},
-  vault,guardian,heartbeatReceipt:{blockNumber:55},anchor:5000n
+  network:{getBlock:async()=>({timestamp:5001,hash})},
+  vault,guardian,heartbeatReceipt:{blockNumber:55,blockHash:hash},anchor:5000n
  }),/anchor does not match/);
  assert.equal(calls,0);
  await assert.rejects(verifyPrematureGuardianAtHeartbeat({
-  network:{getBlock:async()=>({timestamp:5000})},
-  vault,guardian,heartbeatReceipt:{blockNumber:55},anchor:5000n
+  network:{getBlock:async()=>({timestamp:5000,hash})},
+  vault,guardian,heartbeatReceipt:{blockNumber:55,blockHash:hash},anchor:5000n
  }),/unexpectedly succeeded/);
+ assert.equal(calls,1);
+ await assert.rejects(verifyPrematureGuardianAtHeartbeat({
+  network:{getBlock:async()=>({timestamp:5000,hash:otherHash})},
+  vault,guardian,heartbeatReceipt:{blockNumber:55,blockHash:hash},anchor:5000n
+ }),/block hash differs from receipt/);
  assert.equal(calls,1);
  await assert.rejects(verifyPrematureGuardianAtHeartbeat({
   network:{getBlock:async()=>({timestamp:5000})},
