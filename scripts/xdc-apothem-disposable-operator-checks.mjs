@@ -635,3 +635,20 @@ test('XDC final audit rejects missing second-provider transaction',async()=>{
   contractInterface:f.eventInterface
  }),/included transaction identity proof is incomplete/);
 });
+
+test('XDC final audit rejects duplicate payout event on either RPC',async()=>{
+ const f=canonicalXdcFixture();
+ for(const side of ['primary','secondary']){
+  const original=f.provider();
+  const tampered={...original,getTransactionReceipt:async hash=>{
+   const receipt=await original.getTransactionReceipt(hash);
+   return hash===f.receipts[7].hash?{...receipt,
+    logs:[...receipt.logs,...receipt.logs]}:receipt;
+  }};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,primary:side==='primary'?tampered:f.provider(),
+   secondary:side==='secondary'?tampered:f.provider(),
+   contractInterface:f.eventInterface
+  }),/exactly one RecoveryExecuted/);
+ }
+});
