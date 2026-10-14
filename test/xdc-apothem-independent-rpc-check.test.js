@@ -2,16 +2,24 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {APOTHEM_ENDPOINTS,compareApothemRpcProviders} from '../scripts/xdc-apothem-independent-rpc-check.js';
 const HASH='0x'+'11'.repeat(32);
-function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00',headA='0x2b',headB='0x2a',timestampA='0x6553f100',timestampB=timestampA}={}){
+function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00',headA='0x2b',headB='0x2a',timestampA='0x6553f100',timestampB=timestampA,reorgHashA=null,reorgHashB=null,reorgTimestampB=null,reorgBlockNumberA=null}={}){
  const calls=[];
+ const blockReadCounts=[0,0];
  const fetch=async(url,options)=>{
    assert.ok(APOTHEM_ENDPOINTS.includes(url));assert.equal(options.method,'POST');
    const req=JSON.parse(options.body);calls.push({url,req});
    const second=url===APOTHEM_ENDPOINTS[1];
+   const index=second?1:0;
+   if(req.method==='eth_getBlockByNumber')blockReadCounts[index]++;
+   const recheck=req.method==='eth_getBlockByNumber'&&blockReadCounts[index]===2;
    const results={
      eth_chainId:second?chain2:'0x33',
      eth_blockNumber:second?headB:headA,
-     eth_getBlockByNumber:{number:'0x2a',hash:second?hash2:HASH,timestamp:second?timestampB:timestampA},
+     eth_getBlockByNumber:{
+       number:recheck&&!second&&reorgBlockNumberA!==null?reorgBlockNumberA:'0x2a',
+       hash:recheck?(second?(reorgHashB??hash2):(reorgHashA??HASH)):(second?hash2:HASH),
+       timestamp:recheck&&second&&reorgTimestampB!==null?reorgTimestampB:(second?timestampB:timestampA)
+     },
      eth_gasPrice:second?gasB:gasA
    };
    if(req.method==='eth_getBlockByNumber')assert.deepEqual(req.params,['0x2a',false]);
@@ -24,7 +32,8 @@ test('Apothem read-only comparison validates both chain-51 endpoints at one comm
  assert.equal(proof.sharedHeight,'42');assert.equal(proof.blockHash,HASH);
  assert.equal(proof.gasQuotesAgree,true);assert.equal(proof.quoteDifferenceWei,'0');
  assert.equal(proof.readOnly,true);assert.equal(proof.deploymentApproved,false);
- assert.equal(t.calls.length,8);
+ assert.equal(t.calls.length,10);
+ assert.equal(proof.sharedBlockRecheckVerified,true);
  assert.ok(t.calls.every(x=>!/(sendRaw|sign|deploy|personal)/i.test(x.req.method)));
 });
 test('Apothem comparison refuses a wrong chain or conflicting ledger hash',async()=>{
@@ -85,4 +94,26 @@ test('Apothem comparison rejects malformed timestamps and invalid local clock',a
   /not canonical hex/);
  await assert.rejects(compareApothemRpcProviders({nowSeconds:NaN,fetchImpl:mock().fetch}),
   /positive safe integer/);
+});
+
+test('Apothem comparison refuses a reorganization during gas sampling even if initial hashes agree',async()=>{
+ const t=mock({reorgHashA:'0x'+'a1'.repeat(32)});
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:t.fetch}),
+  /shared block changed during provider comparison/);
+ assert.equal(t.calls.length,10);
+ assert.ok(t.calls.every(x=>['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_gasPrice'].includes(x.req.method)));
+});
+
+test('Apothem comparison refuses a changed timestamp on second provider recheck',async()=>{
+ const t=mock({reorgTimestampB:'0x6553f101'});
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:t.fetch}),
+  /shared block changed during provider comparison/);
+ assert.equal(t.calls.length,10);
+});
+
+test('Apothem comparison refuses a response for the wrong block during final recheck',async()=>{
+ const t=mock({reorgBlockNumberA:'0x29'});
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:t.fetch}),
+  /shared block changed during provider comparison/);
+ assert.equal(t.calls.length,10);
 });
