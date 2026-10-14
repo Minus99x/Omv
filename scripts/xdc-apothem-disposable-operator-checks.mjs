@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {Wallet,Transaction,Interface} from 'ethers';
 import {createEncryptedDisposableBundle,validateDisposablePublicManifest,
  inspectDisposableFunding,requirePrivateDirectoryOutsideGit} from './xdc-apothem-disposable-wallet.js';
-import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction,verifyPrematureGuardianAtHeartbeat,reconcileApothemPublicTrialReceipts,requireExpectedVaultRevert} from './xdc-apothem-disposable-live.js';
+import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction,verifyPrematureGuardianAtHeartbeat,reconcileApothemPublicTrialReceipts,requireExpectedVaultRevert,verifyApothemPayoutEvent} from './xdc-apothem-disposable-live.js';
 const pass='local-fixture-password-not-for-real-wallets';
 const revertAbi=new Interface(['error InactivityNotElapsed()','error ThresholdNotMet()','error NotTrustedContact()']);
 test('disposable private keys are encrypted, four roles distinct and never returned as naked secrets',async()=>{
@@ -202,14 +202,23 @@ const xdcProofSequence=['deploy-v051','fund-guardian-a','fund-guardian-b','depos
  'execute-two-guardian-recovery','late-native-post-recovery-deposit','sweep-late-native'];
 function canonicalXdcFixture(){
  const contractAddress='0x'+'dd'.repeat(20);
+ const rescue='0x'+'ee'.repeat(20);
+ const eventInterface=new Interface([
+  'event RecoveryExecuted(address indexed destination,uint256 nativeAmount)',
+  'event LateNativeRecovered(address indexed destination,uint256 amount)'
+ ]);
  const receipts=xdcProofSequence.map((_,i)=>{
   const hash='0x'+(i+1).toString(16).padStart(2,'0').repeat(32);
   const blockHash='0x'+(i+21).toString(16).padStart(2,'0').repeat(32);
+  const eventName=i===7?'RecoveryExecuted':i===9?'LateNativeRecovered':null;
+  const nativeAmount=i===7?100000000000000000n:137n;
+  const encoded=eventName?eventInterface.encodeEventLog(eventInterface.getEvent(eventName),[rescue,nativeAmount]):null;
   return {hash,blockHash,blockNumber:9000+i,status:1,gasUsed:35000n,
-   gasPrice:500000000000n,contractAddress:i===0?contractAddress:null};
+   gasPrice:500000000000n,contractAddress:i===0?contractAddress:null,
+   logs:encoded?[{address:contractAddress,topics:encoded.topics,data:encoded.data}]:[]};
  });
  const total=(receipts.reduce((sum,r)=>sum+r.gasUsed*r.gasPrice,0n)).toString();
- const journal={contractAddress,totalActualFeeWei:total,steps:receipts.map((r,i)=>({
+ const journal={contractAddress,roles:{rescue},totalActualFeeWei:total,steps:receipts.map((r,i)=>({
   label:xdcProofSequence[i],status:'confirmed',txHash:r.hash,receipt:{
    txHash:r.hash,blockNumber:String(r.blockNumber),blockHash:r.blockHash,
    gasUsed:String(r.gasUsed),gasPriceWei:String(r.gasPrice),
@@ -223,16 +232,20 @@ function canonicalXdcFixture(){
    hash:receipts.find(r=>r.blockNumber===blockNumber)?.blockHash
   })
  });
- return {journal,receipts,provider,total};
+ return {journal,receipts,provider,total,eventInterface,contractAddress,rescue};
 }
 test('final XDC live evidence requires all ten canonical receipts matching two Apothem RPCs',async()=>{
  const fixture=canonicalXdcFixture();
  const proof=await reconcileApothemPublicTrialReceipts({
-  journal:fixture.journal,primary:fixture.provider(),secondary:fixture.provider()
+  journal:fixture.journal,primary:fixture.provider(),secondary:fixture.provider(),
+  contractInterface:fixture.eventInterface
  });
  assert.equal(proof.transactionCount,10);
  assert.equal(proof.totalActualFeeWei,fixture.total);
  assert.equal(proof.bothProvidersReceiptsAndBlocksAgree,true);
+ assert.equal(proof.bothProvidersNativePayoutEventsVerified,true);
+ assert.equal(proof.nativeRecoveryAmountWei,'100000000000000000');
+ assert.equal(proof.lateNativeRecoveryAmountWei,'137');
  assert.equal(proof.independentXdposFinalityProven,false);
  assert.equal(proof.readOnly,true);
 });
@@ -240,7 +253,7 @@ test('XDC receipt audit rejects altered receipt, missing tx, detached block and 
  const f=canonicalXdcFixture();
  const primary=f.provider(),secondary=f.provider();
  await assert.rejects(reconcileApothemPublicTrialReceipts({
-  journal:f.journal,primary,secondary:{
+  journal:f.journal,primary,contractInterface:f.eventInterface,secondary:{
    ...secondary,
    getTransactionReceipt:async hash=>{
     const original=await secondary.getTransactionReceipt(hash);
@@ -249,34 +262,34 @@ test('XDC receipt audit rejects altered receipt, missing tx, detached block and 
   }
  }),/receipt mismatch/);
  await assert.rejects(reconcileApothemPublicTrialReceipts({
-  journal:f.journal,primary,secondary:{
+  journal:f.journal,primary,contractInterface:f.eventInterface,secondary:{
    ...secondary,
    getTransactionReceipt:async hash=>
     hash===f.receipts[4].hash?null:secondary.getTransactionReceipt(hash)
   }
  }),/Receipt/);
  await assert.rejects(reconcileApothemPublicTrialReceipts({
-  journal:f.journal,primary,secondary:{
+  journal:f.journal,primary,contractInterface:f.eventInterface,secondary:{
    ...secondary,
    getBlock:async n=>n===f.receipts[5].blockNumber?
     {hash:'0x'+'ff'.repeat(32)}:secondary.getBlock(n)
   }
  }),/no longer canonical/);
  await assert.rejects(reconcileApothemPublicTrialReceipts({
-  journal:f.journal,primary,secondary:{...secondary,send:async()=> '0x32'}
+  journal:f.journal,primary,contractInterface:f.eventInterface,secondary:{...secondary,send:async()=> '0x32'}
  }),/chain ID 51/);
 });
 test('XDC receipt audit rejects incomplete journal and tampered aggregate fee',async()=>{
  const f=canonicalXdcFixture(),primary=f.provider(),secondary=f.provider();
  await assert.rejects(reconcileApothemPublicTrialReceipts({
-  journal:{...f.journal,steps:f.journal.steps.slice(1)},primary,secondary
+  journal:{...f.journal,steps:f.journal.steps.slice(1)},primary,secondary,contractInterface:f.eventInterface
  }),/ten-transaction/);
  await assert.rejects(reconcileApothemPublicTrialReceipts({
-  journal:{...f.journal,totalActualFeeWei:'1'},primary,secondary
+  journal:{...f.journal,totalActualFeeWei:'1'},primary,secondary,contractInterface:f.eventInterface
  }),/cumulative fee total/);
  await assert.rejects(reconcileApothemPublicTrialReceipts({
   journal:{...f.journal,steps:f.journal.steps.map((v,i)=>i===2?{...v,status:'submitted'}:v)},
-  primary,secondary
+  primary,secondary,contractInterface:f.eventInterface
  }),/missing expected confirmed step/);
 });
 
@@ -305,4 +318,48 @@ test('security-gate evidence requires exact decoded custom errors, never a gener
   Promise.resolve(true),
   {contractInterface:revertAbi,errorName:'ThresholdNotMet',label:'one guardian'}
  ),/unexpectedly succeeded/);
+});
+
+test('XDC final audit rejects missing, altered, or duplicate native payout events',async()=>{
+ const f=canonicalXdcFixture();
+ const valid=verifyApothemPayoutEvent({
+  receipt:f.receipts[7],contractInterface:f.eventInterface,
+  contractAddress:f.contractAddress,rescueAddress:f.rescue,
+  eventName:'RecoveryExecuted',amountWei:100000000000000000n
+ });
+ assert.equal(valid.matched,true);
+ assert.equal(valid.recipient,f.rescue.toLowerCase());
+ const primary=f.provider(),secondary=f.provider();
+ const altered=async(expectedIndex,logs)=>({
+  ...secondary,
+  getTransactionReceipt:async hash=>{
+   const r=await secondary.getTransactionReceipt(hash);
+   return r===f.receipts[expectedIndex]?{...r,logs}:r;
+  }
+ });
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary,secondary:await altered(7,[]),
+  contractInterface:f.eventInterface
+ }),/exactly one RecoveryExecuted/);
+ const other=f.eventInterface.encodeEventLog(f.eventInterface.getEvent('RecoveryExecuted'),[
+  '0x'+'aa'.repeat(20),100000000000000000n
+ ]);
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary,secondary:await altered(7,[{
+   address:f.contractAddress,topics:other.topics,data:other.data
+  }]),contractInterface:f.eventInterface
+ }),/beneficiary or amount/);
+ const wrongAmount=f.eventInterface.encodeEventLog(f.eventInterface.getEvent('LateNativeRecovered'),[
+  f.rescue,138n
+ ]);
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary,secondary:await altered(9,[{
+   address:f.contractAddress,topics:wrongAmount.topics,data:wrongAmount.data
+  }]),contractInterface:f.eventInterface
+ }),/beneficiary or amount/);
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary,secondary:await altered(9,[
+   f.receipts[9].logs[0],f.receipts[9].logs[0]
+  ]),contractInterface:f.eventInterface
+ }),/exactly one LateNativeRecovered/);
 });
