@@ -300,7 +300,8 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
    primary.getBlock(receipts[0].blockNumber),
    secondary.getBlock(receipts[1].blockNumber)
   ]);
-  if(finalBlocks.some(b=>!b||String(b.hash??'').toLowerCase()!==normalized[0].blockHash))
+  if(finalBlocks.some(b=>!b||String(b.hash??'').toLowerCase()!==normalized[0].blockHash||
+     (b.number!=null&&String(b.number)!==normalized[0].blockNumber)))
    throw Error('Apothem receipt block changed during evidence verification at '+sequence[i]);
   total+=BigInt(normalized[0].actualFeeWei);
   if(total>XDC_PUBLIC_TRIAL_FEE_LIMIT_WEI)
