@@ -87,6 +87,9 @@ export async function broadcastSignedApothemTransaction({
  const signedTo=String(signed.to??'').toLowerCase();
  if(signed.from?.toLowerCase()!==signerAddress||
     signed.chainId!==51n||signed.type!==0||
+    !Number.isSafeInteger(signed.nonce)||signed.nonce<0||
+    BigInt(signed.nonce)!==BigInt(populated.nonce??-1)||
+    (transaction.nonce!=null&&BigInt(signed.nonce)!==BigInt(transaction.nonce))||
     signed.gasPrice!==BigInt(transaction.gasPrice)||
     signed.gasLimit!==BigInt(transaction.gasLimit)||
     signed.value!==BigInt(transaction.value??0n)||
