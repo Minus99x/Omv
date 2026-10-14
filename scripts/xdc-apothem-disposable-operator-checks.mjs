@@ -652,3 +652,16 @@ test('XDC final audit rejects duplicate payout event on either RPC',async()=>{
   }),/exactly one RecoveryExecuted/);
  }
 });
+
+test('XDC final audit rejects incorrect receipt transaction hash',async()=>{
+ const f=canonicalXdcFixture();
+ const original=f.provider();
+ const altered={...original,getTransactionReceipt:async hash=>{
+  const receipt=await original.getTransactionReceipt(hash);
+  return hash===f.receipts[3].hash?{...receipt,hash:'0x'+'ab'.repeat(32)}:receipt;
+ }};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:altered,secondary:f.provider(),
+  contractInterface:f.eventInterface
+ }),/transaction hash|Receipt|receipt/i);
+});
