@@ -928,3 +928,22 @@ test('XDC final audit rejects zero guardian address before querying either RPC',
  }),/Invalid nonzero EVM account/);
  assert.equal(calls,0);
 });
+
+test('XDC final proof refuses an RPC chain switch after all receipts were audited',async()=>{
+ const f=canonicalXdcFixture();
+ for(const side of ['primary','secondary']){
+  const original=f.provider();
+  let calls=0;
+  const switching={...original,send:async method=>{
+   if(method==='eth_chainId'&&++calls===2)return '0x32';
+   return '0x33';
+  }};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,
+   primary:side==='primary'?switching:f.provider(),
+   secondary:side==='secondary'?switching:f.provider(),
+   contractInterface:f.eventInterface
+  }),/chain ID 51/);
+  assert.equal(calls,2);
+ }
+});
