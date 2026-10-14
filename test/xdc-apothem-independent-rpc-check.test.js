@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {APOTHEM_ENDPOINTS,compareApothemRpcProviders} from '../scripts/xdc-apothem-independent-rpc-check.js';
 const HASH='0x'+'11'.repeat(32);
-function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00'}={}){
+function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00',headA='0x2b',headB='0x2a'}={}){
  const calls=[];
  const fetch=async(url,options)=>{
    assert.ok(APOTHEM_ENDPOINTS.includes(url));assert.equal(options.method,'POST');
@@ -10,7 +10,7 @@ function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00'}={})
    const second=url===APOTHEM_ENDPOINTS[1];
    const results={
      eth_chainId:second?chain2:'0x33',
-     eth_blockNumber:second?'0x2a':'0x2b',
+     eth_blockNumber:second?headB:headA,
      eth_getBlockByNumber:{number:'0x2a',hash:second?hash2:HASH},
      eth_gasPrice:second?gasB:gasA
    };
@@ -39,4 +39,16 @@ test('Apothem comparison reports gas quote disagreement but never approves deplo
 });
 test('Apothem comparison rejects missing fetch transport',async()=>{
  await assert.rejects(compareApothemRpcProviders({fetchImpl:null}),/fetchImpl is required/);
+});
+
+test('Apothem comparison refuses lagging provider even with matching historical block hashes',async()=>{
+ const t=mock({headA:'0x37',headB:'0x2a'}); // 13 blocks apart
+ await assert.rejects(compareApothemRpcProviders({fetchImpl:t.fetch}),/head-height divergence/);
+ assert.equal(t.calls.length,4); // no gas or shared-block reads
+});
+test('Apothem comparison permits boundary skew of 12 blocks without approval',async()=>{
+ const t=mock({headA:'0x36',headB:'0x2a'});
+ const proof=await compareApothemRpcProviders({fetchImpl:t.fetch});
+ assert.deepEqual(proof.latestHeights,['54','42']);
+ assert.equal(proof.deploymentApproved,false);
 });
