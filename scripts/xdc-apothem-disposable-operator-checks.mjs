@@ -721,3 +721,23 @@ test('XDC final audit rejects journal receipt gas-use tampering',async()=>{
   contractInterface:f.eventInterface
  }),/receipt mismatch at fund-guardian-b: gasUsed/);
 });
+
+test('XDC final audit fails closed on block reorganization during verification',async()=>{
+ const f=canonicalXdcFixture();
+ for(const side of ['primary','secondary']){
+  const original=f.provider(),reads=new Map();
+  const unstable={...original,getBlock:async number=>{
+   const count=(reads.get(number)??0)+1;
+   reads.set(number,count);
+   const block=await original.getBlock(number);
+   return number===f.receipts[7].blockNumber&&count===2?
+    {...block,hash:'0x'+'ff'.repeat(32)}:block;
+  }};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,
+   primary:side==='primary'?unstable:f.provider(),
+   secondary:side==='secondary'?unstable:f.provider(),
+   contractInterface:f.eventInterface
+  }),/block changed during evidence verification at execute-two-guardian-recovery/);
+ }
+});
