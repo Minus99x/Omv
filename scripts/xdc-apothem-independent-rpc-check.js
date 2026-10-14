@@ -65,6 +65,19 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,now
   if(timestampA<=0n||timestampA!==timestampB)throw Error('Apothem provider common block timestamp mismatch');
   if(clock-timestampA>900n)throw Error('Apothem shared block is older than 15 minutes');
   if(timestampA-clock>120n)throw Error('Apothem shared block timestamp exceeds clock by more than 2 minutes');
+  // The agreed block can reorganize while the fee observations complete.
+  // Re-read the SAME height on both independent providers before returning
+  // this evidence; never infer finality from two matching snapshots.
+  const [confirmA,confirmB]=await Promise.all([
+    rpc(a,'eth_getBlockByNumber',[at,false]),
+    rpc(b,'eth_getBlockByNumber',[at,false])
+  ]);
+  for(const [confirmed,label] of [[confirmA,'first'],[confirmB,'second']]){
+    if(q(confirmed?.number,label+' rechecked block number')!==common||
+       h(confirmed?.hash,label+' rechecked block hash')!==hashA||
+       q(confirmed?.timestamp,label+' rechecked block timestamp')!==timestampA)
+      throw Error('Apothem shared block changed during provider comparison');
+  }
   const feeA=q(gasA,'first fee quote'),feeB=q(gasB,'second fee quote');
   const delta=feeA>feeB?feeA-feeB:feeB-feeA;
   const min=feeA<feeB?feeA:feeB;
@@ -72,7 +85,7 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,now
     schema:'omegavault.xdc.apothem-two-rpc-readonly.v1',
     networkRef:profile.id,chainIdDecimal:51,sharedHeight:common.toString(),
     blockHash:hashA,sharedBlockTimestampSeconds:timestampA.toString(),
-    sharedBlockFreshnessVerified:true,
+    sharedBlockFreshnessVerified:true,sharedBlockRecheckVerified:true,
     endpoints:Object.freeze([a,b]),
     latestHeights:Object.freeze([ah.toString(),bh.toString()]),
     gasPriceWei:Object.freeze([feeA.toString(),feeB.toString()]),
