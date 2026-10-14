@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {Wallet,Transaction,Interface} from 'ethers';
 import {createEncryptedDisposableBundle,validateDisposablePublicManifest,
  inspectDisposableFunding,requirePrivateDirectoryOutsideGit} from './xdc-apothem-disposable-wallet.js';
-import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction,verifyPrematureGuardianAtHeartbeat,reconcileApothemPublicTrialReceipts,requireExpectedVaultRevert,verifyApothemPayoutEvent} from './xdc-apothem-disposable-live.js';
+import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction,verifyPrematureGuardianAtHeartbeat,reconcileApothemPublicTrialReceipts,requireExpectedVaultRevert,verifyApothemPayoutEvent,verifyApothemIncludedTransaction} from './xdc-apothem-disposable-live.js';
 const pass='local-fixture-password-not-for-real-wallets';
 const revertAbi=new Interface(['error InactivityNotElapsed()','error ThresholdNotMet()','error NotTrustedContact()']);
 test('disposable private keys are encrypted, four roles distinct and never returned as naked secrets',async()=>{
@@ -203,7 +203,12 @@ const xdcProofSequence=['deploy-v051','fund-guardian-a','fund-guardian-b','depos
 function canonicalXdcFixture(){
  const contractAddress='0x'+'dd'.repeat(20);
  const rescue='0x'+'ee'.repeat(20);
+ const owner='0x'+'11'.repeat(20),guardianA='0x'+'22'.repeat(20);
+ const guardianB='0x'+'33'.repeat(20);
+ const roles={owner,guardianA,guardianB,rescue};
  const eventInterface=new Interface([
+  'function heartbeat()','function approveRecovery()',
+  'function executeRecovery()','function recoverLateNative()',
   'event RecoveryExecuted(address indexed destination,uint256 nativeAmount)',
   'event LateNativeRecovered(address indexed destination,uint256 amount)'
  ]);
@@ -217,8 +222,22 @@ function canonicalXdcFixture(){
    gasPrice:500000000000n,contractAddress:i===0?contractAddress:null,
    logs:encoded?[{address:contractAddress,topics:encoded.topics,data:encoded.data}]:[]};
  });
+ const transactions=receipts.map((r,i)=>{
+  const label=xdcProofSequence[i];
+  const from=i===5?guardianA:i===6?guardianB:owner;
+  const nonce=i<=4?i:i===5||i===6?0:i-2;
+  const to=i===0?null:i===1?guardianA:i===2?guardianB:contractAddress;
+  const value=i===1||i===2||i===3?100000000000000000n:i===8?137n:0n;
+  const method=i===4?'heartbeat':i===5||i===6?'approveRecovery':
+   i===7?'executeRecovery':i===9?'recoverLateNative':null;
+  const data=i===0?'0x60006000':
+   method?eventInterface.encodeFunctionData(method,[]):'0x';
+  return {hash:r.hash,blockHash:r.blockHash,blockNumber:r.blockNumber,
+   gasPrice:r.gasPrice,chainId:51n,type:0,nonce,from,to,value,data,label};
+ });
  const total=(receipts.reduce((sum,r)=>sum+r.gasUsed*r.gasPrice,0n)).toString();
- const journal={contractAddress,roles:{rescue},totalActualFeeWei:total,steps:receipts.map((r,i)=>({
+ const journal={contractAddress,roles,totalActualFeeWei:total,steps:receipts.map((r,i)=>({
+  nonce:transactions[i].nonce,from:transactions[i].from,valueWei:transactions[i].value.toString(),
   label:xdcProofSequence[i],status:'confirmed',txHash:r.hash,receipt:{
    txHash:r.hash,blockNumber:String(r.blockNumber),blockHash:r.blockHash,
    gasUsed:String(r.gasUsed),gasPriceWei:String(r.gasPrice),
@@ -228,11 +247,12 @@ function canonicalXdcFixture(){
  const provider=()=>({
   send:async()=> '0x33',
   getTransactionReceipt:async hash=>receipts.find(r=>r.hash===hash)??null,
+  getTransaction:async hash=>transactions.find(t=>t.hash===hash)??null,
   getBlock:async blockNumber=>({
    hash:receipts.find(r=>r.blockNumber===blockNumber)?.blockHash
   })
  });
- return {journal,receipts,provider,total,eventInterface,contractAddress,rescue};
+ return {journal,receipts,transactions,provider,total,eventInterface,contractAddress,rescue,roles};
 }
 test('final XDC live evidence requires all ten canonical receipts matching two Apothem RPCs',async()=>{
  const fixture=canonicalXdcFixture();
@@ -244,6 +264,7 @@ test('final XDC live evidence requires all ten canonical receipts matching two A
  assert.equal(proof.totalActualFeeWei,fixture.total);
  assert.equal(proof.bothProvidersReceiptsAndBlocksAgree,true);
  assert.equal(proof.bothProvidersNativePayoutEventsVerified,true);
+ assert.equal(proof.allTenSignedRoleIdentitiesAndNoncesVerified,true);
  assert.equal(proof.nativeRecoveryAmountWei,'100000000000000000');
  assert.equal(proof.lateNativeRecoveryAmountWei,'137');
  assert.equal(proof.independentXdposFinalityProven,false);
@@ -362,4 +383,49 @@ test('XDC final audit rejects missing, altered, or duplicate native payout event
    f.receipts[9].logs[0],f.receipts[9].logs[0]
   ]),contractInterface:f.eventInterface
  }),/exactly one LateNativeRecovered/);
+});
+
+test('canonical XDC signer audit binds both guardian approvals to distinct intended wallets',async()=>{
+ const f=canonicalXdcFixture();
+ const first=verifyApothemIncludedTransaction({
+  transaction:f.transactions[5],step:f.journal.steps[5],roles:f.roles,
+  contractAddress:f.contractAddress,contractInterface:f.eventInterface
+ });
+ const second=verifyApothemIncludedTransaction({
+  transaction:f.transactions[6],step:f.journal.steps[6],roles:f.roles,
+  contractAddress:f.contractAddress,contractInterface:f.eventInterface
+ });
+ assert.equal(first.signedBy,f.roles.guardianA.toLowerCase());
+ assert.equal(second.signedBy,f.roles.guardianB.toLowerCase());
+ assert.notEqual(first.signedBy,second.signedBy);
+});
+test('final XDC proof rejects forged guardian, altered nonce, calldata and destination',async()=>{
+ const f=canonicalXdcFixture();
+ const cases=[
+  {at:5,patch:{from:f.roles.owner}},
+  {at:6,patch:{nonce:17}},
+  {at:7,patch:{data:'0x12345678'}},
+  {at:8,patch:{to:f.roles.rescue}},
+  {at:9,patch:{value:1n}},
+  {at:1,patch:{chainId:50n}},
+  {at:5,patch:{type:2}}
+ ];
+ for(const {at,patch} of cases){
+  const primary=f.provider(),original=f.provider();
+  const provider={...original,getTransaction:async hash=>{
+   const actual=await original.getTransaction(hash);
+   return hash===f.transactions[at].hash?{...actual,...patch}:actual;
+  }};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,primary,secondary:provider,contractInterface:f.eventInterface
+  }),/violates disposable role policy/);
+ }
+ const first=f.provider(),second=f.provider();
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:first,contractInterface:f.eventInterface,
+  secondary:{...second,getTransaction:async hash=>{
+   const tx=await second.getTransaction(hash);
+   return hash===f.transactions[8].hash?{...tx,blockHash:'0x'+'aa'.repeat(32)}:tx;
+  }}
+ }),/block\/fee differs/);
 });
