@@ -84,6 +84,29 @@ export async function broadcastSignedApothemTransaction({
   throw Error('Broadcast response hash differs from pre-journaled signed transaction; reconcile manually.');
  return sent;
 }
+/**
+ * Establish the premature-guardian denial at the actual heartbeat inclusion
+ * block, rather than at a drifting 'latest' block. Two receipt confirmations,
+ * slow RPCs, or a busy workstation can otherwise advance past 45 seconds and
+ * make a legitimate approval look like a security failure.
+ */
+export async function verifyPrematureGuardianAtHeartbeat({
+ network,vault,guardian,heartbeatReceipt,anchor
+}){
+ if(!heartbeatReceipt||heartbeatReceipt.blockNumber==null)
+  throw Error('Heartbeat inclusion block required for early guardian proof.');
+ const block=await network.getBlock(heartbeatReceipt.blockNumber);
+ if(!block||block.timestamp==null||
+    BigInt(block.timestamp)!==BigInt(anchor))
+  throw Error('Heartbeat anchor does not match public inclusion-block timestamp.');
+ const blockTag=heartbeatReceipt.blockNumber;
+ const proof=await ensureRevert(
+  vault.connect(guardian).approveRecovery.staticCall({blockTag}),
+  'Guardian approval at heartbeat inclusion block must revert'
+ );
+ return Object.freeze({...proof,blockNumber:String(blockTag),
+  heartbeatTimestamp:String(anchor),historicalBlockCall:true});
+}
 async function decryptRoles(dir,password,expected){
  const saved=JSON.parse(readFileSync(join(dir,'secrets.json'),'utf8'));
  if(saved?.schema!=='omegavault.xdc.apothem-encrypted-identities.v1'||saved.chainId!==51)
@@ -208,12 +231,12 @@ export async function executeDisposableApothemTrial({
   if(balance!==XDC_PUBLIC_TRIAL_DEPOSIT_WEI)throw Error('Protected deposit not present in vault.');
 
   const heartbeatTx=await encoded.heartbeat.populateTransaction();
-  await send('owner-heartbeat',owner,heartbeatTx);
+  const heartbeat=await send('owner-heartbeat',owner,heartbeatTx);
   const anchor=BigInt(await encoded.lastHeartbeat());
-  journal.earlyGuard=await ensureRevert(
-   vault.connect(a).approveRecovery.staticCall(),
-   'Guardian approval before on-ledger inactivity must revert'
-  );
+  journal.earlyGuard=await verifyPrematureGuardianAtHeartbeat({
+   network,vault,guardian:a,heartbeatReceipt:heartbeat.receipt,anchor
+  });
+  save();
   let eligible=false;
   for(let tries=0;tries<45;tries++){
    const head=await network.getBlock('latest');
