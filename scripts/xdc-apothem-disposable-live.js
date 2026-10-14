@@ -134,12 +134,48 @@ export async function verifyPrematureGuardianAtHeartbeat({
  * This is cross-provider agreement at observation time, not XDPoS finality.
  * No signing, keys, or replay are performed by this read-only reconciliation.
  */
-export async function reconcileApothemPublicTrialReceipts({journal,primary,secondary}){
+/**
+ * Bind native recovery receipts to the exact immutable rescue recipient and
+ * emitted amount. The earlier transaction-by-transaction balance delta remains
+ * mandatory: an event alone is not proof that value reached the beneficiary.
+ */
+export function verifyApothemPayoutEvent({
+ receipt,contractInterface,contractAddress,rescueAddress,eventName,amountWei
+}){
+ if(!contractInterface||typeof contractInterface.parseLog!=='function'||
+    !['RecoveryExecuted','LateNativeRecovered'].includes(eventName)||
+    !/^0x[0-9a-fA-F]{40}$/.test(contractAddress??'')||
+    !/^0x[0-9a-fA-F]{40}$/.test(rescueAddress??'')||
+    !Array.isArray(receipt?.logs))
+  throw Error('Apothem native payout event proof missing verified ABI, addresses or receipt logs.');
+ const target=contractInterface.getEvent(eventName);
+ if(!target)throw Error('Required Apothem recovery event not present in pinned contract ABI.');
+ let matches=0;
+ for(const log of receipt.logs){
+  if(String(log?.address??'').toLowerCase()!==contractAddress.toLowerCase()||
+     String(log?.topics?.[0]??'').toLowerCase()!==target.topicHash.toLowerCase())continue;
+  let parsed;
+  try{parsed=contractInterface.parseLog({topics:log.topics,data:log.data});}
+  catch{throw Error('Apothem payout event could not be decoded from contract receipt.');}
+  if(parsed?.name!==eventName||
+     String(parsed.args?.[0]??'').toLowerCase()!==rescueAddress.toLowerCase()||
+     parsed.args?.[1]!==BigInt(amountWei))
+   throw Error('Apothem '+eventName+' beneficiary or amount differs from fixed recovery policy.');
+  matches++;
+ }
+ if(matches!==1)throw Error('Expected exactly one '+eventName+' event from the deployed Apothem vault.');
+ return Object.freeze({eventName,recipient:rescueAddress.toLowerCase(),
+  amountWei:String(amountWei),matched:true});
+}
+export async function reconcileApothemPublicTrialReceipts({journal,primary,secondary,contractInterface}){
  const sequence=['deploy-v051','fund-guardian-a','fund-guardian-b','deposit-vault',
   'owner-heartbeat','guardian-a-approval','guardian-b-approval',
   'execute-two-guardian-recovery','late-native-post-recovery-deposit','sweep-late-native'];
  if(!Array.isArray(journal?.steps)||journal.steps.length!==sequence.length)
   throw Error('Complete ten-transaction Apothem recovery journal required for final receipt audit.');
+ if(!contractInterface||typeof contractInterface.getEvent!=='function'||
+    !journal.roles?.rescue)
+  throw Error('Pinned recovery ABI and immutable rescue identity required for event proof.');
  const [firstChain,secondChain]=await Promise.all([
   primary.send('eth_chainId',[]),secondary.send('eth_chainId',[])
  ]);
@@ -170,6 +206,15 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
   ]);
   if(blocks.some(b=>!b||String(b.hash??'').toLowerCase()!==normalized[0].blockHash))
    throw Error('Apothem receipt block is no longer canonical on both providers at '+sequence[i]);
+  if(i===7||i===9){
+   const eventName=i===7?'RecoveryExecuted':'LateNativeRecovered';
+   const amountWei=i===7?XDC_PUBLIC_TRIAL_DEPOSIT_WEI:LATE_NATIVE_AMOUNT;
+   for(const receipt of receipts){
+    verifyApothemPayoutEvent({receipt,contractInterface,
+     contractAddress:journal.contractAddress,rescueAddress:journal.roles.rescue,
+     eventName,amountWei});
+   }
+  }
   total+=BigInt(normalized[0].actualFeeWei);
   if(total>XDC_PUBLIC_TRIAL_FEE_LIMIT_WEI)
    throw Error('Apothem reconciled total fees exceed five fake TXDC.');
@@ -178,6 +223,9 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
   throw Error('Apothem journal cumulative fee total differs from canonical receipts.');
  return Object.freeze({readOnly:true,transactionCount:sequence.length,
   bothProvidersChain51:true,bothProvidersReceiptsAndBlocksAgree:true,
+  bothProvidersNativePayoutEventsVerified:true,
+  nativeRecoveryAmountWei:XDC_PUBLIC_TRIAL_DEPOSIT_WEI.toString(),
+  lateNativeRecoveryAmountWei:LATE_NATIVE_AMOUNT.toString(),
   totalActualFeeWei:total.toString(),independentXdposFinalityProven:false});
 }
 async function decryptRoles(dir,password,expected){
@@ -351,7 +399,7 @@ export async function executeDisposableApothemTrial({
   // actual fee before the journal can claim public native-recovery evidence.
   const secondary=new JsonRpcProvider('https://erpc.apothem.network',undefined,{batchMaxCount:1});
   journal.finalReceiptAudit=await reconcileApothemPublicTrialReceipts({
-   journal,primary:network,secondary
+   journal,primary:network,secondary,contractInterface:vault.interface
   });
   verifyApothemRuntimeBytecode({
    compiledRuntime:'0x'+compiled.runtime,
