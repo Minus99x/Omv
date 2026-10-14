@@ -235,6 +235,8 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
  if(!contractInterface||typeof contractInterface.getEvent!=='function'||
     !journal.roles?.rescue)
   throw Error('Pinned recovery ABI and immutable rescue identity required for event proof.');
+ // Reject a malformed or aliased role manifest before querying chain evidence.
+ validateApothemTrialRoles(journal.roles);
  const [firstChain,secondChain]=await Promise.all([
   primary.send('eth_chainId',[]),secondary.send('eth_chainId',[])
  ]);
