@@ -677,3 +677,23 @@ test('XDC final audit rejects fee manipulation in one provider transaction',asyn
   contractInterface:f.eventInterface
  }),/block\/fee differs from its receipt/);
 });
+
+test('XDC receipt audit rejects altered transaction block number',async()=>{
+ const f=canonicalXdcFixture(),original=f.provider();
+ const tampered={...original,getTransaction:async hash=>{
+  const tx=await original.getTransaction(hash);
+  return hash===f.receipts[3].hash?{...tx,blockNumber:tx.blockNumber+1}:tx;
+ }};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:f.provider(),secondary:tampered,
+  contractInterface:f.eventInterface
+ }),/block\/fee differs from its receipt/);
+});
+test('XDC payout proof rejects a log with the wrong event topic',()=>{
+ const f=canonicalXdcFixture(),log=f.receipts[7].logs[0];
+ assert.throws(()=>verifyApothemPayoutEvent({
+  receipt:{logs:[{...log,topics:['0x'+'ff'.repeat(32)]}]},
+  contractInterface:f.eventInterface,contractAddress:f.contractAddress,
+  rescueAddress:f.rescue,eventName:'RecoveryExecuted',amountWei:100000000000000000n
+ }),/exactly one RecoveryExecuted/);
+});
