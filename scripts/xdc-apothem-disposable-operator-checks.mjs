@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtempSync,mkdirSync,writeFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,mkdirSync,writeFileSync,rmSync,symlinkSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {Wallet,Transaction,Interface} from 'ethers';
@@ -80,6 +80,24 @@ test('preparation forbids plaintext and encrypted test wallet artifacts within a
   try{assert.equal(requirePrivateDirectoryOutsideGit(outside),outside);}
   finally{rmSync(outside,{recursive:true,force:true});}
  }finally{rmSync(tmp,{recursive:true,force:true});}
+});
+
+test('disposable wallet directory canonicalization blocks Git paths hidden by symlinks',()=>{
+ const root=mkdtempSync(join(tmpdir(),'omv-xdc-symlink-check-'));
+ try{
+  const checkout=join(root,'repository');
+  mkdirSync(checkout);
+  // Linked worktrees use a .git file, not a .git directory.
+  writeFileSync(join(checkout,'.git'),'gitdir: /unused-fixture-worktree');
+  symlinkSync(checkout,join(root,'checkout-alias'),'dir');
+  assert.throws(()=>requirePrivateDirectoryOutsideGit(join(root,'checkout-alias','uncreated','wallet')),
+   /cannot be saved inside a Git repository/);
+  const safe=join(root,'safe');
+  mkdirSync(safe);
+  symlinkSync(safe,join(root,'safe-alias'),'dir');
+  assert.equal(requirePrivateDirectoryOutsideGit(join(root,'safe-alias','new','wallet')),
+   join(safe,'new','wallet'));
+ }finally{rmSync(root,{recursive:true,force:true});}
 });
 
 test('signed Apothem hash is durably recorded before RPC broadcast or lost response',async()=>{
