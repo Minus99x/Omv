@@ -821,3 +821,27 @@ test('XDC receipt audit rejects changed signed transaction type',async()=>{
   contractInterface:f.eventInterface
  }),/signer, nonce, target, value or call data violates disposable role policy/);
 });
+
+test('XDC final audit rejects a failed included recovery receipt',async()=>{
+ const f=canonicalXdcFixture(),original=f.provider();
+ const altered={...original,getTransactionReceipt:async hash=>{
+  const receipt=await original.getTransactionReceipt(hash);
+  return hash===f.receipts[7].hash?{...receipt,status:0}:receipt;
+ }};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:f.provider(),secondary:altered,
+  contractInterface:f.eventInterface
+ }),/receipt|status|successful/i);
+});
+test('XDC final audit rejects a forged contract deployment address',async()=>{
+ const f=canonicalXdcFixture(),original=f.provider();
+ const altered={...original,getTransactionReceipt:async hash=>{
+  const receipt=await original.getTransactionReceipt(hash);
+  return hash===f.receipts[0].hash?
+   {...receipt,contractAddress:f.roles.rescue}:receipt;
+ }};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:f.journal,primary:altered,secondary:f.provider(),
+  contractInterface:f.eventInterface
+ }),/contract|receipt/i);
+});
