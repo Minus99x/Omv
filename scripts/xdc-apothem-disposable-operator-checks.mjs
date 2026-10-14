@@ -887,3 +887,23 @@ test('XDC final audit refuses a secondary provider whose chain changes during pr
   contractInterface:f.eventInterface
  }),/chain ID 51/);
 });
+
+test('XDC final publication rejects an earlier block reorganized after its step audit',async()=>{
+ const f=canonicalXdcFixture();
+ for(const side of ['primary','secondary']){
+  const original=f.provider();
+  let reads=0;
+  const unstable={...original,getBlock:async height=>{
+   const block=await original.getBlock(height);
+   if(height===f.receipts[0].blockNumber&&++reads===3)
+    return {...block,hash:'0x'+'ab'.repeat(32)};
+   return block;
+  }};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,
+   primary:side==='primary'?unstable:f.provider(),
+   secondary:side==='secondary'?unstable:f.provider(),
+   contractInterface:f.eventInterface
+  }),/canonical inclusion changed before final proof publication/);
+ }
+});
