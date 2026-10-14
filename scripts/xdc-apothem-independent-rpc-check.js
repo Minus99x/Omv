@@ -44,6 +44,9 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch}={}
   const [heightA,heightB]=await Promise.all([rpc(a,'eth_blockNumber'),rpc(b,'eth_blockNumber')]);
   const ah=q(heightA,'first latest block'),bh=q(heightB,'second latest block');
   if(ah<=0n||bh<=0n)throw Error('Apothem providers must report non-genesis blocks');
+  // Agreement on a historical hash is insufficient if one RPC head is far behind.
+  const headSkew=ah>bh?ah-bh:bh-ah;
+  if(headSkew>12n)throw Error('Apothem provider head-height divergence exceeds 12 blocks');
   const common=ah<bh?ah:bh;
   const at='0x'+common.toString(16);
   const [blockA,blockB,gasA,gasB]=await Promise.all([
