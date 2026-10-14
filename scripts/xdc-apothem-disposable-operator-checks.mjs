@@ -6,7 +6,7 @@ import {join} from 'node:path';
 import {Wallet,Transaction} from 'ethers';
 import {createEncryptedDisposableBundle,validateDisposablePublicManifest,
  inspectDisposableFunding,requirePrivateDirectoryOutsideGit} from './xdc-apothem-disposable-wallet.js';
-import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction} from './xdc-apothem-disposable-live.js';
+import {requireLiveTrialGate,executeDisposableApothemTrial,broadcastSignedApothemTransaction,verifyPrematureGuardianAtHeartbeat} from './xdc-apothem-disposable-live.js';
 const pass='local-fixture-password-not-for-real-wallets';
 test('disposable private keys are encrypted, four roles distinct and never returned as naked secrets',async()=>{
  const bundle=await createEncryptedDisposableBundle({password:pass});
@@ -139,4 +139,51 @@ test('Apothem signed transaction mismatches and missing journal durability block
   signer,network,transaction:tx
  }),/durable pre-broadcast journal/);
  assert.equal(broadcastCount,0);
+});
+
+test('premature guardian rejection is pinned to heartbeat inclusion block, not drifting latest',async()=>{
+ const guardian={role:'guardianA'};
+ const historicalBlock=812345;
+ const observed=[];
+ const vault={connect:role=>{
+  assert.equal(role,guardian);
+  return {approveRecovery:{staticCall:async overrides=>{
+   observed.push(overrides);
+   assert.deepEqual(overrides,{blockTag:historicalBlock});
+   const error=new Error('execution reverted: InactivityNotElapsed');
+   error.code='CALL_EXCEPTION';
+   throw error;
+  }}};
+ }};
+ const result=await verifyPrematureGuardianAtHeartbeat({
+  network:{getBlock:async n=>{
+   assert.equal(n,historicalBlock);
+   return {timestamp:987654};
+  }},
+  vault,guardian,heartbeatReceipt:{blockNumber:historicalBlock},anchor:987654n
+ });
+ assert.equal(result.rejected,true);
+ assert.equal(result.historicalBlockCall,true);
+ assert.equal(result.blockNumber,String(historicalBlock));
+ assert.equal(result.heartbeatTimestamp,'987654');
+ assert.equal(observed.length,1);
+});
+test('premature guardian proof fails closed on heartbeat block mismatch or unexpected approval',async()=>{
+ let calls=0;
+ const guardian={role:'guardianA'};
+ const vault={connect:()=>({approveRecovery:{staticCall:async()=>{calls++;return true;}}})};
+ await assert.rejects(verifyPrematureGuardianAtHeartbeat({
+  network:{getBlock:async()=>({timestamp:5001})},
+  vault,guardian,heartbeatReceipt:{blockNumber:55},anchor:5000n
+ }),/anchor does not match/);
+ assert.equal(calls,0);
+ await assert.rejects(verifyPrematureGuardianAtHeartbeat({
+  network:{getBlock:async()=>({timestamp:5000})},
+  vault,guardian,heartbeatReceipt:{blockNumber:55},anchor:5000n
+ }),/unexpectedly succeeded/);
+ assert.equal(calls,1);
+ await assert.rejects(verifyPrematureGuardianAtHeartbeat({
+  network:{getBlock:async()=>({timestamp:5000})},
+  vault,guardian,heartbeatReceipt:{},anchor:5000n
+ }),/inclusion block required/);
 });
