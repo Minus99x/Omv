@@ -312,7 +312,8 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
   const height=Number(step.receipt.blockNumber);
   const blocks=await Promise.all([primary.getBlock(height),secondary.getBlock(height)]);
   return blocks.every(block=>block&&
-   String(block.hash??'').toLowerCase()===String(step.receipt.blockHash).toLowerCase());
+   String(block.hash??'').toLowerCase()===String(step.receipt.blockHash).toLowerCase()&&
+   (block.number==null||Number(block.number)===height));
  }));
  if(publicationBlocks.some(valid=>!valid))
   throw Error('Apothem canonical inclusion changed before final proof publication.');
