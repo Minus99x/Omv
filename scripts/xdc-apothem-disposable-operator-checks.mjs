@@ -852,7 +852,7 @@ test('XDC final audit rejects tampered journal role identity even when RPCs agre
   journal:{...f.journal,roles:{...f.roles,guardianA:f.roles.owner}},
   primary:f.provider(),secondary:f.provider(),
   contractInterface:f.eventInterface
- }),/signer, nonce, target, value or call data violates disposable role policy/);
+ }),/must be distinct accounts/);
 });
 test('XDC final audit rejects an unconfirmed journal step without consulting its receipt',async()=>{
  const f=canonicalXdcFixture();
