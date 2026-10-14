@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {APOTHEM_ENDPOINTS,compareApothemRpcProviders} from '../scripts/xdc-apothem-independent-rpc-check.js';
 const HASH='0x'+'11'.repeat(32);
-function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00',headA='0x2b',headB='0x2a'}={}){
+function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00',headA='0x2b',headB='0x2a',timestampA='0x6553f100',timestampB=timestampA}={}){
  const calls=[];
  const fetch=async(url,options)=>{
    assert.ok(APOTHEM_ENDPOINTS.includes(url));assert.equal(options.method,'POST');
@@ -11,7 +11,7 @@ function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00',head
    const results={
      eth_chainId:second?chain2:'0x33',
      eth_blockNumber:second?headB:headA,
-     eth_getBlockByNumber:{number:'0x2a',hash:second?hash2:HASH},
+     eth_getBlockByNumber:{number:'0x2a',hash:second?hash2:HASH,timestamp:second?timestampB:timestampA},
      eth_gasPrice:second?gasB:gasA
    };
    if(req.method==='eth_getBlockByNumber')assert.deepEqual(req.params,['0x2a',false]);
@@ -20,7 +20,7 @@ function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00',head
  return {fetch,calls};
 }
 test('Apothem read-only comparison validates both chain-51 endpoints at one common height',async()=>{
- const t=mock();const proof=await compareApothemRpcProviders({fetchImpl:t.fetch});
+ const t=mock();const proof=await compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:t.fetch});
  assert.equal(proof.sharedHeight,'42');assert.equal(proof.blockHash,HASH);
  assert.equal(proof.gasQuotesAgree,true);assert.equal(proof.quoteDifferenceWei,'0');
  assert.equal(proof.readOnly,true);assert.equal(proof.deploymentApproved,false);
@@ -28,27 +28,61 @@ test('Apothem read-only comparison validates both chain-51 endpoints at one comm
  assert.ok(t.calls.every(x=>!/(sendRaw|sign|deploy|personal)/i.test(x.req.method)));
 });
 test('Apothem comparison refuses a wrong chain or conflicting ledger hash',async()=>{
- await assert.rejects(compareApothemRpcProviders({fetchImpl:mock({chain2:'0x32'}).fetch}),/chain mismatch/);
- await assert.rejects(compareApothemRpcProviders({fetchImpl:mock({hash2:'0x'+'22'.repeat(32)}).fetch}),/consensus mismatch/);
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:mock({chain2:'0x32'}).fetch}),/chain mismatch/);
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:mock({hash2:'0x'+'22'.repeat(32)}).fetch}),/consensus mismatch/);
 });
 test('Apothem comparison reports gas quote disagreement but never approves deployment',async()=>{
- const proof=await compareApothemRpcProviders({fetchImpl:mock({gasA:'0x1',gasB:'0x100'}).fetch});
+ const proof=await compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:mock({gasA:'0x1',gasB:'0x100'}).fetch});
  assert.equal(proof.gasQuotesAgree,false);
  assert.equal(proof.quoteRatioGreaterThanTen,true);
  assert.equal(proof.deploymentApproved,false);
 });
 test('Apothem comparison rejects missing fetch transport',async()=>{
- await assert.rejects(compareApothemRpcProviders({fetchImpl:null}),/fetchImpl is required/);
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:null}),/fetchImpl is required/);
 });
 
 test('Apothem comparison refuses lagging provider even with matching historical block hashes',async()=>{
  const t=mock({headA:'0x37',headB:'0x2a'}); // 13 blocks apart
- await assert.rejects(compareApothemRpcProviders({fetchImpl:t.fetch}),/head-height divergence/);
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:t.fetch}),/head-height divergence/);
  assert.equal(t.calls.length,4); // no gas or shared-block reads
 });
 test('Apothem comparison permits boundary skew of 12 blocks without approval',async()=>{
  const t=mock({headA:'0x36',headB:'0x2a'});
- const proof=await compareApothemRpcProviders({fetchImpl:t.fetch});
+ const proof=await compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:t.fetch});
  assert.deepEqual(proof.latestHeights,['54','42']);
  assert.equal(proof.deploymentApproved,false);
+});
+
+test('Apothem comparison rejects identical but stale shared ledger blocks',async()=>{
+ const t=mock();
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700001000,fetchImpl:t.fetch}),
+  /older than 15 minutes/);
+ assert.equal(t.calls.length,8);
+});
+
+test('Apothem comparison rejects implausibly future-dated shared block',async()=>{
+ const t=mock();
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1699999800,fetchImpl:t.fetch}),
+  /exceeds clock by more than 2 minutes/);
+});
+
+test('Apothem comparison rejects inconsistent provider timestamps with matching hashes',async()=>{
+ const t=mock({timestampB:'0x6553f101'});
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:t.fetch}),
+  /timestamp mismatch/);
+});
+
+test('Apothem comparison accepts a fresh boundary timestamp without approving deployment',async()=>{
+ const t=mock();
+ const proof=await compareApothemRpcProviders({nowSeconds:1700000900,fetchImpl:t.fetch});
+ assert.equal(proof.sharedBlockTimestampSeconds,'1700000000');
+ assert.equal(proof.sharedBlockFreshnessVerified,true);
+ assert.equal(proof.deploymentApproved,false);
+});
+
+test('Apothem comparison rejects malformed timestamps and invalid local clock',async()=>{
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:mock({timestampA:'broken'}).fetch}),
+  /not canonical hex/);
+ await assert.rejects(compareApothemRpcProviders({nowSeconds:NaN,fetchImpl:mock().fetch}),
+  /positive safe integer/);
 });
