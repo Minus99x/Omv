@@ -845,3 +845,28 @@ test('XDC final audit rejects a forged contract deployment address',async()=>{
   contractInterface:f.eventInterface
  }),/contract|receipt/i);
 });
+
+test('XDC final audit rejects tampered journal role identity even when RPCs agree',async()=>{
+ const f=canonicalXdcFixture();
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,roles:{...f.roles,guardianA:f.roles.owner}},
+  primary:f.provider(),secondary:f.provider(),
+  contractInterface:f.eventInterface
+ }),/signer, nonce, target, value or call data violates disposable role policy/);
+});
+test('XDC final audit rejects an unconfirmed journal step without consulting its receipt',async()=>{
+ const f=canonicalXdcFixture();
+ const steps=f.journal.steps.map(step=>({...step}));
+ steps[7]={...steps[7],status:'submitted'};
+ const primary=f.provider();
+ let recoveryReads=0;
+ const guarded={...primary,getTransactionReceipt:async hash=>{
+  if(hash===f.receipts[7].hash)recoveryReads++;
+  return primary.getTransactionReceipt(hash);
+ }};
+ await assert.rejects(reconcileApothemPublicTrialReceipts({
+  journal:{...f.journal,steps},primary:guarded,secondary:f.provider(),
+  contractInterface:f.eventInterface
+ }),/missing expected confirmed step execute-two-guardian-recovery/);
+ assert.equal(recoveryReads,0);
+});
