@@ -193,5 +193,5 @@ test('premature guardian proof fails closed on heartbeat block mismatch or unexp
  await assert.rejects(verifyPrematureGuardianAtHeartbeat({
   network:{getBlock:async()=>({timestamp:5000})},
   vault,guardian,heartbeatReceipt:{},anchor:5000n
- }),/inclusion block required/);
+ }),/inclusion block and block hash required/);
 });
