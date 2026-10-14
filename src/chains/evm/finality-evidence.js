@@ -62,6 +62,7 @@ export function createEvmBlockFinalityEvidence({
   proof,
   observedChainIdHex,
   receipt,
+  receiptBlock = null,
   finalizedBlock = null,
   latestBlock = null,
   observedAt
@@ -79,6 +80,15 @@ export function createEvmBlockFinalityEvidence({
   if (receiptTx !== transactionRef) throw new Error('Finality receipt belongs to a different recovery transaction.');
   const receiptBlockHash = normalizeHash(receipt?.blockHash, 'receipt.blockHash');
   const receiptBlockNumber = quantity(receipt?.blockNumber, 'receipt.blockNumber');
+  // The receipt alone is not proof that its block is still canonical.
+  // Caller must provide an independently requested eth_getBlockByNumber
+  // observation at the receipt's height, not a second copy of the receipt.
+  if (!receiptBlock) throw new Error('Finality evidence requires a canonical receipt-block observation.');
+  const canonicalReceiptHeight = quantity(receiptBlock.number, 'receiptBlock.number');
+  const canonicalReceiptHash = normalizeHash(receiptBlock.hash, 'receiptBlock.hash');
+  if (canonicalReceiptHeight !== receiptBlockNumber || canonicalReceiptHash !== receiptBlockHash) {
+    throw new Error('Recovery receipt is not bound to the observed canonical block.');
+  }
 
   let method;
   let confirmationCount = null;
@@ -94,6 +104,9 @@ export function createEvmBlockFinalityEvidence({
     finalizedBlockNumber = quantity(finalizedBlock.number, 'finalizedBlock.number');
     finalizedBlockHash = normalizeHash(finalizedBlock.hash, 'finalizedBlock.hash');
     if (finalizedBlockNumber < receiptBlockNumber) throw new Error('Recovery transaction block is newer than the finalized chain head.');
+    if (finalizedBlockNumber === receiptBlockNumber && finalizedBlockHash !== receiptBlockHash) {
+      throw new Error('Finalized head hash contradicts recovery receipt block.');
+    }
     method = 'finalized-tag';
   } else if (confirmationsRequired > 0) {
     if (!latestBlock) throw new Error('This EVM finality policy requires a latest-block observation for confirmation counting.');
@@ -107,7 +120,7 @@ export function createEvmBlockFinalityEvidence({
   }
 
   const core = Object.freeze({
-    schema: 'omegavault.evm-finality-evidence.v1',
+    schema: 'omegavault.evm-finality-evidence.v2',
     chainId: network.chainId,
     networkRef: network.id,
     chainIdHex: String(network.chainIdHex).toLowerCase(),
@@ -120,6 +133,8 @@ export function createEvmBlockFinalityEvidence({
     receipt: Object.freeze({
       blockNumber: receiptBlockNumber.toString(),
       blockHash: receiptBlockHash,
+      canonicalBlockNumber: canonicalReceiptHeight.toString(),
+      canonicalBlockHash: canonicalReceiptHash,
       status: 'success'
     }),
     finality: Object.freeze({
@@ -139,8 +154,34 @@ export function evmFinalityMatchesProof(evidence, proof, { networkId, kind }) {
   const network = getNetwork(networkId);
   if (!network || !evidence || !proof || proof?.success !== true) return false;
   if (proof?.binding?.kind !== kind) return false;
-  if (evidence.schema !== 'omegavault.evm-finality-evidence.v1' || evidence.status !== 'finalized') return false;
+  if (evidence.schema !== 'omegavault.evm-finality-evidence.v2' || evidence.status !== 'finalized') return false;
   if (evidence.networkRef !== network.id || evidence.chainId !== network.chainId) return false;
+  if (evidence.chainIdHex !== String(network.chainIdHex).toLowerCase()) return false;
+  // A checksum is not an independent ledger proof. Reject internally
+  // inconsistent or policy-incompatible evidence even when re-hashed.
+  const policy = policyForNetwork(network.id);
+  if (!policy || policy.model !== 'evm-block' || evidence.receipt?.status !== 'success') return false;
+  try {
+    const receiptHeight = quantity(evidence.receipt.blockNumber, 'receipt.blockNumber');
+    if (quantity(evidence.receipt.canonicalBlockNumber, 'receipt.canonicalBlockNumber') !== receiptHeight) return false;
+    if (normalizeHash(evidence.receipt.blockHash, 'receipt.blockHash') !==
+        normalizeHash(evidence.receipt.canonicalBlockHash, 'receipt.canonicalBlockHash')) return false;
+    const needsFinalized = policy.target?.finalizedBlockTag === true ||
+      policy.target?.finalizedBlockTagPreferred === true;
+    if (needsFinalized) {
+      if (evidence.method !== 'finalized-tag') return false;
+      const height = quantity(evidence.finality?.finalizedBlockNumber, 'finalizedBlockNumber');
+      const hash = normalizeHash(evidence.finality?.finalizedBlockHash, 'finalizedBlockHash');
+      if (height < receiptHeight || (height === receiptHeight && hash !== evidence.receipt.blockHash)) return false;
+    } else {
+      const required = Number(policy.target?.confirmations ?? 0);
+      if (!Number.isSafeInteger(required) || required < 1 || evidence.method !== 'confirmations') return false;
+      const head = quantity(evidence.finality?.headBlockNumber, 'headBlockNumber');
+      const count = quantity(evidence.finality?.confirmations, 'confirmations');
+      if (head < receiptHeight || count !== head - receiptHeight + 1n || count < BigInt(required) ||
+          evidence.finality?.requiredConfirmations !== required) return false;
+    }
+  } catch { return false; }
   if (evidence.transactionRef !== String(proof.transactionRef ?? '').toLowerCase()) return false;
   if (evidence.proofBindingSha256 !== proof.bindingSha256) return false;
   if (evidence.proofContextSha256 !== proof.binding?.contextSha256) return false;
