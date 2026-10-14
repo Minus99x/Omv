@@ -171,6 +171,49 @@ test('premature guardian rejection is pinned to heartbeat inclusion block, not d
  assert.equal(result.heartbeatTimestamp,'987654');
  assert.equal(observed.length,1);
 });
+test('premature guardian proof fails closed if heartbeat block reorganizes DURING historical eth_call',async()=>{
+ const hash='0x'+'a1'.repeat(32),reorgHash='0x'+'b2'.repeat(32);
+ let blockReads=0,guardCalls=0;
+ const network={getBlock:async()=>{
+  blockReads++;
+  return {timestamp:5000,hash:blockReads===1?hash:reorgHash};
+ }};
+ const guardian={role:'guardianA'};
+ const vault={interface:revertAbi,connect:()=>({approveRecovery:{
+  staticCall:async()=>{
+   guardCalls++;
+   const error=new Error('EVM reverted');
+   error.code='CALL_EXCEPTION';
+   error.data=revertAbi.encodeErrorResult('InactivityNotElapsed',[]);
+   throw error;
+  }
+ }})};
+ await assert.rejects(verifyPrematureGuardianAtHeartbeat({
+  network,vault,guardian,heartbeatReceipt:{blockNumber:55,blockHash:hash},anchor:5000n
+ }),/inclusion block changed during historical call/);
+ assert.equal(blockReads,2);
+ assert.equal(guardCalls,1);
+});
+test('premature guardian proof fails closed if anchor timestamp changes during historical eth_call',async()=>{
+ const hash='0x'+'a1'.repeat(32);
+ let blockReads=0;
+ const network={getBlock:async()=>{
+  blockReads++;
+  return {hash,timestamp:blockReads===1?5000:5001};
+ }};
+ const vault={interface:revertAbi,connect:()=>({approveRecovery:{
+  staticCall:async()=>{
+   const error=new Error('EVM reverted');
+   error.code='CALL_EXCEPTION';
+   error.data=revertAbi.encodeErrorResult('InactivityNotElapsed',[]);
+   throw error;
+  }
+ }})};
+ await assert.rejects(verifyPrematureGuardianAtHeartbeat({
+  network,vault,guardian:{},heartbeatReceipt:{blockNumber:55,blockHash:hash},anchor:5000n
+ }),/inclusion block changed during historical call/);
+ assert.equal(blockReads,2);
+});
 test('premature guardian proof fails closed on heartbeat block mismatch or unexpected approval',async()=>{
  const hash='0xa1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1',otherHash='0xb2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2';
  let calls=0;
