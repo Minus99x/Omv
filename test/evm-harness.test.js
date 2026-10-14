@@ -43,7 +43,7 @@ test('compatibility report stays blocked until every network-specific proof exis
   const deployment = createDeploymentVerificationReport({ network, compiledRuntimeBytecode: '0x6000', liveRuntimeBytecode: '0x6000', expected, observed: { ...expected, chainIdHex: network.chainIdHex, deploymentTxRef: '0xdeploy' }, observedAt: '2026-09-28T00:00:00Z' });
   const report = createEvmCompatibilityReport({ networkId: 'base:sepolia', observations: { chainIdHex: network.chainIdHex, rpcRead: true, walletNetworkSwitch: true }, deploymentVerification: deployment, nativeProof: { success: true }, erc20Proof: { success: false }, finality: createFinalityObservation({ policy: DEFAULT_FINALITY_POLICIES.baseSepolia, transactionRef: '0x1', observedAt: '2026-09-28T00:00:00Z', status: 'finalized', evidence: {} }) });
   assert.equal(report.readyForLiveProofPromotion, false);
-  assert.deepEqual(report.missing, ['erc20-recovery']);
+  assert.deepEqual(report.missing, ['erc20-recovery', 'finality-evidence']); // bare status cannot establish finality
 });
 
 
