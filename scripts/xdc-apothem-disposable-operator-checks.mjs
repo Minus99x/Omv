@@ -948,7 +948,7 @@ test('XDC final proof refuses an RPC chain switch after all receipts were audite
  }
 });
 
-test('XDC final publication rejects provider block-height substitution',async()=>{
+test('XDC audit rejects provider block-height substitution on first canonical read',async()=>{
  const f=canonicalXdcFixture();
  for(const side of ['primary','secondary']){
   const original=f.provider();
@@ -956,6 +956,25 @@ test('XDC final publication rejects provider block-height substitution',async()=
    const block=await original.getBlock(height);
    return height===f.receipts[2].blockNumber?
     {...block,number:height+1}:block;
+  }};
+  await assert.rejects(reconcileApothemPublicTrialReceipts({
+   journal:f.journal,
+   primary:side==='primary'?altered:f.provider(),
+   secondary:side==='secondary'?altered:f.provider(),
+   contractInterface:f.eventInterface
+  }),/receipt block is no longer canonical on both providers/);
+ }
+});
+test('XDC final publication rejects late block-height substitution',async()=>{
+ const f=canonicalXdcFixture();
+ for(const side of ['primary','secondary']){
+  const original=f.provider();
+  let reads=0;
+  const altered={...original,getBlock:async height=>{
+   const block=await original.getBlock(height);
+   if(height===f.receipts[2].blockNumber&&++reads===3)
+    return {...block,number:height+1};
+   return block;
   }};
   await assert.rejects(reconcileApothemPublicTrialReceipts({
    journal:f.journal,
