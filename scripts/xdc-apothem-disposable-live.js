@@ -281,7 +281,9 @@ export async function reconcileApothemPublicTrialReceipts({journal,primary,secon
    primary.getBlock(receipts[0].blockNumber),
    secondary.getBlock(receipts[1].blockNumber)
   ]);
-  if(blocks.some(b=>!b||String(b.hash??'').toLowerCase()!==normalized[0].blockHash))
+  if(blocks.some(b=>!b||
+     String(b.hash??'').toLowerCase()!==normalized[0].blockHash||
+     (b.number!=null&&String(b.number)!==normalized[0].blockNumber)))
    throw Error('Apothem receipt block is no longer canonical on both providers at '+sequence[i]);
   if(i===7||i===9){
    const eventName=i===7?'RecoveryExecuted':'LateNativeRecovered';
