@@ -5,6 +5,7 @@ import { createDeploymentVerificationReport } from '../src/chains/evm/deployment
 import { createEvmProofBinding } from '../src/chains/evm/proof-binding.js';
 import { createEvmBlockFinalityEvidence } from '../src/chains/evm/finality-evidence.js';
 import { createEvmCompatibilityReport } from '../src/chains/evm/compatibility-report.js';
+import { createEvmCompatibilityProbe, evmProbePreflight, XDC_AUTHENTICATED_FINALITY_GATE } from '../src/chains/evm/compatibility-plan.js';
 
 const networkId = 'xdc:apothem';
 const network = getNetwork(networkId);
@@ -65,12 +66,52 @@ function fixture() {
   return { report, nativeProof, erc20Proof, finality };
 }
 
-test('XDC compatibility requires distinct proof-bound native and ERC-20 finalized receipts', () => {
+test('XDC retains proof-bound recovery checks but never promotes unauthenticated finality', () => {
   const f = fixture();
   const outcome = f.report();
   assert.equal(outcome.checks['finality-evidence'], true);
-  assert.deepEqual(outcome.missing, []);
-  assert.equal(outcome.readyForLiveProofPromotion, true);
+  assert.equal(outcome.checks[XDC_AUTHENTICATED_FINALITY_GATE], false);
+  assert.deepEqual(outcome.missing, [XDC_AUTHENTICATED_FINALITY_GATE]);
+  assert.equal(outcome.readyForLiveProofPromotion, false);
+});
+
+test('XDC compatibility refuses caller-supplied authenticated finality or forged provenance flags', () => {
+  const f = fixture();
+  for (const forged of [
+    { [XDC_AUTHENTICATED_FINALITY_GATE]: true },
+    { rpcAuthenticated: true, authenticatedConsensusCertificate: true,
+      providerInfrastructureIndependenceProven: true },
+    { readyForLiveProofPromotion: true, recoveryProven: true }
+  ]) {
+    const outcome = f.report({
+      observations: { chainIdHex: network.chainIdHex, rpcRead: true,
+        walletNetworkSwitch: true, ...forged },
+      finality: { ...f.finality, ...forged }
+    });
+    assert.equal(outcome.checks[XDC_AUTHENTICATED_FINALITY_GATE], false);
+    assert.deepEqual(outcome.missing, [XDC_AUTHENTICATED_FINALITY_GATE]);
+    assert.equal(outcome.readyForLiveProofPromotion, false);
+  }
+});
+
+test('XDC preflight rejects caller-injected authenticated finality while other EVM profiles keep their own checks', () => {
+  const required = createEvmCompatibilityProbe(networkId).requiredChecks;
+  assert.ok(required.includes(XDC_AUTHENTICATED_FINALITY_GATE));
+  const claimed = Object.fromEntries(required.map(key => [key,true]));
+  const preflight = evmProbePreflight({
+    networkId, observedChainIdHex: network.chainIdHex, checks: claimed
+  });
+  assert.equal(preflight.checks[XDC_AUTHENTICATED_FINALITY_GATE], false);
+  assert.notEqual(preflight.status,'ready');
+
+  const base = getNetwork('base:sepolia');
+  const baseRequired = createEvmCompatibilityProbe(base.id).requiredChecks;
+  assert.ok(!baseRequired.includes(XDC_AUTHENTICATED_FINALITY_GATE));
+  const basePreflight = evmProbePreflight({
+    networkId: base.id, observedChainIdHex: base.chainIdHex,
+    checks: Object.fromEntries(baseRequired.map(key=>[key,true]))
+  });
+  assert.equal(basePreflight.status,'ready');
 });
 
 test('bare or unbound finalized status does not authorize XDC recovery promotion', () => {
