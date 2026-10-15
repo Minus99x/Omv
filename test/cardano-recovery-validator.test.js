@@ -67,3 +67,59 @@ test('Cardano preflight requires external fee/collateral design and body recompu
   assert.ok(plan.requiredChecks.some(x => /collateral/gi.test(x)));
   assert.ok(plan.requiredChecks.some(x => /recomputed/gi.test(x)));
 });
+
+test('Cardano heartbeat offline parity rejects immutable-policy mutation and unequal state value', () => {
+  const datum = base();
+  const next = createCardanoRecoveryDatum({ ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b], threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 110000, stateBeaconAsset: beacon });
+  const args = { datum, signerKeyHashes: [owner], validityLowerBoundMs: 110000, inputValue: value, continuingOutputs: [{ address: 'script', value }], nextDatum: next };
+  for (const changed of [
+    { ...next, contactKeyHashes: [b, a] },
+    { ...next, threshold: 1 },
+    { ...next, inactivityMs: 1 },
+    { ...next, version: 2 }
+  ]) {
+    assert.throws(() => validateCardanoHeartbeatTransition({ ...args, nextDatum: changed }), /Policy-critical fields are immutable/);
+  }
+  assert.throws(() => validateCardanoHeartbeatTransition({
+    ...args, continuingOutputs: [{ address: 'script', value: { ...value, lovelace: '5000001' } }]
+  }), /exact protected vault value/);
+  const missingBeacon = { ...value };
+  delete missingBeacon[beacon];
+  assert.throws(() => validateCardanoHeartbeatTransition({ ...args, inputValue: missingBeacon }), /Protected state input must contain exactly one/);
+});
+
+test('Cardano approval offline parity rejects policy mutation and donation, preserving on-chain exact-state rule', () => {
+  const datum = base();
+  const next = createCardanoRecoveryDatum({ ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b], threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 100000, approvals: [a], stateBeaconAsset: beacon });
+  const args = { datum, signerKeyHashes: [a], validityLowerBoundMs: 160000, inputValue: value, continuingOutputs: [{ address: 'script', value }], nextDatum: next };
+  for (const changed of [
+    { ...next, contactKeyHashes: [b, a] },
+    { ...next, threshold: 1 },
+    { ...next, inactivityMs: 1 },
+    { ...next, version: 2 }
+  ]) {
+    assert.throws(() => validateCardanoApprovalTransition({ ...args, nextDatum: changed }), /Policy-critical fields are immutable/);
+  }
+  assert.throws(() => validateCardanoApprovalTransition({
+    ...args, continuingOutputs: [{ address: 'script', value: { ...value, lovelace: '5000001' } }]
+  }), /exact protected vault value/);
+});
+
+test('Cardano execute cannot pass offline parity without the state beacon in its input', () => {
+  const datum = createCardanoRecoveryDatum({ ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b], threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 100000, approvals: [a, b], stateBeaconAsset: beacon });
+  const missingBeacon = { ...value };
+  delete missingBeacon[beacon];
+  assert.throws(() => validateCardanoExecuteTransition({
+    datum, validityLowerBoundMs: 160000, inputValue: missingBeacon,
+    outputsToRescue: [{ address: rescue, value: missingBeacon }],
+    mintedValue: { [beacon]: '-1' }
+  }), /exactly one state beacon token in the protected input/);
+});
+
+test('Cardano inactivity comparison remains exact near safe-integer time bounds', () => {
+  const datum = createCardanoRecoveryDatum({
+    ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b], threshold: 2,
+    inactivityMs: 10, lastHeartbeatMs: Number.MAX_SAFE_INTEGER - 5, stateBeaconAsset: beacon
+  });
+  assert.equal(cardanoRecoveryEligible(datum, Number.MAX_SAFE_INTEGER), false);
+});

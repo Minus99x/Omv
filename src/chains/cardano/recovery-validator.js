@@ -19,13 +19,6 @@ function normalizeValue(value, label = 'value') {
   return Object.freeze(out);
 }
 
-function valueContains(container, required) {
-  for (const [asset, quantity] of Object.entries(required)) {
-    if (BigInt(container[asset] ?? '0') < BigInt(quantity)) return false;
-  }
-  return true;
-}
-
 function valuesEqual(left, right) {
   const assets = new Set([...Object.keys(left), ...Object.keys(right)]);
   return [...assets].every(asset => BigInt(left[asset] ?? '0') === BigInt(right[asset] ?? '0'));
@@ -63,15 +56,33 @@ export function createCardanoRecoveryDatum({ version = 1, ownerKeyHash, rescueAd
 
 export function cardanoRecoveryEligible(datum, validityLowerBoundMs) {
   assertTime(validityLowerBoundMs, 'validityLowerBoundMs');
-  return validityLowerBoundMs >= datum.lastHeartbeatMs + datum.inactivityMs;
+  // Avoid floating-point overflow near Number.MAX_SAFE_INTEGER.
+  return BigInt(validityLowerBoundMs) >= BigInt(datum.lastHeartbeatMs) + BigInt(datum.inactivityMs);
+}
+
+function assertImmutablePolicy(datum, nextDatum) {
+  if (nextDatum.version !== datum.version ||
+      nextDatum.ownerKeyHash !== datum.ownerKeyHash ||
+      nextDatum.rescueAddress !== datum.rescueAddress ||
+      nextDatum.stateBeaconAsset !== datum.stateBeaconAsset ||
+      nextDatum.threshold !== datum.threshold ||
+      nextDatum.inactivityMs !== datum.inactivityMs ||
+      !Array.isArray(nextDatum.contactKeyHashes) ||
+      nextDatum.contactKeyHashes.length !== datum.contactKeyHashes.length ||
+      nextDatum.contactKeyHashes.some((key, index) => key !== datum.contactKeyHashes[index])) {
+    throw new Error('Policy-critical fields are immutable across Cardano state transitions.');
+  }
 }
 
 function assertStateOutput({ datum, inputValue, continuingOutputs }) {
+  if (BigInt(inputValue[datum.stateBeaconAsset] ?? '0') !== 1n) {
+    throw new Error('Protected state input must contain exactly one state beacon token.');
+  }
   if (!Array.isArray(continuingOutputs) || continuingOutputs.length !== 1) throw new Error('Exactly one continuing state output is required.');
   const output = continuingOutputs[0];
   const value = normalizeValue(output.value, 'continuingOutput.value');
   if (BigInt(value[datum.stateBeaconAsset] ?? '0') !== 1n) throw new Error('Continuing state output must carry exactly one state beacon token.');
-  if (!valueContains(value, inputValue)) throw new Error('Continuing state output may not remove protected vault value.');
+  if (!valuesEqual(value, inputValue)) throw new Error('Continuing state output must preserve the exact protected vault value.');
   return output;
 }
 
@@ -81,7 +92,7 @@ export function validateCardanoHeartbeatTransition({ datum, signerKeyHashes, val
   assertTime(validityLowerBoundMs, 'validityLowerBoundMs');
   const normalizedInput = normalizeValue(inputValue, 'inputValue');
   assertStateOutput({ datum, inputValue: normalizedInput, continuingOutputs });
-  if (nextDatum.ownerKeyHash !== datum.ownerKeyHash || nextDatum.rescueAddress !== datum.rescueAddress || nextDatum.stateBeaconAsset !== datum.stateBeaconAsset) throw new Error('Policy-critical fields are immutable.');
+  assertImmutablePolicy(datum, nextDatum);
   if (nextDatum.lastHeartbeatMs !== validityLowerBoundMs) throw new Error('Heartbeat must set lastHeartbeatMs to the transaction validity lower bound.');
   if (nextDatum.approvals.length !== 0) throw new Error('Heartbeat must clear approvals.');
   return Object.freeze({ ok: true, transition: 'heartbeat' });
@@ -94,7 +105,8 @@ export function validateCardanoApprovalTransition({ datum, signerKeyHashes, vali
   if (newlySigned.length < 1) throw new Error('Approval transition requires at least one new trusted-contact signature.');
   const normalizedInput = normalizeValue(inputValue, 'inputValue');
   assertStateOutput({ datum, inputValue: normalizedInput, continuingOutputs });
-  if (nextDatum.lastHeartbeatMs !== datum.lastHeartbeatMs || nextDatum.rescueAddress !== datum.rescueAddress || nextDatum.ownerKeyHash !== datum.ownerKeyHash) throw new Error('Approval cannot mutate owner, rescue, or heartbeat time.');
+  assertImmutablePolicy(datum, nextDatum);
+  if (nextDatum.lastHeartbeatMs !== datum.lastHeartbeatMs) throw new Error('Approval cannot mutate heartbeat time.');
   const expected = new Set([...datum.approvals, ...newlySigned]);
   if (nextDatum.approvals.length !== expected.size || nextDatum.approvals.some(key => !expected.has(key))) throw new Error('nextDatum approvals do not exactly match prior approvals plus new trusted signatures.');
   return Object.freeze({ ok: true, transition: 'approve', approvals: expected.size });
@@ -105,6 +117,9 @@ export function validateCardanoExecuteTransition({ datum, validityLowerBoundMs, 
   if (datum.approvals.length < datum.threshold) throw new Error('Recovery threshold has not been reached.');
   if (continuingOutputs.length !== 0) throw new Error('Execute recovery must not recreate the active vault-state UTXO.');
   const protectedValue = normalizeValue(inputValue, 'inputValue');
+  if (BigInt(protectedValue[datum.stateBeaconAsset] ?? '0') !== 1n) {
+    throw new Error('Execute requires exactly one state beacon token in the protected input.');
+  }
   if (!Array.isArray(outputsToRescue) || outputsToRescue.length < 1) throw new Error('Recovery must create output value for the immutable rescue address.');
   const aggregate = {};
   for (const [index, output] of outputsToRescue.entries()) {
