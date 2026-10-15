@@ -98,16 +98,27 @@ export function validateCardanoHeartbeatTransition({ datum, signerKeyHashes, val
   return Object.freeze({ ok: true, transition: 'heartbeat' });
 }
 
-export function validateCardanoApprovalTransition({ datum, signerKeyHashes, validityLowerBoundMs, inputValue, continuingOutputs, nextDatum }) {
+export function validateCardanoApprovalTransition({ datum, signerKeyHashes, approvedContactKeyHash = null, validityLowerBoundMs, inputValue, continuingOutputs, nextDatum }) {
   if (!cardanoRecoveryEligible(datum, validityLowerBoundMs)) throw new Error('Recovery inactivity period has not elapsed.');
   const signers = new Set((signerKeyHashes ?? []).map((key, i) => assertKeyHash(key, `signerKeyHashes[${i}]`)));
   const newlySigned = datum.contactKeyHashes.filter(key => signers.has(key) && !datum.approvals.includes(key));
+  // Aiken Approve(contact) adds only its redeemer-selected contact, even if
+  // several distinct contacts also sign the transaction. Do not silently
+  // credit every new signature as a separate state transition.
   if (newlySigned.length < 1) throw new Error('Approval transition requires at least one new trusted-contact signature.');
+  if (approvedContactKeyHash == null && newlySigned.length !== 1) {
+    throw new Error('Multiple new contact signers require an explicit redeemer-selected approvedContactKeyHash.');
+  }
+  const selectedContact = approvedContactKeyHash == null
+    ? newlySigned[0] : assertKeyHash(approvedContactKeyHash, 'approvedContactKeyHash');
+  if (!newlySigned.includes(selectedContact)) {
+    throw new Error('Approved contact must be a configured, not-yet-approved trusted contact who signed the transaction.');
+  }
   const normalizedInput = normalizeValue(inputValue, 'inputValue');
   assertStateOutput({ datum, inputValue: normalizedInput, continuingOutputs });
   assertImmutablePolicy(datum, nextDatum);
   if (nextDatum.lastHeartbeatMs !== datum.lastHeartbeatMs) throw new Error('Approval cannot mutate heartbeat time.');
-  const expected = new Set([...datum.approvals, ...newlySigned]);
+  const expected = new Set([...datum.approvals, selectedContact]);
   if (nextDatum.approvals.length !== expected.size || nextDatum.approvals.some(key => !expected.has(key))) throw new Error('nextDatum approvals do not exactly match prior approvals plus new trusted signatures.');
   return Object.freeze({ ok: true, transition: 'approve', approvals: expected.size });
 }

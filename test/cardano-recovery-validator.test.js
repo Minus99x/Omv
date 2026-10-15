@@ -123,3 +123,61 @@ test('Cardano inactivity comparison remains exact near safe-integer time bounds'
   });
   assert.equal(cardanoRecoveryEligible(datum, Number.MAX_SAFE_INTEGER), false);
 });
+
+test('Cardano approval mirrors one Aiken Approve(contact) per transition despite multiple signatures', () => {
+  const datum = base();
+  const nextSingle = createCardanoRecoveryDatum({
+    ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b],
+    threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 100000,
+    approvals: [a], stateBeaconAsset: beacon
+  });
+  const nextBoth = createCardanoRecoveryDatum({
+    ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b],
+    threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 100000,
+    approvals: [a, b], stateBeaconAsset: beacon
+  });
+  const args = {
+    datum, signerKeyHashes: [a, b], validityLowerBoundMs: 160000,
+    inputValue: value, continuingOutputs: [{ address: 'script', value }]
+  };
+  assert.throws(() => validateCardanoApprovalTransition({ ...args, nextDatum: nextBoth }), /explicit redeemer-selected/);
+  assert.throws(() => validateCardanoApprovalTransition({
+    ...args, approvedContactKeyHash: a, nextDatum: nextBoth
+  }), /do not exactly match/);
+  const result = validateCardanoApprovalTransition({
+    ...args, approvedContactKeyHash: a, nextDatum: nextSingle
+  });
+  assert.equal(result.approvals, 1);
+  assert.throws(() => validateCardanoApprovalTransition({
+    ...args, approvedContactKeyHash: owner, nextDatum: nextSingle
+  }), /configured, not-yet-approved trusted contact/);
+  assert.throws(() => validateCardanoApprovalTransition({
+    ...args, approvedContactKeyHash: '88'.repeat(28), nextDatum: nextSingle
+  }), /configured, not-yet-approved trusted contact/);
+});
+
+test('Cardano approval does not credit an already-approved contact or unsigned selected contact', () => {
+  const datum = createCardanoRecoveryDatum({
+    ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b],
+    threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 100000,
+    approvals: [a], stateBeaconAsset: beacon
+  });
+  const next = createCardanoRecoveryDatum({
+    ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b],
+    threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 100000,
+    approvals: [a, b], stateBeaconAsset: beacon
+  });
+  const args = {
+    datum, signerKeyHashes: [a, b], validityLowerBoundMs: 160000,
+    inputValue: value, continuingOutputs: [{ address: 'script', value }], nextDatum: next
+  };
+  assert.throws(() => validateCardanoApprovalTransition({
+    ...args, approvedContactKeyHash: a
+  }), /configured, not-yet-approved trusted contact/);
+  assert.throws(() => validateCardanoApprovalTransition({
+    ...args, signerKeyHashes: [a], approvedContactKeyHash: b
+  }), /at least one new trusted-contact signature/);
+  assert.equal(validateCardanoApprovalTransition({
+    ...args, approvedContactKeyHash: b
+  }).approvals, 2);
+});
