@@ -6,15 +6,20 @@ function assertKeyHash(value, label) {
   return value.toLowerCase();
 }
 
-function normalizeValue(value, label = 'value') {
+function normalizeValue(value, label = 'value', allowNegative = false) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError(`${label} must be an asset-id to integer-quantity object.`);
   const entries = Object.entries(value);
   if (!entries.length) throw new TypeError(`${label} cannot be empty.`);
   const out = {};
   for (const [asset, quantity] of entries) {
     if (!ASSET_ID.test(asset)) throw new TypeError(`Invalid Cardano asset id: ${asset}`);
+    if (typeof quantity === 'number' && !Number.isSafeInteger(quantity)) throw new TypeError(`${label}.${asset} must be a safe integer when represented as a number.`);
     if (!/^-?\d+$/.test(String(quantity))) throw new TypeError(`${label}.${asset} must be an integer quantity.`);
-    out[asset.toLowerCase()] = String(quantity);
+    const canonicalAsset = asset.toLowerCase();
+    if (Object.hasOwn(out, canonicalAsset)) throw new TypeError(`${label} contains duplicate asset IDs after case normalization.`);
+    const normalizedQuantity = BigInt(String(quantity));
+    if (!allowNegative && normalizedQuantity < 0n) throw new TypeError(`${label}.${asset} must not be negative in a UTxO value.`);
+    out[canonicalAsset] = normalizedQuantity.toString();
   }
   return Object.freeze(out);
 }
@@ -138,7 +143,7 @@ export function validateCardanoExecuteTransition({ datum, validityLowerBoundMs, 
     const value = normalizeValue(output.value, `outputsToRescue[${index}].value`);
     for (const [asset, qty] of Object.entries(value)) aggregate[asset] = String(BigInt(aggregate[asset] ?? '0') + BigInt(qty));
   }
-  const normalizedMint = normalizeValue(mintedValue, 'mintedValue');
+  const normalizedMint = normalizeValue(mintedValue, 'mintedValue', true);
   const expectedMint = Object.freeze({ [datum.stateBeaconAsset]: '-1' });
   if (!valuesEqual(normalizedMint, expectedMint)) throw new Error('Execute recovery must burn exactly one state beacon and mint no other assets.');
   const rescueValue = { ...protectedValue };

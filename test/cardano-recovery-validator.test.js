@@ -181,3 +181,55 @@ test('Cardano approval does not credit an already-approved contact or unsigned s
     ...args, approvedContactKeyHash: b
   }).approvals, 2);
 });
+
+test('Cardano offline validators reject negative UTxO quantities before a recovery transition can pass', () => {
+  const datum = base();
+  const next = createCardanoRecoveryDatum({
+    ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b],
+    threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 110000, stateBeaconAsset: beacon
+  });
+  const args = {
+    datum, signerKeyHashes: [owner], validityLowerBoundMs: 110000,
+    inputValue: value, continuingOutputs: [{ address: 'script', value }], nextDatum: next
+  };
+  assert.throws(() => validateCardanoHeartbeatTransition({
+    ...args, inputValue: { ...value, lovelace: '-1' }
+  }), /must not be negative in a UTxO value/);
+  assert.throws(() => validateCardanoHeartbeatTransition({
+    ...args, continuingOutputs: [{ address: 'script', value: { ...value, [`${h(5)}.aa`]: '-5' } }]
+  }), /must not be negative in a UTxO value/);
+});
+
+test('Cardano offline validators reject duplicate canonical asset IDs and imprecise numeric quantities', () => {
+  const datum = base();
+  const next = createCardanoRecoveryDatum({
+    ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b],
+    threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 110000, stateBeaconAsset: beacon
+  });
+  const args = {
+    datum, signerKeyHashes: [owner], validityLowerBoundMs: 110000,
+    inputValue: value, continuingOutputs: [{ address: 'script', value }], nextDatum: next
+  };
+  const token = `${h(5)}.aa`;
+  assert.throws(() => validateCardanoHeartbeatTransition({
+    ...args, inputValue: { ...value, [token.toUpperCase()]: '999' }
+  }), /duplicate asset IDs/);
+  assert.throws(() => validateCardanoHeartbeatTransition({
+    ...args, inputValue: { ...value, lovelace: Number.MAX_SAFE_INTEGER + 1 }
+  }), /safe integer/);
+});
+
+test('Cardano state beacon burn remains valid as a signed mint quantity', () => {
+  const datum = createCardanoRecoveryDatum({
+    ownerKeyHash: owner, rescueAddress: rescue, contactKeyHashes: [a, b],
+    threshold: 2, inactivityMs: 60000, lastHeartbeatMs: 100000,
+    approvals: [a, b], stateBeaconAsset: beacon
+  });
+  const rescued = { ...value };
+  delete rescued[beacon];
+  assert.equal(validateCardanoExecuteTransition({
+    datum, validityLowerBoundMs: 160000,
+    inputValue: value, outputsToRescue: [{ address: rescue, value: rescued }],
+    mintedValue: { [beacon]: '-1' }
+  }).stateBeaconBurned, true);
+});
