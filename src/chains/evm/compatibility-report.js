@@ -1,5 +1,5 @@
 import { getNetwork } from '../network-registry.js';
-import { createEvmCompatibilityProbe } from './compatibility-plan.js';
+import { createEvmCompatibilityProbe, XDC_AUTHENTICATED_FINALITY_GATE } from './compatibility-plan.js';
 import { evmFinalityMatchesProof } from './finality-evidence.js';
 
 function hasBoundFinality(evidence, proof, networkId, kind) {
@@ -29,7 +29,11 @@ export function createEvmCompatibilityReport({ networkId, observations = {}, dep
     'policy-config-match': Boolean(deploymentVerification?.verified),
     'native-recovery': nativeProof?.success === true,
     'erc20-recovery': erc20Proof?.success === true,
-    'finality-evidence': bothRecoveriesFinalized
+    'finality-evidence': bothRecoveriesFinalized,
+    // Both RPC endpoints may agree on unauthenticated, caller-provided data.
+    // These source claims and their SHA-256 integrity digests do not establish
+    // independently authenticated XDC finality or a live recovery proof.
+    ...(network.chainId === 'xdc' ? { [XDC_AUTHENTICATED_FINALITY_GATE]: false } : {})
   };
   const missing = probe.requiredChecks.filter(check => checks[check] !== true);
   return Object.freeze({
