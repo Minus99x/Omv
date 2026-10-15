@@ -7,6 +7,7 @@ function mock({chain2='0x33',hash2=HASH,gasA='0x3b9aca00',gasB='0x3b9aca00',head
  const blockReadCounts=[0,0];
  const fetch=async(url,options)=>{
    assert.ok(APOTHEM_ENDPOINTS.includes(url));assert.equal(options.method,'POST');
+   assert.equal(options.redirect,'error');assert.equal(options.credentials,'omit');
    const req=JSON.parse(options.body);calls.push({url,req});
    const second=url===APOTHEM_ENDPOINTS[1];
    const index=second?1:0;
@@ -116,4 +117,15 @@ test('Apothem comparison refuses a response for the wrong block during final rec
  await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:t.fetch}),
   /shared block changed during provider comparison/);
  assert.equal(t.calls.length,10);
+});
+
+test('Apothem comparison refuses a substituted final response URL before accepting JSON',async()=>{
+  const driver=mock();
+  const redirecting=async(url,options)=>({
+    ...(await driver.fetch(url,options)),
+    url:'https://unapproved.example/rpc'
+  });
+  await assert.rejects(compareApothemRpcProviders({
+    nowSeconds:1700000120,fetchImpl:redirecting
+  }),/redirected outside pinned endpoint/);
 });

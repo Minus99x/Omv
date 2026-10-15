@@ -19,6 +19,8 @@ function provider(options = {}) {
   const response = async (url, request) => {
     assert.ok(APOTHEM_ENDPOINTS.includes(url), 'no request outside fixed Apothem endpoints');
     assert.equal(request.method, 'POST');
+    assert.equal(request.redirect, 'error');
+    assert.equal(request.credentials, 'omit');
     assert.ok(request.signal, 'RPC timeout required');
     const input = JSON.parse(request.body);
     assert.equal(input.jsonrpc,'2.0');
@@ -238,4 +240,15 @@ test('XDC end-to-end read-only binding rejects wrong recovery intent before cont
     transactionHash:TX,proof,kind:'erc20-recovery',fetchImpl:driver.fetchImpl,nowSeconds:NOW
   }),/transaction\/kind must match/);
   assert.equal(driver.calls.length,0);
+});
+
+test('Apothem finality observation rejects redirected response identity without trusting JSON',async()=>{
+  const driver=provider();
+  const redirecting=async(url,request)=>({
+    ...(await driver.fetchImpl(url,request)),
+    url:'https://unapproved.example/jsonrpc'
+  });
+  await assert.rejects(observeApothemFinalityProvenance({
+    transactionHash:TX,fetchImpl:redirecting,nowSeconds:NOW
+  }),/redirected outside pinned endpoint/);
 });

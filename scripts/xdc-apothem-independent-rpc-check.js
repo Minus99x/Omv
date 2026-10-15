@@ -30,11 +30,13 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,now
       response=await fetchImpl(endpoint,{
         method:'POST',headers:{accept:'application/json','content-type':'application/json'},
         body:JSON.stringify({jsonrpc:'2.0',id,method,params}),
-        signal:AbortSignal.timeout(15000)
+        // Never follow redirects outside the two fixed RPC endpoint origins.
+        redirect:'error',credentials:'omit',signal:AbortSignal.timeout(15000)
       });
     } catch (error) {
       throw new Error('Apothem RPC transport unavailable at '+endpoint+' for '+method+': '+String(error?.message??error));
     }
+    if(typeof response?.url==='string' && new URL(response.url).href!==new URL(endpoint).href)throw Error('Apothem RPC response redirected outside pinned endpoint');
     if(response?.ok!==true)throw new Error('Apothem provider HTTP status '+String(response?.status??'unknown'));
     let body;try{body=await response.json();}catch{throw Error('Apothem provider invalid JSON');}
     if(body?.jsonrpc!=='2.0'||body.id!==id||Object.hasOwn(body,'error')||!Object.hasOwn(body,'result'))throw Error('Apothem provider malformed response');

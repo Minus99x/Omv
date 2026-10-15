@@ -75,11 +75,16 @@ export async function observeApothemFinalityProvenance({
         method: 'POST',
         headers: { accept: 'application/json', 'content-type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+        // Reject redirects: an allowlisted source URL alone cannot pin the actual receiver.
+        redirect: 'error',
+        credentials: 'omit',
         signal: AbortSignal.timeout(15000)
       });
     } catch (error) {
       throw new Error('Apothem read-only transport unavailable: ' + String(error?.message ?? error));
     }
+    if (typeof response?.url === 'string' && new URL(response.url).href !== new URL(endpoint).href)
+      throw new Error('Apothem finality RPC response redirected outside pinned endpoint');
     if (response?.ok !== true) throw new Error('Apothem provider HTTP failure: ' + String(response?.status ?? 'unknown'));
     let body;
     try { body = await response.json(); } catch { throw new Error('Apothem provider returned invalid JSON'); }
