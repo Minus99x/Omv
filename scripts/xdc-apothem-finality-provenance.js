@@ -11,6 +11,7 @@ import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 import { APOTHEM_ENDPOINTS } from './xdc-apothem-independent-rpc-check.js';
 import { getNetwork } from '../src/chains/network-registry.js';
+import { createXdcProvenanceBoundFinality } from '../src/chains/evm/xdc-finality-provenance-binding.js';
 
 const HASH = /^0x[0-9a-f]{64}$/i;
 const QUANTITY = /^0x(?:0|[1-9a-f][0-9a-f]*)$/i;
@@ -173,6 +174,26 @@ export async function observeApothemFinalityProvenance({
     ...core,
     observationSha256: createHash('sha256').update(JSON.stringify(core)).digest('hex')
   });
+}
+
+/**
+ * Read-only, end-to-end package construction. The returned source observation
+ * remains explicitly untrusted RPC data; neither package grants promotion.
+ * Caller supplies only a public transaction reference and a public proof.
+ */
+export async function observeAndBindApothemFinality({
+  transactionHash, proof, kind, fetchImpl = globalThis.fetch,
+  nowSeconds = Math.floor(Date.now() / 1000)
+} = {}) {
+  if (typeof transactionHash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(transactionHash) ||
+      proof?.transactionRef?.toLowerCase() !== transactionHash.toLowerCase() ||
+      proof?.binding?.kind !== kind ||
+      !['native-recovery','erc20-recovery'].includes(kind)) {
+    throw new Error('XDC observation and recovery proof transaction/kind must match');
+  }
+  const observation = await observeApothemFinalityProvenance({transactionHash,fetchImpl,nowSeconds});
+  const evidencePackage = createXdcProvenanceBoundFinality({observation,proof,kind});
+  return Object.freeze({observation,evidencePackage});
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
