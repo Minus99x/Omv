@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { APOTHEM_ENDPOINTS } from '../scripts/xdc-apothem-independent-rpc-check.js';
-import { observeApothemFinalityProvenance } from '../scripts/xdc-apothem-finality-provenance.js';
+import { observeApothemFinalityProvenance, observeAndBindApothemFinality } from '../scripts/xdc-apothem-finality-provenance.js';
+import { xdcProvenancePackageMatchesProof } from '../src/chains/evm/xdc-finality-provenance-binding.js';
 import { createEvmBlockFinalityEvidence } from '../src/chains/evm/finality-evidence.js';
 
 const TX = '0x' + '11'.repeat(32);
@@ -199,4 +200,42 @@ test('rejects finalized block timestamp too old or in the future',async()=>{
 test('rejects inclusion reorg and finalized fixed-height substitution mid-audit',async()=>{
   await rejects({inclusionReorg:true},/receipt block changed/);
   await rejects({finalReorg:true},/finalized block changed/);
+});
+
+test('read-only dual-RPC probe constructs a digest-bound XDC finality package end-to-end',async()=>{
+  const driver=provider();
+  const binding={kind:'native-recovery',sha256:'a'.repeat(64),contextSha256:'b'.repeat(64),
+    deploymentVerificationSha256:'c'.repeat(64)};
+  const proof={success:true,networkRef:'xdc:apothem',chainId:'xdc',
+    transactionRef:TX,bindingSha256:binding.sha256,binding};
+  const {observation,evidencePackage}=await observeAndBindApothemFinality({
+    transactionHash:TX,proof,kind:'native-recovery',
+    fetchImpl:driver.fetchImpl,nowSeconds:NOW
+  });
+  assert.equal(observation.observationSha256,evidencePackage.observationSha256);
+  assert.equal(evidencePackage.finalityEvidence.transactionRef,TX);
+  assert.equal(evidencePackage.rpcAuthenticated,false);
+  assert.equal(evidencePackage.recoveryProven,false);
+  assert.equal(evidencePackage.readyForLiveProofPromotion,false);
+  assert.equal(xdcProvenancePackageMatchesProof(
+    evidencePackage,observation,proof,'native-recovery'),true);
+  assert.equal(driver.calls.length,16);
+  assert.ok(driver.calls.every(call=>[
+    'eth_chainId','eth_blockNumber','eth_getTransactionReceipt','eth_getBlockByNumber'
+  ].includes(call.input.method)));
+});
+
+test('XDC end-to-end read-only binding rejects wrong recovery intent before contacting RPC',async()=>{
+  const driver=provider();
+  const binding={kind:'native-recovery',sha256:'a'.repeat(64),contextSha256:'b'.repeat(64),
+    deploymentVerificationSha256:'c'.repeat(64)};
+  const proof={success:true,networkRef:'xdc:apothem',chainId:'xdc',
+    transactionRef:TX,bindingSha256:binding.sha256,binding};
+  await assert.rejects(observeAndBindApothemFinality({
+    transactionHash:OTHER,proof,kind:'native-recovery',fetchImpl:driver.fetchImpl,nowSeconds:NOW
+  }),/transaction\/kind must match/);
+  await assert.rejects(observeAndBindApothemFinality({
+    transactionHash:TX,proof,kind:'erc20-recovery',fetchImpl:driver.fetchImpl,nowSeconds:NOW
+  }),/transaction\/kind must match/);
+  assert.equal(driver.calls.length,0);
 });
