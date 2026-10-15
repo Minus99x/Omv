@@ -14,12 +14,17 @@ export function maskImmutableReferences(bytecode, immutableReferences = {}) {
   const chars = [...assertHex(bytecode, 'runtime bytecode')];
   for (const refs of Object.values(immutableReferences ?? {})) {
     for (const ref of refs ?? []) {
-      const start = Number(ref.start) * 2;
-      const length = Number(ref.length) * 2;
-      if (!Number.isInteger(start) || !Number.isInteger(length) || start < 0 || length < 0 || start + length > chars.length) {
+      // Solidity immutable references use byte offsets/lengths. Reject malformed
+      // values before converting to hex-character indices.
+      const startByte = ref?.start;
+      const lengthBytes = ref?.length;
+      if (!Number.isSafeInteger(startByte) || !Number.isSafeInteger(lengthBytes) ||
+          startByte < 0 || lengthBytes <= 0 || startByte + lengthBytes > chars.length / 2) {
         throw new TypeError('Immutable reference is outside runtime bytecode bounds.');
       }
-      for (let i = start; i < start + length; i++) chars[i] = '0';
+      const start = startByte * 2;
+      const end = (startByte + lengthBytes) * 2;
+      for (let i = start; i < end; i++) chars[i] = '0';
     }
   }
   return chars.join('');

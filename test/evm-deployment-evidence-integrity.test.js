@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getNetwork } from '../src/chains/network-registry.js';
-import { createDeploymentVerificationReport } from '../src/chains/evm/deployment-verification.js';
+import { createDeploymentVerificationReport, maskImmutableReferences, runtimeCodeMatches } from '../src/chains/evm/deployment-verification.js';
 
 const network = getNetwork('xdc:apothem');
 const A = n => '0x' + n.toString(16).padStart(40, '0');
@@ -84,4 +84,31 @@ test('threshold and timing metadata reject zero, fractional, unsafe and coerced 
 test('evidence does not promote a mismatched chain or destination', () => {
   assert.equal(verify(valid, { ...valid, chainIdHex: '0x32' }).verified, false);
   assert.equal(verify(valid, { ...valid, chainIdHex: network.chainIdHex, rescueDestination: A(9) }).verified, false);
+});
+
+test('immutable reference offsets must be whole bytes, bounded and nonempty', () => {
+  // Fractional offsets used to mask a single mismatching nibble.
+  assert.equal(runtimeCodeMatches('0x6000', '0x6f00'), false);
+  assert.throws(() => runtimeCodeMatches('0x6000', '0x6f00', {
+    slot: [{ start: 0.5, length: 0.5 }]
+  }), TypeError);
+  for (const slot of [
+    { start: 0, length: 0 },
+    { start: 0, length: 0.5 },
+    { start: 0.5, length: 1 },
+    { start: '1', length: 1 },
+    { start: 1, length: '1' },
+    { start: 2, length: 1 },
+    { start: -1, length: 1 },
+    { start: 0, length: Number.MAX_SAFE_INTEGER + 1 },
+    null
+  ]) {
+    assert.throws(() => maskImmutableReferences('0x6000', { slot: [slot] }), TypeError);
+  }
+  assert.equal(runtimeCodeMatches('0x6000', '0x60ff', {
+    slot: [{ start: 1, length: 1 }]
+  }), true);
+  assert.equal(runtimeCodeMatches('0x6000', '0x60ff', {
+    slot: [{ start: 0, length: 1 }]
+  }), false);
 });
