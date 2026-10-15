@@ -89,6 +89,13 @@ export function createStellarRecoveryExecutionEvidence({
     accountPreflightReady: preflight.ready === true,
     submissionIncluded: submission.includedInLedger === true,
     submissionSuccessful: submission.successful === true,
+    // A success flag alone must never override a contradictory Horizon
+    // transaction result code. An applied failure can consume preAuthTx.
+    submissionResultCodeMatchesOutcome: submission.successful === true
+      ? assessedSubmission.resultCode === 'txSUCCESS' ||
+        assessedSubmission.resultCode === 'txFEE_BUMP_INNER_SUCCESS'
+      : assessedSubmission.resultCode !== 'txSUCCESS' &&
+        assessedSubmission.resultCode !== 'txFEE_BUMP_INNER_SUCCESS',
     finalityChainMatches: finalityObservation.chainId === policy.chainId,
     finalityNetworkMatches: finalityObservation.networkRef === policy.networkRef,
     finalityModelMatches: finalityObservation.model === policy.model,

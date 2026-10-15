@@ -116,3 +116,41 @@ test('Stellar recovery execution evidence records applied failure as consumed an
   assert.equal(result.evidence.submission.preAuthSignerConsumed, true);
   assert.equal(result.evidence.submission.retrySameEnvelope, false);
 });
+
+test('Stellar execution evidence rejects falsely successful submissions with failed result codes', () => {
+  for (const resultCode of ['txFAILED', 'txBAD_SEQ', 'txINSUFFICIENT_BALANCE']) {
+    const input = fixture();
+    const result = createStellarRecoveryExecutionEvidence({
+      ...input,
+      submission: { includedInLedger: true, successful: true, resultCode }
+    });
+    assert.equal(result.ok, false, resultCode);
+    assert.equal(result.checks.submissionResultCodeMatchesOutcome, false, resultCode);
+    assert.equal(result.evidence.status, 'rejected');
+  }
+});
+
+test('Stellar execution evidence rejects failed outcome masked by a success result code', () => {
+  const input = fixture();
+  const result = createStellarRecoveryExecutionEvidence({
+    ...input,
+    submission: { includedInLedger: true, successful: false, resultCode: 'txSUCCESS' },
+    finalityObservation: { ...input.finalityObservation, status: 'failed' }
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.checks.submissionResultCodeMatchesOutcome, false);
+  assert.equal(result.evidence.submission.preAuthSignerConsumed, true);
+  assert.equal(result.evidence.submission.retrySameEnvelope, false);
+});
+
+test('Stellar execution evidence preserves valid canonical success and fee-bump success codes', () => {
+  const input = fixture();
+  for (const code of ['txSUCCESS', 'txFEE_BUMP_INNER_SUCCESS']) {
+    const result = createStellarRecoveryExecutionEvidence({
+      ...input,
+      submission: { includedInLedger: true, successful: true, resultCode: code }
+    });
+    assert.equal(result.ok, true, code);
+    assert.equal(result.checks.submissionResultCodeMatchesOutcome, true);
+  }
+});
