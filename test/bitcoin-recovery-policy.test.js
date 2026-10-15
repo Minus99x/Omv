@@ -67,3 +67,34 @@ test('Bitcoin PSBTv2 plan freezes inputs and outputs before OmegaVault signature
   assert.equal(unsafe.safeForOmegaVaultSignatureCollection, false);
   assert.equal(unsafe.modifiableFlags, 2);
 });
+
+test('Bitcoin recovery intent rejects duplicated or malformed input outpoints', () => {
+  const input = { txid, vout:0, sequence:144, amountSats:'100000' };
+  const args = { inputs:[input], outputs:[{ amountSats:'99000', scriptPubKey:'0014'+'11'.repeat(20) }], requiredContactKeys:[a,b], threshold:2, feeSats:'1000' };
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({ ...args, inputs:[input,{...input,txid:txid.toUpperCase()}], outputs:[{...args.outputs[0],amountSats:'199000'}] }),/Duplicate Bitcoin recovery input outpoint/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({ ...args, inputs:[{...input,vout:0x100000000}] }),/uint32/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({ ...args, inputs:[{...input,sequence:0x100000000}] }),/sequence must be uint32/);
+});
+
+test('Bitcoin recovery intent requires distinct threshold identities', () => {
+  const args = { inputs:[{txid,vout:0,amountSats:'100000'}], outputs:[{amountSats:'99000',scriptPubKey:'0014'+'11'.repeat(20)}], feeSats:'1000' };
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({...args,requiredContactKeys:[a,a.toUpperCase()],threshold:2}),/must be unique/);
+});
+
+test('Bitcoin recovery intent validates exact signed-fee conservation and canonical satoshi quantities', () => {
+  const args = { inputs:[{txid,vout:0,sequence:144,amountSats:'100000'}], outputs:[{amountSats:'99000',scriptPubKey:'0014'+'11'.repeat(20)}],requiredContactKeys:[a,b],threshold:2,feeSats:'1000' };
+  assert.equal(createBitcoinPsbtV2RecoveryPlan(args).feeBalanceVerified,true);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({...args,feeSats:'2000'}),/do not balance/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({...args,inputs:[{...args.inputs[0],amountSats:'-1'}]}),/non-negative integer/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({...args,inputs:[{...args.inputs[0],amountSats:Number.MAX_SAFE_INTEGER+1}]}),/safe integer/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({...args,outputs:[{...args.outputs[0],scriptPubKey:'001'}]}),/even-length hex/);
+});
+
+test('Bitcoin recovery intent never claims fee-balance verification without prevout amounts', () => {
+  const plan = createBitcoinPsbtV2RecoveryPlan({
+    inputs:[{txid,vout:0}],outputs:[{amountSats:'99000',scriptPubKey:'0014'+'11'.repeat(20)}],
+    requiredContactKeys:[a,b],threshold:2,feeSats:'1000'
+  });
+  assert.equal(plan.feeBalanceVerified,false);
+  assert.equal(plan.unsignedIntent.inputs[0].amountSats,null);
+});

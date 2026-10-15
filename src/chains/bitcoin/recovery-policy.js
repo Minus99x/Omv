@@ -4,6 +4,12 @@ const XONLY = /^[0-9a-fA-F]{64}$/;
 const COMPRESSED = /^(?:02|03)[0-9a-fA-F]{64}$/;
 const TXID = /^[0-9a-fA-F]{64}$/;
 
+function satoshis(value,label) {
+  if (typeof value === 'number' && !Number.isSafeInteger(value)) throw new TypeError(`${label} must be a safe integer when supplied as a number.`);
+  if (!/^\d+$/.test(String(value))) throw new TypeError(`${label} must be a non-negative integer.`);
+  return BigInt(String(value));
+}
+
 function assertKey(key, label) {
   if (typeof key !== 'string' || (!XONLY.test(key) && !COMPRESSED.test(key))) throw new TypeError(`${label} must be a 32-byte x-only or 33-byte compressed Bitcoin public key.`);
   return key.toLowerCase();
@@ -57,24 +63,40 @@ export function createBitcoinRolloverHeartbeatPlan({ currentTxid, currentVout, c
 export function createBitcoinPsbtV2RecoveryPlan({ inputs, outputs, requiredContactKeys, threshold, feeSats, rescueScriptPubKey = null }) {
   if (!Array.isArray(inputs) || inputs.length < 1) throw new TypeError('inputs are required.');
   if (!Array.isArray(outputs) || outputs.length < 1) throw new TypeError('outputs are required.');
+  if (!Array.isArray(requiredContactKeys) || requiredContactKeys.length < 1) throw new TypeError('requiredContactKeys must be a nonempty array.');
   const keys = requiredContactKeys.map((key, i) => assertKey(key, `requiredContactKeys[${i}]`));
+  if (new Set(keys).size !== keys.length) throw new TypeError('requiredContactKeys must be unique.');
   if (!Number.isInteger(threshold) || threshold < 1 || threshold > keys.length) throw new TypeError('threshold must be reachable.');
-  if (!/^\d+$/.test(String(feeSats)) || BigInt(feeSats) < 0n) throw new TypeError('feeSats must be a non-negative integer.');
+  const fee = satoshis(feeSats, 'feeSats');
   const normalizedInputs = inputs.map((input, i) => {
-    if (!TXID.test(input.txid) || !Number.isInteger(input.vout) || input.vout < 0) throw new TypeError(`inputs[${i}] must contain txid/vout.`);
-    return Object.freeze({ txid: input.txid.toLowerCase(), vout: input.vout, sequence: input.sequence ?? null, amountSats: input.amountSats == null ? null : String(input.amountSats) });
+    if (!TXID.test(input.txid) || !Number.isInteger(input.vout) || input.vout < 0 || input.vout > 0xffffffff) throw new TypeError(`inputs[${i}] must contain txid/vout within uint32.`);
+    if (input.sequence != null && (!Number.isInteger(input.sequence) || input.sequence < 0 || input.sequence > 0xffffffff)) throw new TypeError(`inputs[${i}].sequence must be uint32.`);
+    const amount = input.amountSats == null ? null : satoshis(input.amountSats, `inputs[${i}].amountSats`).toString();
+    return Object.freeze({ txid: input.txid.toLowerCase(), vout: input.vout, sequence: input.sequence ?? null, amountSats: amount });
   });
+  const refs = normalizedInputs.map(input => `${input.txid}:${input.vout}`);
+  if (new Set(refs).size !== refs.length) throw new TypeError('Duplicate Bitcoin recovery input outpoint.');
   const normalizedOutputs = outputs.map((output, i) => {
-    if (!/^\d+$/.test(String(output.amountSats)) || BigInt(output.amountSats) < 0n) throw new TypeError(`outputs[${i}].amountSats must be non-negative integer.`);
-    if (typeof output.scriptPubKey !== 'string' || !/^[0-9a-f]*$/i.test(output.scriptPubKey)) throw new TypeError(`outputs[${i}].scriptPubKey must be hex.`);
-    return Object.freeze({ amountSats: String(output.amountSats), scriptPubKey: output.scriptPubKey.toLowerCase() });
+    const amount = satoshis(output.amountSats, `outputs[${i}].amountSats`);
+    if (typeof output.scriptPubKey !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(output.scriptPubKey)) throw new TypeError(`outputs[${i}].scriptPubKey must be nonempty even-length hex.`);
+    return Object.freeze({ amountSats: amount.toString(), scriptPubKey: output.scriptPubKey.toLowerCase() });
   });
-  const unsignedIntent = Object.freeze({ version: 2, inputs: Object.freeze(normalizedInputs), outputs: Object.freeze(normalizedOutputs), feeSats: String(feeSats), sighashPolicy: 'SIGHASH_ALL', inputsModifiable: false, outputsModifiable: false });
+  const feeBalanceVerified = normalizedInputs.every(input => input.amountSats !== null);
+  if (feeBalanceVerified) {
+    const totalIn = normalizedInputs.reduce((sum, input) => sum + BigInt(input.amountSats), 0n);
+    const totalOut = normalizedOutputs.reduce((sum, output) => sum + BigInt(output.amountSats), 0n);
+    if (totalIn - totalOut !== fee) throw new Error('Bitcoin recovery PSBT intent inputs, outputs and miner fee do not balance.');
+  }
+  if (rescueScriptPubKey != null && (typeof rescueScriptPubKey !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(rescueScriptPubKey))) {
+    throw new TypeError('rescueScriptPubKey must be nonempty even-length hex.');
+  }
+  const unsignedIntent = Object.freeze({ version: 2, inputs: Object.freeze(normalizedInputs), outputs: Object.freeze(normalizedOutputs), feeSats: fee.toString(), sighashPolicy: 'SIGHASH_ALL', inputsModifiable: false, outputsModifiable: false });
   const rescueOutputPresent = rescueScriptPubKey == null ? null : normalizedOutputs.some(o => o.scriptPubKey === rescueScriptPubKey.toLowerCase());
   return Object.freeze({
     format: 'PSBTv2', unsignedIntent, intentDigest: digest(unsignedIntent), requiredContactKeys: Object.freeze(keys), threshold,
     signerChecks: Object.freeze(['prevout matches expected UTXO', 'witness/redeem/miniscript matches policy', 'sighash policy accepted', 'all output amounts and scripts displayed/verified', 'fee and feerate policy accepted']),
     rescueOutputPresent,
+    feeBalanceVerified,
     warning: 'PSBT output verification protects a signer from signing the wrong destination, but the underlying delayed multisig script does not cryptographically force contacts to use this rescue output in every alternative spend.'
   });
 }
