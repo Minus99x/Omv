@@ -266,3 +266,28 @@ test('genuine Scalus ledger validates an OmegaVault-built minting initialize can
   assert.equal(emulator.submitTx(artifact.signed).isSuccess, false, 'initialize input must not be replayable');
   assert.equal(artifact.candidate.liveActions.transactionSubmissionAuthorized, false);
 });
+
+
+test('Scalus rejects OmegaVault initialize without owner signing or after its validity deadline', () => {
+  const artifact = locallySignedOmegaVaultInitialize();
+  const unsignedBytes = Buffer.from(artifact.candidate.transaction.cborHex, 'hex');
+  const witnessDenied = omegaVaultInitializeLedger(artifact).submitTx(unsignedBytes);
+  assert.equal(witnessDenied.isSuccess, false, 'owner signature is required for beacon mint');
+  const expired = omegaVaultInitializeLedger(artifact, artifact.candidate.validity.upperSlot + 1)
+    .submitTx(artifact.signed);
+  assert.equal(expired.isSuccess, false, 'the OmegaVault initialize validity deadline must be enforced');
+});
+
+test('Scalus rejects OmegaVault initialize signed by an unauthorized test key', () => {
+  const artifact = locallySignedOmegaVaultInitialize();
+  const unsigned = CSL.Transaction.from_hex(artifact.candidate.transaction.cborHex);
+  const witnessSet = CSL.TransactionWitnessSet.from_bytes(unsigned.witness_set().to_bytes());
+  const wrongKey = CSL.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => 10));
+  const vkeys = CSL.Vkeywitnesses.new();
+  const bodyHash = CSL.TransactionHash.from_bytes(blake2b(unsigned.body().to_bytes(), { dkLen: 32 }));
+  vkeys.add(CSL.make_vkey_witness(bodyHash, wrongKey));
+  witnessSet.set_vkeys(vkeys);
+  const forged = CSL.Transaction.new(unsigned.body(), witnessSet, undefined).to_bytes();
+  const rejected = omegaVaultInitializeLedger(artifact).submitTx(forged);
+  assert.equal(rejected.isSuccess, false, 'only the bound owner payment key can authorize initialize');
+});
