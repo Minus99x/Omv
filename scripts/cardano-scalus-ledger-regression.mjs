@@ -4,6 +4,16 @@ import { createHash } from 'node:crypto';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { runCardanoScalusInitializeTrial } from '../src/chains/cardano/scalus-local-validation.js';
 
+import { readFileSync } from 'node:fs';
+import { normalizeCardanoProtocolParameterSnapshot } from '../src/chains/cardano/protocol-parameters.js';
+import { createCardanoPreprodAppliedValidatorIdentity } from '../src/chains/cardano/live-validator-identity.js';
+import {
+  createCardanoPreprodRealUtxoBindingEvidence,
+  createCardanoPreprodRealUtxoBindingPlan
+} from '../src/chains/cardano/preprod-real-utxo-binding.js';
+import { buildCardanoPreprodRealInitializeCandidate } from '../src/chains/cardano/preprod-real-initialize.js';
+
+
 import assert from 'node:assert/strict';
 import * as CSL from '@emurgo/cardano-serialization-lib-nodejs';
 import { blake2b } from '@noble/hashes/blake2.js';
@@ -159,4 +169,99 @@ test('real Scalus adapter fails closed before emulation for signed CBOR evidence
     }),
     /signed transaction bytes differ/
   );
+});
+
+
+/**
+ * Reconstructs OmegaVault's actual Plutus V3 beacon-mint initialize CBOR from
+ * checked-in public fixtures. Signs with a deterministic CI-only key and seeds
+ * a fresh simulated ledger. This does not use the Captain's wallet, live UTxOs,
+ * current protocol parameters, or a public Preprod node.
+ */
+function locallySignedOmegaVaultInitialize() {
+  const load = (name) => JSON.parse(readFileSync(new URL(name, import.meta.url), 'utf8'));
+  const fixture = load('../docs/evidence/CARDANO_APPLIED_FIXTURE_0.6.12.json');
+  const beacon = load('../validators/cardano/fixtures/state-beacon.applied.json');
+  const vault = load('../validators/cardano/fixtures/recovery-vault.applied.json');
+  const snapshot = load('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json');
+  snapshot.source.independentSourceCount = 2;
+  snapshot.promotion.independentlyConfirmed = true;
+  const parameters = normalizeCardanoProtocolParameterSnapshot(snapshot);
+  const appliedValidatorIdentity = createCardanoPreprodAppliedValidatorIdentity({
+    seedReference: {
+      transaction: { id: fixture.parameters.seedTxId },
+      index: fixture.parameters.seedOutputIndex
+    },
+    assetNameHex: fixture.parameters.assetNameHex,
+    sourceBlueprintSha256: createHash('sha256')
+      .update(readFileSync(new URL('../validators/cardano/plutus.json', import.meta.url)))
+      .digest('hex'),
+    beaconCompiledCode: beacon.validators.find(v => v.title === 'omegavault.state_beacon.mint').compiledCode,
+    recoveryCompiledCode: vault.validators.find(v => v.title === 'omegavault.recovery_vault.spend').compiledCode,
+    aikenPolicyId: fixture.stateBeacon.policyId,
+    aikenRecoveryHash: fixture.recoveryVault.scriptHash,
+    aikenRecoveryAddress: fixture.recoveryVault.preprodAddress
+  });
+  const seedRef = appliedValidatorIdentity.seedReference;
+  const collateralRef = { transaction: { id: '12'.repeat(32) }, index: 0 };
+  const plan = createCardanoPreprodRealUtxoBindingPlan({
+    action: 'initialize',
+    roles: { seed: seedRef, collateral: collateralRef },
+    appliedValidatorIdentity
+  });
+  const tip = { hash: 'aa'.repeat(32), slot: SLOT };
+  const utxoBindingEvidence = createCardanoPreprodRealUtxoBindingEvidence({
+    plan,
+    tipBefore: tip,
+    tipAfter: tip,
+    queriedUtxo: [
+      { ...seedRef, address, value: { ada: { lovelace: '20000000' } } },
+      { ...collateralRef, address, value: { ada: { lovelace: '5000000' } } }
+    ]
+  });
+  const candidate = buildCardanoPreprodRealInitializeCandidate({
+    appliedValidatorIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig: {
+      rescueKeyHash: '66'.repeat(28),
+      contactKeyHashes: ['22'.repeat(28), '33'.repeat(28)],
+      threshold: 2,
+      inactivityMs: 60000,
+      stateLovelace: '10000000'
+    },
+    evaluationMode: false,
+    mintBudget: { memory: '101167', steps: '30755345' }
+  });
+  assert.equal(candidate.liveActions.transactionSubmissionAuthorized, false);
+  const unsigned = CSL.Transaction.from_hex(candidate.transaction.cborHex);
+  const witnesses = CSL.TransactionWitnessSet.from_bytes(unsigned.witness_set().to_bytes());
+  const vkeys = CSL.Vkeywitnesses.new();
+  const bodyHash = CSL.TransactionHash.from_bytes(blake2b(unsigned.body().to_bytes(), { dkLen: 32 }));
+  vkeys.add(CSL.make_vkey_witness(bodyHash, privateKey));
+  witnesses.set_vkeys(vkeys);
+  const signed = CSL.Transaction.new(unsigned.body(), witnesses, undefined).to_bytes();
+  return { candidate, signed, appliedValidatorIdentity, seedRef, collateralRef };
+}
+
+function omegaVaultInitializeLedger(a, slot = SLOT) {
+  return Emulator.create(CardanoInfo.preprod(), {
+    slot,
+    utxos: [
+      new Utxo(a.seedRef.transaction.id, a.seedRef.index, address, Value.ada(20_000_000n)),
+      new Utxo(a.collateralRef.transaction.id, a.collateralRef.index, address, Value.ada(5_000_000n))
+    ]
+  });
+}
+
+test('genuine Scalus ledger validates an OmegaVault-built minting initialize candidate (fixture only)', () => {
+  const artifact = locallySignedOmegaVaultInitialize();
+  const emulator = omegaVaultInitializeLedger(artifact);
+  const result = emulator.submitTx(artifact.signed);
+  assert.equal(result.isSuccess, true,
+    `OmegaVault initialize rejected by ${result.errorRule ?? 'unknown'}: ${result.error ?? 'unknown'} ${(result.logs ?? []).join('; ')}`);
+  assert.match(result.txHash, /^[0-9a-f]{64}$/i);
+  assert.equal(emulator.getUtxos({ address: artifact.appliedValidatorIdentity.recoveryVault.address }).length, 1);
+  assert.equal(emulator.submitTx(artifact.signed).isSuccess, false, 'initialize input must not be replayable');
+  assert.equal(artifact.candidate.liveActions.transactionSubmissionAuthorized, false);
 });
