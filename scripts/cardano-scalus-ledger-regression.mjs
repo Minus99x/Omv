@@ -248,8 +248,9 @@ function omegaVaultInitializeLedger(a, slot = SLOT) {
   return Emulator.create(CardanoInfo.preprod(), {
     slot,
     utxos: [
-      new Utxo(a.seedRef.transaction.id, a.seedRef.index, address, Value.ada(20_000_000n)),
-      new Utxo(a.collateralRef.transaction.id, a.collateralRef.index, address, Value.ada(5_000_000n))
+      // Scalus Value.ada(x) multiplies ADA by 1e6. UTxOs contain lovelace.
+      new Utxo(a.seedRef.transaction.id, a.seedRef.index, address, new Value(20_000_000n)),
+      new Utxo(a.collateralRef.transaction.id, a.collateralRef.index, address, new Value(5_000_000n))
     ]
   });
 }
