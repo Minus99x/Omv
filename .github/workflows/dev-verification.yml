@@ -31,6 +31,17 @@ jobs:
       - name: Install pinned dependencies
         run: npm ci
 
+      # Opt-in development verification only: real Scalus 1.3.0 code executes here.
+      # Never signs, submits, uses real credentials, or asserts public Preprod proof.
+      # Keep it outside the production dependency lockfile.
+      - name: Install pinned real Scalus emulator for offline ledger tests
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund scalus@1.3.0
+          npm ls scalus --depth=0
+
+      - name: Run actual Scalus offline Cardano ledger regression
+        run: npm run test:cardano:scalus
+
       - name: Focused review audit suite
         run: npm run test:review-audit
 
