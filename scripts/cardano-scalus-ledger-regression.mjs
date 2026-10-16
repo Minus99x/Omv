@@ -1,5 +1,9 @@
 /** Optional REAL Scalus validation, not a stub. Run only after installing scalus@1.3.0. */
 import test from 'node:test';
+import { createHash } from 'node:crypto';
+import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
+import { runCardanoScalusInitializeTrial } from '../src/chains/cardano/scalus-local-validation.js';
+
 import assert from 'node:assert/strict';
 import * as CSL from '@emurgo/cardano-serialization-lib-nodejs';
 import { blake2b } from '@noble/hashes/blake2.js';
@@ -63,4 +67,96 @@ test('Scalus Preprod emulator enforces the minimum transaction fee', () => {
   const emulator = localEmulator();
   const denied = emulator.submitTx(signedPayment({ fee: 1n }));
   assert.equal(denied.isSuccess, false);
+});
+
+
+/**
+ * Synthetic test-only evidence: verifies the full adapter -> genuine emulator
+ * boundary with CSL-signed bytes. This is NOT a captured OmegaVault initialize,
+ * independently verified wallet evidence, or a current Preprod UTxO snapshot.
+ */
+function syntheticAdapterEvidence(bytes) {
+  const tip = { hash: 'cd'.repeat(32), slot: SLOT };
+  const mk = (id, lovelace) => ({
+    reference: { transaction: { id }, index: 0 },
+    address,
+    value: { ada: { lovelace: String(lovelace) } },
+    datum: null, datumHash: null, script: null
+  });
+  const ledgerInputSnapshot = {
+    source: 'read-only-ogmios-queryLedgerState/utxo',
+    tip,
+    utxos: {
+      seed: mk(TEST_TXID, COIN),
+      collateral: mk('fe'.repeat(32), 6_000_000n)
+    }
+  };
+  const evidence = {
+    schema: 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v2',
+    network: 'preprod',
+    action: 'initialize',
+    checks: {
+      preSubmitFreshnessGateComplete: true,
+      walletWitnessEvidenceVerified: true,
+      completePhaseOneValidated: false
+    },
+    liveActions: {
+      transactionSubmissionAuthorized: false,
+      transactionSubmissionPerformed: false
+    },
+    signedTransaction: {
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+      bytes: bytes.length
+    },
+    validity: { lowerSlot: SLOT - 10, upperSlot: SLOT + 100 },
+    currentTip: tip,
+    ledgerInputSnapshot,
+    ledgerInputSnapshotSha256: hashCardanoEvidence(ledgerInputSnapshot)
+  };
+  evidence.preSubmitSha256 = hashCardanoEvidence(evidence);
+  return evidence;
+}
+
+test('real Scalus adapter accepts test-only signed CBOR with digest-bound inputs, without public authority', async () => {
+  const bytes = signedPayment();
+  const output = await runCardanoScalusInitializeTrial({
+    signedTransactionCborHex: Buffer.from(bytes).toString('hex'),
+    preSubmitEvidence: syntheticAdapterEvidence(bytes),
+    simulatedSlot: SLOT
+  });
+  assert.equal(output.acceptedByEmulator, true, output.rejection ?? 'unexpected rejection');
+  assert.match(output.localTransactionHash, /^[0-9a-f]{64}$/);
+  assert.equal(output.source, 'scalus-emulator');
+  assert.equal(output.authority.completeCurrentPreprodPhaseOneValidated, false);
+  assert.equal(output.authority.publicPreprodTransactionSubmitted, false);
+  assert.equal(output.authority.supportClaimAuthorized, false);
+});
+
+test('real Scalus adapter rejects test-only expired and unsigned CBOR without inventing public proof', async () => {
+  for (const [bytes, simulatedSlot] of [
+    [signedPayment(), SLOT + 101],
+    [signedPayment({ signed: false }), SLOT]
+  ]) {
+    const outcome = await runCardanoScalusInitializeTrial({
+      signedTransactionCborHex: Buffer.from(bytes).toString('hex'),
+      preSubmitEvidence: syntheticAdapterEvidence(bytes),
+      simulatedSlot
+    });
+    assert.equal(outcome.acceptedByEmulator, false);
+    assert.equal(outcome.localTransactionHash, null);
+    assert.equal(outcome.authority.publicNetworkRecoveryProven, false);
+  }
+});
+
+test('real Scalus adapter fails closed before emulation for signed CBOR evidence drift', async () => {
+  const bytes = signedPayment();
+  const altered = Buffer.from(bytes);
+  altered[altered.length - 1] ^= 1;
+  await assert.rejects(
+    runCardanoScalusInitializeTrial({
+      signedTransactionCborHex: altered.toString('hex'),
+      preSubmitEvidence: syntheticAdapterEvidence(bytes)
+    }),
+    /signed transaction bytes differ/
+  );
 });
