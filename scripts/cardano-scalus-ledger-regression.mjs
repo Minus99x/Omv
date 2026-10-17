@@ -32,6 +32,10 @@ const approvalContacts = [contactAKey.to_public().hash().to_hex(), contactBKey.t
 const contactAddress = CSL.EnterpriseAddress.new(0, CSL.Credential.from_keyhash(contactAKey.to_public().hash())).to_address().to_bech32();
 const CONTACT_FUNDING_TXID = '45'.repeat(32);
 const CONTACT_COLLATERAL_TXID = '46'.repeat(32);
+const CONTACT_B_FUNDING_TXID = '47'.repeat(32);
+const CONTACT_B_COLLATERAL_TXID = '48'.repeat(32);
+const contactBAddress = CSL.EnterpriseAddress.new(0,
+  CSL.Credential.from_keyhash(contactBKey.to_public().hash())).to_address().to_bech32();
 const ownerAddress = CSL.EnterpriseAddress.new(0, CSL.Credential.from_keyhash(privateKey.to_public().hash())).to_address();
 const address = ownerAddress.to_bech32();
 
@@ -467,7 +471,9 @@ test('real Scalus heartbeat rejects missing, unauthorized, and expired owner wit
 function localHeartbeatThenApproval() {
   const extraUtxos = [
     new Utxo(CONTACT_FUNDING_TXID, 0, contactAddress, new Value(8_000_000n)),
-    new Utxo(CONTACT_COLLATERAL_TXID, 0, contactAddress, new Value(5_000_000n))
+    new Utxo(CONTACT_COLLATERAL_TXID, 0, contactAddress, new Value(5_000_000n)),
+    new Utxo(CONTACT_B_FUNDING_TXID, 0, contactBAddress, new Value(8_000_000n)),
+    new Utxo(CONTACT_B_COLLATERAL_TXID, 0, contactBAddress, new Value(5_000_000n))
   ];
   const phase = initializeThenBuildHeartbeat({ contacts: approvalContacts, extraUtxos });
   const acceptedHeartbeat = phase.emulator.submitTx(phase.signed);
@@ -564,7 +570,7 @@ function localHeartbeatThenApproval() {
   witnesses.set_vkeys(vkeys);
   const signed = CSL.Transaction.new(unsigned.body(), witnesses, undefined).to_bytes();
   return { ...phase, ref, selected, candidate, signed, datumHex,
-    heartbeat: acceptedHeartbeat };
+    heartbeat: acceptedHeartbeat, approvalPlan, params, recoveryConfig: args.recoveryConfig };
 }
 
 test('real Scalus executes initialize, heartbeat, then contact approval (fixture only)', () => {
@@ -615,4 +621,117 @@ test('real Scalus rejects unsigned, owner-forged, other-contact and expired appr
     assert.equal(emulator.getUtxos({ outRefs: [ref] }).length, 1,
       'rejected approval must leave previous protected state unspent');
   }
+});
+
+
+// Sequential second contact: consumes the *actual* accepted first-approval
+// UTxO; never a disconnected fabricated state. Hashes/observations remain
+// explicitly synthetic test-only metadata, not public ledger attestations.
+function localTwoContactApprovedLedger() {
+  const phase = localHeartbeatThenApproval();
+  const first = phase.emulator.submitTx(phase.signed);
+  assert.equal(first.isSuccess, true, 'first approval: '+first.errorRule+' '+first.error);
+  const ref = { txHash: first.txHash, outputIndex: 0 };
+  const predecessor = phase.emulator.getUtxos({ outRefs: [ref] });
+  assert.equal(predecessor.length, 1);
+  const datumHex = Buffer.from(predecessor[0].inlineDatum).toString('hex');
+  const ownerHash = privateKey.to_public().hash().to_hex();
+  assert.equal(datumHex, createCardanoVaultDatumData({
+    ownerKeyHash: ownerHash, rescueKeyHash: '66'.repeat(28),
+    contactKeyHashes: approvalContacts, threshold: 2, inactivityMs: 60000,
+    lastHeartbeatMs: phase.candidate.stateTransition.lastHeartbeatMs,
+    approvalKeyHashes: [approvalContacts[0]]
+  }).to_hex(), 'second approval must consume first approval datum from ledger');
+  const { planSha256: _sha, ...oldCore } = phase.approvalPlan;
+  const core = {
+    ...oldCore,
+    predecessorStateEvidenceSha256: 'cb'.repeat(32), // synthetic local-only reference
+    predecessorTransactionBodyHash: first.txHash,
+    predecessorObservedTip: { hash: 'cc'.repeat(32), slot: SLOT + 240 },
+    stateInput: { transaction: { id: first.txHash }, index: 0 },
+    selectedContactKeyHash: approvalContacts[1],
+    contactFundingInput: { transaction: { id: CONTACT_B_FUNDING_TXID }, index: 0 },
+    contactFundingAddress: contactBAddress,
+    contactCollateralInput: { transaction: { id: CONTACT_B_COLLATERAL_TXID }, index: 0 },
+    contactCollateralAddress: contactBAddress,
+    protectedState: {
+      ...oldCore.protectedState,
+      predecessorInlineDatumCborHex: datumHex,
+      predecessorApprovalKeyHashes: [approvalContacts[0]],
+      nextApprovalKeyHashes: [...approvalContacts]
+    }
+  };
+  const approvalPlan = { ...core, planSha256: hashCardanoEvidence(core) };
+  const stableTip = { hash: 'cd'.repeat(32), slot: SLOT + 300 };
+  phase.emulator.setSlot(stableTip.slot);
+  const args = {
+    approvalPlan,
+    appliedValidatorIdentity: phase.setup.appliedValidatorIdentity,
+    parameters: phase.params, recoveryConfig: phase.recoveryConfig,
+    stableTip
+  };
+  const evaluationCandidate = buildCardanoPreprodRealApprovalCandidate({ ...args, evaluationMode: true });
+  assert.equal(evaluationCandidate.liveActions.transactionSubmissionAuthorized, false);
+  const evaluation = phase.emulator.evaluateTx(Buffer.from(evaluationCandidate.transaction.cborHex,'hex'));
+  assert.equal(evaluation.length, 1);
+  assert.equal(evaluation[0].tag, 'Spend');
+  const budget = {
+    memory: (BigInt(evaluation[0].budget.memory)*115n/100n+1n).toString(),
+    steps: (BigInt(evaluation[0].budget.steps)*115n/100n+1n).toString()
+  };
+  const candidate = buildCardanoPreprodRealApprovalCandidate({ ...args, evaluationMode:false,spendBudget:budget });
+  assert.deepEqual(candidate.stateTransition.predecessorApprovals, [approvalContacts[0]]);
+  assert.deepEqual(candidate.stateTransition.nextApprovals, approvalContacts);
+  const unsigned = CSL.Transaction.from_hex(candidate.transaction.cborHex);
+  const witnesses = CSL.TransactionWitnessSet.from_bytes(unsigned.witness_set().to_bytes());
+  const vkeys = CSL.Vkeywitnesses.new();
+  const bodyHash = CSL.TransactionHash.from_bytes(blake2b(unsigned.body().to_bytes(), { dkLen:32 }));
+  vkeys.add(CSL.make_vkey_witness(bodyHash, contactBKey));
+  witnesses.set_vkeys(vkeys);
+  const signed = CSL.Transaction.new(unsigned.body(),witnesses,undefined).to_bytes();
+  return { ...phase, first, firstRef:ref, secondCandidate:candidate,
+    secondSigned:signed, secondPlan:approvalPlan };
+}
+
+test('real Scalus accepts the independently signed second contact approval to reach immutable threshold 2',()=>{
+  const phase = localTwoContactApprovedLedger();
+  const second = phase.emulator.submitTx(phase.secondSigned);
+  assert.equal(second.isSuccess,true,'second approval: '+second.errorRule+' '+second.error);
+  assert.equal(phase.emulator.getUtxos({outRefs:[phase.firstRef]}).length,0);
+  const state = phase.emulator.getUtxos({outRefs:[{txHash:second.txHash,outputIndex:0}]});
+  assert.equal(state.length,1);
+  assert.equal(state[0].address,phase.setup.appliedValidatorIdentity.recoveryVault.address);
+  assert.equal(state[0].value.coin,10_000_000n);
+  assert.equal(state[0].value.assets.length,1);
+  assert.equal(Buffer.from(state[0].inlineDatum).toString('hex'),createCardanoVaultDatumData({
+    ownerKeyHash: privateKey.to_public().hash().to_hex(),
+    rescueKeyHash:'66'.repeat(28),contactKeyHashes:approvalContacts,
+    threshold:2,inactivityMs:60000,
+    lastHeartbeatMs:phase.secondCandidate.stateTransition.lastHeartbeatMs,
+    approvalKeyHashes:approvalContacts
+  }).to_hex());
+  assert.equal(phase.emulator.submitTx(phase.secondSigned).isSuccess,false,'no replay');
+  assert.equal(phase.secondCandidate.liveActions.transactionSubmissionAuthorized,false);
+  assert.equal(phase.secondCandidate.checks.fullPhaseOneValidated,false);
+});
+
+test('real Scalus rejects missing or wrong second contact witness without consuming one-contact state',()=>{
+ for(const mode of ['missing','first-contact','owner','expired']){
+  const phase=localTwoContactApprovedLedger();
+  let signed=phase.secondSigned;
+  if(mode==='missing') signed=Buffer.from(phase.secondCandidate.transaction.cborHex,'hex');
+  else if(mode==='expired') phase.emulator.setSlot(phase.secondCandidate.validity.upperSlot+1);
+  else {
+   const tx=CSL.Transaction.from_bytes(signed);
+   const witness=CSL.TransactionWitnessSet.from_bytes(tx.witness_set().to_bytes());
+   const sigs=CSL.Vkeywitnesses.new();
+   const bodyHash=CSL.TransactionHash.from_bytes(blake2b(tx.body().to_bytes(),{dkLen:32}));
+   sigs.add(CSL.make_vkey_witness(bodyHash,mode==='owner'?privateKey:contactAKey));
+   witness.set_vkeys(sigs);
+   signed=CSL.Transaction.new(tx.body(),witness,undefined).to_bytes();
+  }
+  const denied=phase.emulator.submitTx(signed);
+  assert.equal(denied.isSuccess,false,'reject '+mode);
+  assert.equal(phase.emulator.getUtxos({outRefs:[phase.firstRef]}).length,1);
+ }
 });
