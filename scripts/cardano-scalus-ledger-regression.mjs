@@ -865,7 +865,7 @@ test('real Scalus denies adversarial rescue redirection while preserving thresho
  const body=CSL.TransactionBody.new_tx_body(originalBody.inputs(),outputs,originalBody.fee());
  body.set_network_id(originalBody.network_id());
  body.set_validity_start_interval_bignum(originalBody.validity_start_interval_bignum());
- body.set_ttl(originalBody.ttl());
+ body.set_ttl(CSL.BigNum.from_str(String(originalBody.ttl())));
  body.set_script_data_hash(originalBody.script_data_hash());
  body.set_mint(originalBody.mint());
  body.set_collateral(originalBody.collateral());
