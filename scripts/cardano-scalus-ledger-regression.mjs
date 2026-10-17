@@ -13,6 +13,7 @@ import {
 } from '../src/chains/cardano/preprod-real-utxo-binding.js';
 import { buildCardanoPreprodRealInitializeCandidate } from '../src/chains/cardano/preprod-real-initialize.js';
 import { buildCardanoPreprodRealHeartbeatCandidate } from '../src/chains/cardano/preprod-real-heartbeat.js';
+import { createCardanoVaultDatumData } from '../src/chains/cardano/transaction-body.js';
 
 
 import assert from 'node:assert/strict';
@@ -410,7 +411,44 @@ test('real Scalus executes initialize then heartbeat with OmegaVault-built trans
   assert.equal(newState[0].value.coin, 10_000_000n, 'protected value must not pay fees');
   assert.equal(newState[0].value.assets.length, 1, 'exactly one state beacon must survive');
   assert.notEqual(Buffer.from(newState[0].inlineDatum).toString('hex'), predecessorDatum, 'heartbeat timestamp must advance');
+  const ownerHash = privateKey.to_public().hash().to_hex();
+  const expectedDatum = createCardanoVaultDatumData({
+    ownerKeyHash: ownerHash, rescueKeyHash: '66'.repeat(28),
+    contactKeyHashes: ['22'.repeat(28), '33'.repeat(28)],
+    threshold: 2, inactivityMs: 60000,
+    lastHeartbeatMs: candidate.validity.nextHeartbeatMs, approvalKeyHashes: []
+  });
+  assert.equal(Buffer.from(newState[0].inlineDatum).toString('hex'),
+    expectedDatum.to_hex(), 'continuing state must preserve rescue/contacts/threshold and clear approvals');
   assert.equal(emulator.submitTx(signed).isSuccess, false, 'spent state cannot be replayed');
   assert.equal(candidate.liveActions.transactionSubmissionAuthorized, false);
   assert.equal(candidate.checks.fullPhaseOneValidated, false);
+});
+
+
+test('real Scalus heartbeat rejects missing, unauthorized, and expired owner witnesses (fixture only)', () => {
+  for (const variant of ['unsigned', 'wrong-key', 'expired']) {
+    const { emulator, signed, candidate, initResult } = initializeThenBuildHeartbeat();
+    let attempted;
+    if (variant === 'unsigned') {
+      attempted = Buffer.from(candidate.transaction.cborHex, 'hex');
+    } else if (variant === 'wrong-key') {
+      const tx = CSL.Transaction.from_bytes(signed);
+      const witnesses = CSL.TransactionWitnessSet.from_bytes(tx.witness_set().to_bytes());
+      const bad = CSL.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => 10));
+      const vkeys = CSL.Vkeywitnesses.new();
+      const bodyHash = CSL.TransactionHash.from_bytes(blake2b(tx.body().to_bytes(), { dkLen: 32 }));
+      vkeys.add(CSL.make_vkey_witness(bodyHash, bad));
+      witnesses.set_vkeys(vkeys);
+      attempted = CSL.Transaction.new(tx.body(), witnesses, undefined).to_bytes();
+    } else {
+      emulator.setSlot(candidate.validity.upperSlot + 1);
+      attempted = signed;
+    }
+    const outcome = emulator.submitTx(attempted);
+    assert.equal(outcome.isSuccess, false, `heartbeat must reject ${variant}`);
+    assert.equal(emulator.getUtxos({
+      outRefs: [{ txHash: initResult.txHash, outputIndex: 0 }]
+    }).length, 1, 'invalid heartbeat must not consume protected state');
+  }
 });
