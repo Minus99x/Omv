@@ -851,3 +851,56 @@ test('real Scalus executes OmegaVault complete fixture recovery lifecycle to imm
  assert.equal(phase.candidate.checks.fullPhaseOneValidated,false);
  assert.equal(phase.candidate.liveActions.publicNetworkRecoveryProven,false);
 });
+
+
+test('real Scalus denies adversarial rescue redirection while preserving threshold-approved state',()=>{
+ const phase=localApprovedExecution();
+ const original=CSL.Transaction.from_bytes(phase.signed);
+ const originalBody=original.body();
+ const outputs=CSL.TransactionOutputs.new();
+ const redirected=CSL.EnterpriseAddress.new(0,
+   CSL.Credential.from_keyhash(CSL.Ed25519KeyHash.from_hex('77'.repeat(28)))).to_address();
+ outputs.add(CSL.TransactionOutput.new(redirected,originalBody.outputs().get(0).amount()));
+ outputs.add(originalBody.outputs().get(1));
+ const body=CSL.TransactionBody.new_tx_body(originalBody.inputs(),outputs,originalBody.fee());
+ body.set_network_id(originalBody.network_id());
+ body.set_validity_start_interval_bignum(originalBody.validity_start_interval_bignum());
+ body.set_ttl(originalBody.ttl());
+ body.set_script_data_hash(originalBody.script_data_hash());
+ body.set_mint(originalBody.mint());
+ body.set_collateral(originalBody.collateral());
+ body.set_total_collateral(originalBody.total_collateral());
+ body.set_collateral_return(originalBody.collateral_return());
+ body.set_required_signers(originalBody.required_signers());
+ const witnesses=CSL.TransactionWitnessSet.from_bytes(original.witness_set().to_bytes());
+ const vkeys=CSL.Vkeywitnesses.new();
+ const hash=CSL.TransactionHash.from_bytes(blake2b(body.to_bytes(),{dkLen:32}));
+ vkeys.add(CSL.make_vkey_witness(hash,privateKey));
+ witnesses.set_vkeys(vkeys);
+ const forged=CSL.Transaction.new(body,witnesses,undefined).to_bytes();
+ const denied=phase.emulator.submitTx(forged);
+ assert.equal(denied.isSuccess,false,'compiled validator must reject alternate rescue address');
+ assert.equal(phase.emulator.getUtxos({outRefs:[phase.approvedRef]}).length,1,
+   'failed redirect must not spend protected threshold-approved state');
+});
+
+test('real Scalus denies unsigned, forged-key and expired recovery execution',()=>{
+ for(const mode of ['missing-fee-payer','other-contact','expired']){
+  const phase=localApprovedExecution();
+  let bytes=phase.signed;
+  if(mode==='missing-fee-payer'){
+   bytes=Buffer.from(phase.candidate.transaction.cborHex,'hex');
+  }else if(mode==='other-contact'){
+   const tx=CSL.Transaction.from_bytes(bytes);
+   const witness=CSL.TransactionWitnessSet.from_bytes(tx.witness_set().to_bytes());
+   const bad=CSL.Vkeywitnesses.new();
+   const hash=CSL.TransactionHash.from_bytes(blake2b(tx.body().to_bytes(),{dkLen:32}));
+   bad.add(CSL.make_vkey_witness(hash,contactAKey));
+   witness.set_vkeys(bad);
+   bytes=CSL.Transaction.new(tx.body(),witness,undefined).to_bytes();
+  }else phase.emulator.setSlot(phase.candidate.validity.upperSlot+1);
+  const result=phase.emulator.submitTx(bytes);
+  assert.equal(result.isSuccess,false,'reject '+mode);
+  assert.equal(phase.emulator.getUtxos({outRefs:[phase.approvedRef]}).length,1);
+ }
+});
