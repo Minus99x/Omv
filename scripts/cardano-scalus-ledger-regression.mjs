@@ -14,6 +14,8 @@ import {
 import { buildCardanoPreprodRealInitializeCandidate } from '../src/chains/cardano/preprod-real-initialize.js';
 import { buildCardanoPreprodRealHeartbeatCandidate } from '../src/chains/cardano/preprod-real-heartbeat.js';
 import { buildCardanoPreprodRealApprovalCandidate } from '../src/chains/cardano/preprod-real-approval.js';
+import { createCardanoPreprodRealExecutePlan } from '../src/chains/cardano/preprod-real-execute-plan.js';
+import { buildCardanoPreprodRealExecuteCandidate } from '../src/chains/cardano/preprod-real-execute.js';
 import { createCardanoVaultDatumData } from '../src/chains/cardano/transaction-body.js';
 
 
@@ -734,4 +736,118 @@ test('real Scalus rejects missing or wrong second contact witness without consum
   assert.equal(denied.isSuccess,false,'reject '+mode);
   assert.equal(phase.emulator.getUtxos({outRefs:[phase.firstRef]}).length,1);
  }
+});
+
+
+// Only synthetic Scalus fixture evidence is produced here. This never
+// represents a submitted transaction or independently observed public Preprod.
+function localApprovedExecution(){
+ const phase=localTwoContactApprovedLedger();
+ const approved=phase.emulator.submitTx(phase.secondSigned);
+ assert.equal(approved.isSuccess,true,'second approval: '+approved.errorRule+' '+approved.error);
+ const approvedRef={txHash:approved.txHash,outputIndex:0};
+ const state=phase.emulator.getUtxos({outRefs:[approvedRef]});
+ assert.equal(state.length,1);
+ const datumHex=Buffer.from(state[0].inlineDatum).toString('hex');
+ const ownerHash=privateKey.to_public().hash().to_hex();
+ const expected=createCardanoVaultDatumData({
+  ownerKeyHash:ownerHash,rescueKeyHash:'66'.repeat(28),
+  contactKeyHashes:approvalContacts,threshold:2,inactivityMs:60000,
+  lastHeartbeatMs:phase.secondCandidate.stateTransition.lastHeartbeatMs,
+  approvalKeyHashes:approvalContacts
+ }).to_hex();
+ assert.equal(datumHex,expected,'actual Scalus predecessor must contain two approvals');
+ const fRef={txHash:phase.heartbeat.txHash,outputIndex:1};
+ const funding=phase.emulator.getUtxos({outRefs:[fRef]});
+ assert.equal(funding.length,1,'external owner change pays execute fee');
+ const identity=phase.setup.appliedValidatorIdentity;
+ const evidenceCore={
+  schema:'omegavault.cardano.preprod-active-state-evidence.v1',
+  network:'preprod',sourceAction:'approve',transactionBodyHash:approved.txHash,
+  sourceArtifactSha256:'da'.repeat(32),validatorIdentitySha256:identity.identitySha256,
+  observedTip:{hash:'db'.repeat(32),slot:SLOT+300},
+  stateReference:{transaction:{id:approved.txHash},index:0},
+  state:{
+   address:identity.recoveryVault.address,lovelace:'10000000',
+   beaconPolicyId:identity.stateBeacon.policyId,
+   beaconAssetNameHex:identity.assetNameHex,beaconQuantity:'1',
+   inlineDatumCborHex:datumHex,ownerPaymentKeyHash:ownerHash,
+   rescueKeyHash:'66'.repeat(28),contactKeyHashes:approvalContacts,
+   threshold:2,inactivityMs:60000,
+   lastHeartbeatMs:phase.secondCandidate.stateTransition.lastHeartbeatMs,
+   approvalKeyHashes:approvalContacts
+  },
+  checks:{inclusionObserved:true,exactActiveStateObserved:true,finalityProven:false},
+  liveActions:{
+   walletSigningPerformed:true,transactionSubmissionPerformed:true,
+   transactionSubmissionAuthorized:false,liveValueMovementAuthorized:false,
+   publicNetworkRecoveryProven:false,supportClaimAuthorized:false
+  },
+  authorityBoundary:'LOCAL_SCALUS_FIXTURE_ONLY_NO_PUBLIC_SUBMISSION'
+ };
+ const evidence={...evidenceCore,stateEvidenceSha256:hashCardanoEvidence(evidenceCore)};
+ const role=(txId,index,love)=>({
+   transaction:{id:txId},index,address,value:{ada:{lovelace:String(love)}}
+ });
+ const executePlan=createCardanoPreprodRealExecutePlan({
+  predecessorStateEvidence:evidence,
+  expectedPredecessorStateSha256:evidence.stateEvidenceSha256,
+  feePayerKeyHash:ownerHash,
+  executorFundingUtxo:role(fRef.txHash,fRef.outputIndex,funding[0].value.coin),
+  executorCollateralUtxo:role(phase.setup.collateralRef.transaction.id,
+    phase.setup.collateralRef.index,5_000_000n)
+ });
+ const stableTip={hash:'dc'.repeat(32),slot:SLOT+360};
+ phase.emulator.setSlot(stableTip.slot);
+ const args={executePlan,appliedValidatorIdentity:identity,
+  parameters:phase.params,recoveryConfig:phase.recoveryConfig,stableTip};
+ const initial=buildCardanoPreprodRealExecuteCandidate({...args,evaluationMode:true});
+ assert.equal(initial.checks.thresholdSatisfied,true);
+ assert.equal(initial.recovery.protectedLovelace,'10000000');
+ const evaluated=phase.emulator.evaluateTx(Buffer.from(initial.transaction.cborHex,'hex'));
+ assert.equal(evaluated.length,2,'must evaluate both mint and spend validators');
+ const measured={};
+ for(const item of evaluated){
+  assert.ok(['Mint','Spend'].includes(item.tag));
+  assert.equal(measured[item.tag],undefined);
+  measured[item.tag]={
+   memory:(BigInt(item.budget.memory)*115n/100n+1n).toString(),
+   steps:(BigInt(item.budget.steps)*115n/100n+1n).toString()
+  };
+ }
+ assert.ok(measured.Mint&&measured.Spend);
+ const candidate=buildCardanoPreprodRealExecuteCandidate({
+  ...args,evaluationMode:false,spendBudget:measured.Spend,mintBudget:measured.Mint
+ });
+ assert.equal(candidate.recovery.stateBeaconBurnQuantity,'-1');
+ assert.equal(candidate.recovery.continuingStateOutputCount,0);
+ assert.equal(candidate.liveActions.transactionSubmissionAuthorized,false);
+ const unsigned=CSL.Transaction.from_hex(candidate.transaction.cborHex);
+ const witnesses=CSL.TransactionWitnessSet.from_bytes(unsigned.witness_set().to_bytes());
+ const bodyHash=CSL.TransactionHash.from_bytes(blake2b(unsigned.body().to_bytes(),{dkLen:32}));
+ const keys=CSL.Vkeywitnesses.new();
+ keys.add(CSL.make_vkey_witness(bodyHash,privateKey));
+ witnesses.set_vkeys(keys);
+ const signed=CSL.Transaction.new(unsigned.body(),witnesses,undefined).to_bytes();
+ return {...phase,approved,approvedRef,executePlan,candidate,signed};
+}
+
+test('real Scalus executes OmegaVault complete fixture recovery lifecycle to immutable rescue',()=>{
+ const phase=localApprovedExecution();
+ const result=phase.emulator.submitTx(phase.signed);
+ assert.equal(result.isSuccess,true,'execute: '+result.errorRule+' '+result.error);
+ assert.equal(phase.emulator.getUtxos({outRefs:[phase.approvedRef]}).length,0);
+ assert.equal(phase.emulator.getUtxos({
+  address:phase.setup.appliedValidatorIdentity.recoveryVault.address
+ }).length,0,'no continuing recovery state');
+ const expectedRescue=CSL.EnterpriseAddress.new(0,CSL.Credential.from_keyhash(
+  CSL.Ed25519KeyHash.from_hex('66'.repeat(28)))).to_address().to_bech32();
+ const paid=phase.emulator.getUtxos({outRefs:[{txHash:result.txHash,outputIndex:0}]});
+ assert.equal(paid.length,1);
+ assert.equal(paid[0].address,expectedRescue,'destination is immutable');
+ assert.equal(paid[0].value.coin,10_000_000n,'full protected amount rescued');
+ assert.equal(paid[0].value.assets.length,0,'beacon must burn exactly once');
+ assert.equal(phase.emulator.submitTx(phase.signed).isSuccess,false);
+ assert.equal(phase.candidate.checks.fullPhaseOneValidated,false);
+ assert.equal(phase.candidate.liveActions.publicNetworkRecoveryProven,false);
 });
