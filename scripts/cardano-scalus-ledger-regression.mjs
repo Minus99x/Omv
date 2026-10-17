@@ -13,6 +13,7 @@ import {
 } from '../src/chains/cardano/preprod-real-utxo-binding.js';
 import { buildCardanoPreprodRealInitializeCandidate } from '../src/chains/cardano/preprod-real-initialize.js';
 import { buildCardanoPreprodRealHeartbeatCandidate } from '../src/chains/cardano/preprod-real-heartbeat.js';
+import { buildCardanoPreprodRealApprovalCandidate } from '../src/chains/cardano/preprod-real-approval.js';
 import { createCardanoVaultDatumData } from '../src/chains/cardano/transaction-body.js';
 
 
@@ -25,6 +26,12 @@ const TEST_TXID = 'ab'.repeat(32);
 const SLOT = 135700000;
 const COIN = 1_000_000_000n;
 const privateKey = CSL.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => 9));
+const contactAKey = CSL.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => 10));
+const contactBKey = CSL.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => 11));
+const approvalContacts = [contactAKey.to_public().hash().to_hex(), contactBKey.to_public().hash().to_hex()];
+const contactAddress = CSL.EnterpriseAddress.new(0, CSL.Credential.from_keyhash(contactAKey.to_public().hash())).to_address().to_bech32();
+const CONTACT_FUNDING_TXID = '45'.repeat(32);
+const CONTACT_COLLATERAL_TXID = '46'.repeat(32);
 const ownerAddress = CSL.EnterpriseAddress.new(0, CSL.Credential.from_keyhash(privateKey.to_public().hash())).to_address();
 const address = ownerAddress.to_bech32();
 
@@ -180,7 +187,7 @@ test('real Scalus adapter fails closed before emulation for signed CBOR evidence
  * a fresh simulated ledger. This does not use the Captain's wallet, live UTxOs,
  * current protocol parameters, or a public Preprod node.
  */
-function locallySignedOmegaVaultInitialize() {
+function locallySignedOmegaVaultInitialize({ contacts = ['22'.repeat(28), '33'.repeat(28)] } = {}) {
   const load = (name) => JSON.parse(readFileSync(new URL(name, import.meta.url), 'utf8'));
   const fixture = load('../docs/evidence/CARDANO_APPLIED_FIXTURE_0.6.12.json');
   const beacon = load('../validators/cardano/fixtures/state-beacon.applied.json');
@@ -227,7 +234,7 @@ function locallySignedOmegaVaultInitialize() {
     parameters,
     recoveryConfig: {
       rescueKeyHash: '66'.repeat(28),
-      contactKeyHashes: ['22'.repeat(28), '33'.repeat(28)],
+      contactKeyHashes: contacts,
       threshold: 2,
       inactivityMs: 60000,
       stateLovelace: '10000000'
@@ -246,13 +253,14 @@ function locallySignedOmegaVaultInitialize() {
   return { candidate, signed, appliedValidatorIdentity, seedRef, collateralRef };
 }
 
-function omegaVaultInitializeLedger(a, slot = SLOT) {
+function omegaVaultInitializeLedger(a, slot = SLOT, extraUtxos = []) {
   return Emulator.create(CardanoInfo.preprod(), {
     slot,
     utxos: [
       // Scalus Value.ada(x) multiplies ADA by 1e6. UTxOs contain lovelace.
       new Utxo(a.seedRef.transaction.id, a.seedRef.index, address, new Value(20_000_000n)),
-      new Utxo(a.collateralRef.transaction.id, a.collateralRef.index, address, new Value(5_000_000n))
+      new Utxo(a.collateralRef.transaction.id, a.collateralRef.index, address, new Value(5_000_000n)),
+      ...extraUtxos
     ]
   });
 }
@@ -301,9 +309,9 @@ test('Scalus rejects OmegaVault initialize signed by an unauthorized test key', 
  * Does NOT claim public Preprod inclusion/finality, approval or submission
  * authority. The plan's observation identifiers are local synthetic fixtures.
  */
-function initializeThenBuildHeartbeat() {
-  const setup = locallySignedOmegaVaultInitialize();
-  const emulator = omegaVaultInitializeLedger(setup);
+function initializeThenBuildHeartbeat({ contacts = ['22'.repeat(28), '33'.repeat(28)], extraUtxos = [] } = {}) {
+  const setup = locallySignedOmegaVaultInitialize({ contacts });
+  const emulator = omegaVaultInitializeLedger(setup, SLOT, extraUtxos);
   const initResult = emulator.submitTx(setup.signed);
   assert.equal(initResult.isSuccess, true, `initialize rejected: ${initResult.errorRule} ${initResult.error}`);
   const state = emulator.getUtxos({ outRefs: [{ txHash: initResult.txHash, outputIndex: 0 }] });
@@ -364,7 +372,7 @@ function initializeThenBuildHeartbeat() {
     parameters,
     recoveryConfig: {
       rescueKeyHash: '66'.repeat(28),
-      contactKeyHashes: ['22'.repeat(28), '33'.repeat(28)],
+      contactKeyHashes: contacts,
       threshold: 2,
       inactivityMs: 60000,
       stateLovelace: '10000000'
