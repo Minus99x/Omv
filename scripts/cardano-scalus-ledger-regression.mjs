@@ -12,6 +12,7 @@ import {
   createCardanoPreprodRealUtxoBindingPlan
 } from '../src/chains/cardano/preprod-real-utxo-binding.js';
 import { buildCardanoPreprodRealInitializeCandidate } from '../src/chains/cardano/preprod-real-initialize.js';
+import { buildCardanoPreprodRealHeartbeatCandidate } from '../src/chains/cardano/preprod-real-heartbeat.js';
 
 
 import assert from 'node:assert/strict';
@@ -290,4 +291,126 @@ test('Scalus rejects OmegaVault initialize signed by an unauthorized test key', 
   const forged = CSL.Transaction.new(unsigned.body(), witnessSet, undefined).to_bytes();
   const rejected = omegaVaultInitializeLedger(artifact).submitTx(forged);
   assert.equal(rejected.isSuccess, false, 'only the bound owner payment key can authorize initialize');
+});
+
+
+/**
+ * Local-only sequential lifecycle test. Uses the exact Scalus ledger output
+ * created by OmegaVault's initialize transaction as the heartbeat input.
+ * Does NOT claim public Preprod inclusion/finality, approval or submission
+ * authority. The plan's observation identifiers are local synthetic fixtures.
+ */
+function initializeThenBuildHeartbeat() {
+  const setup = locallySignedOmegaVaultInitialize();
+  const emulator = omegaVaultInitializeLedger(setup);
+  const initResult = emulator.submitTx(setup.signed);
+  assert.equal(initResult.isSuccess, true, `initialize rejected: ${initResult.errorRule} ${initResult.error}`);
+  const state = emulator.getUtxos({ outRefs: [{ txHash: initResult.txHash, outputIndex: 0 }] });
+  const funding = emulator.getUtxos({ outRefs: [{ txHash: initResult.txHash, outputIndex: 1 }] });
+  assert.equal(state.length, 1, 'real emulator must hold initialized state');
+  assert.equal(funding.length, 1, 'real emulator must hold owner change');
+  assert.equal(state[0].address, setup.appliedValidatorIdentity.recoveryVault.address);
+  const initTx = CSL.Transaction.from_hex(setup.candidate.transaction.cborHex);
+  const predecessorDatum = initTx.body().outputs().get(0).plutus_data().to_hex();
+  assert.equal(Buffer.from(state[0].inlineDatum).toString('hex'), predecessorDatum);
+  const identity = setup.appliedValidatorIdentity;
+  const ownerHash = privateKey.to_public().hash().to_hex();
+  const planCore = {
+    schema: 'omegavault.cardano.preprod-real-heartbeat-plan.v1',
+    network: 'preprod', action: 'heartbeat',
+    predecessorStateObservationSha256: 'fa'.repeat(32), // synthetic local observation, NOT real public inclusion
+    predecessorTransactionBodyHash: initResult.txHash,
+    predecessorObservedTip: { hash: 'be'.repeat(32), slot: SLOT },
+    validatorIdentitySha256: identity.identitySha256,
+    stateInput: { transaction: { id: initResult.txHash }, index: 0 },
+    ownerFundingInput: { transaction: { id: initResult.txHash }, index: 1 },
+    ownerFundingAddress: address,
+    collateralInput: setup.collateralRef,
+    collateralAddress: address,
+    ownerPaymentKeyHash: ownerHash,
+    protectedState: {
+      address: identity.recoveryVault.address,
+      lovelace: state[0].value.coin.toString(),
+      beaconPolicyId: identity.stateBeacon.policyId,
+      beaconAssetNameHex: identity.assetNameHex,
+      beaconQuantity: '1',
+      predecessorInlineDatumCborHex: predecessorDatum,
+      predecessorLastHeartbeatMs: setup.candidate.validity.initialHeartbeatMs,
+      predecessorApprovalKeyHashes: []
+    },
+    externalFunding: {
+      fundingLovelace: funding[0].value.coin.toString(),
+      collateralLovelace: '5000000',
+      feeMustComeFromExternalFunding: true,
+      protectedStateMayNotPayFees: true
+    },
+    liveActions: {
+      walletSigningAuthorized: false,
+      transactionSubmissionAuthorized: false,
+      supportClaimAuthorized: false
+    }
+  };
+  const heartbeatPlan = { ...planCore, planSha256: hashCardanoEvidence(planCore) };
+  const protocol = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
+  protocol.source.independentSourceCount = 2;
+  protocol.promotion.independentlyConfirmed = true;
+  const parameters = normalizeCardanoProtocolParameterSnapshot(protocol);
+  const stableTip = { hash: 'ba'.repeat(32), slot: SLOT + 70 };
+  emulator.setSlot(stableTip.slot);
+  const args = {
+    heartbeatPlan,
+    appliedValidatorIdentity: identity,
+    parameters,
+    recoveryConfig: {
+      rescueKeyHash: '66'.repeat(28),
+      contactKeyHashes: ['22'.repeat(28), '33'.repeat(28)],
+      threshold: 2,
+      inactivityMs: 60000,
+      stateLovelace: '10000000'
+    },
+    stableTip
+  };
+  const evaluationCandidate = buildCardanoPreprodRealHeartbeatCandidate({
+    ...args, evaluationMode: true
+  });
+  const evaluation = emulator.evaluateTx(Buffer.from(evaluationCandidate.transaction.cborHex, 'hex'));
+  assert.equal(evaluation.length, 1, 'heartbeat must evaluate exactly one spend redeemer');
+  assert.equal(evaluation[0].tag, 'spend');
+  const measured = evaluation[0].budget;
+  const spendBudget = {
+    memory: (BigInt(measured.memory) * 115n / 100n + 1n).toString(),
+    steps: (BigInt(measured.steps) * 115n / 100n + 1n).toString()
+  };
+  const candidate = buildCardanoPreprodRealHeartbeatCandidate({
+    ...args, evaluationMode: false, spendBudget
+  });
+  assert.equal(candidate.checks.protectedLovelacePreserved, true);
+  assert.equal(candidate.checks.feePaidOnlyFromExternalOwnerFunding, true);
+  const unsigned = CSL.Transaction.from_hex(candidate.transaction.cborHex);
+  const witnesses = CSL.TransactionWitnessSet.from_bytes(unsigned.witness_set().to_bytes());
+  const vkeys = CSL.Vkeywitnesses.new();
+  const bodyHash = CSL.TransactionHash.from_bytes(blake2b(unsigned.body().to_bytes(), { dkLen: 32 }));
+  vkeys.add(CSL.make_vkey_witness(bodyHash, privateKey));
+  witnesses.set_vkeys(vkeys);
+  const signed = CSL.Transaction.new(unsigned.body(), witnesses, undefined).to_bytes();
+  return { setup, emulator, candidate, signed, initResult, predecessorDatum };
+}
+
+test('real Scalus executes initialize then heartbeat with OmegaVault-built transactions (fixture only)', () => {
+  const { emulator, candidate, signed, initResult, predecessorDatum, setup } = initializeThenBuildHeartbeat();
+  const accepted = emulator.submitTx(signed);
+  assert.equal(accepted.isSuccess, true,
+    `heartbeat rejected by ${accepted.errorRule}: ${accepted.error} ${(accepted.logs ?? []).join('; ')}`);
+  assert.match(accepted.txHash, /^[0-9a-f]{64}$/i);
+  const oldState = emulator.getUtxos({ outRefs: [{ txHash: initResult.txHash, outputIndex: 0 }] });
+  assert.equal(oldState.length, 0, 'heartbeat must consume the previous state');
+  const newState = emulator.getUtxos({ outRefs: [{ txHash: accepted.txHash, outputIndex: 0 }] });
+  assert.equal(newState.length, 1, 'heartbeat must emit one continuing state');
+  assert.equal(newState[0].address, setup.appliedValidatorIdentity.recoveryVault.address);
+  assert.equal(newState[0].value.coin, 10_000_000n, 'protected value must not pay fees');
+  assert.equal(newState[0].value.assets.length, 1, 'exactly one state beacon must survive');
+  assert.notEqual(Buffer.from(newState[0].inlineDatum).toString('hex'), predecessorDatum, 'heartbeat timestamp must advance');
+  assert.equal(emulator.submitTx(signed).isSuccess, false, 'spent state cannot be replayed');
+  assert.equal(candidate.liveActions.transactionSubmissionAuthorized, false);
+  assert.equal(candidate.checks.fullPhaseOneValidated, false);
 });
