@@ -375,7 +375,7 @@ function initializeThenBuildHeartbeat() {
   });
   const evaluation = emulator.evaluateTx(Buffer.from(evaluationCandidate.transaction.cborHex, 'hex'));
   assert.equal(evaluation.length, 1, 'heartbeat must evaluate exactly one spend redeemer');
-  assert.equal(evaluation[0].tag, 'spend');
+  assert.equal(evaluation[0].tag, 'Spend');
   const measured = evaluation[0].budget;
   const spendBudget = {
     memory: (BigInt(measured.memory) * 115n / 100n + 1n).toString(),
