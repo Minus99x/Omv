@@ -136,6 +136,15 @@ test('replayed and future-dated block observations fail their recorded freshness
   }
 });
 
+test('XDC observer cannot rehash a nonmonotonic receipt-to-finalized block chronology into valid evidence',()=>{
+  const o=observation();
+  const forged=rehash(o,{
+    receiptBlock:{...o.receiptBlock,timestamp:'0x6553f101'}
+  });
+  assert.throws(()=>validateXdcFinalityRpcObservation(forged),/cannot follow finalized block timestamp/);
+  assert.throws(()=>createXdcProvenanceBoundFinality({observation:forged,proof:proof(),kind:'native-recovery'}),/cannot follow finalized block timestamp/);
+});
+
 test('XDC package refuses wrong transaction, wrong chain, wrong kind or failed proof',()=>{
   const o=observation(),p=proof();
   for (const changed of [

@@ -136,7 +136,10 @@ export async function observeApothemFinalityProvenance({
     throw new Error('Apothem provider latest head is older than finalized head');
   if (finalized.number === found.blockNumber && finalized.hash !== found.blockHash)
     throw new Error('Apothem finalized head contradicts receipt block');
+  checkFresh(inclusionBlocks[0].timestamp, BigInt(nowSeconds), 'Apothem receipt inclusion block');
   checkFresh(finalized.timestamp, BigInt(nowSeconds), 'Apothem finalized block');
+  if (inclusionBlocks[0].timestamp > finalized.timestamp)
+    throw new Error('Apothem receipt block timestamp follows finalized block');
 
   // Detect reorgs or provider switches during evidence collection. Recheck the
   // exact inclusion and finalized HEIGHTS, never only the mutable latest tags.

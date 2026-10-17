@@ -103,8 +103,10 @@ export function validateXdcFinalityRpcObservation(observation) {
   const observedMs = Date.parse(observation.observedAt);
   if (observedMs % 1000 !== 0) throw new Error('XDC observation timestamp must be in whole seconds');
   const observedSeconds = BigInt(observedMs / 1000);
-  freshAtObservedTime(observation.receiptBlock.timestamp,observedSeconds,'receiptBlock.timestamp');
-  freshAtObservedTime(observation.finalizedBlock.timestamp,observedSeconds,'finalizedBlock.timestamp');
+  const receiptStamp = freshAtObservedTime(observation.receiptBlock.timestamp,observedSeconds,'receiptBlock.timestamp');
+  const finalizedStamp = freshAtObservedTime(observation.finalizedBlock.timestamp,observedSeconds,'finalizedBlock.timestamp');
+  if (receiptStamp > finalizedStamp)
+    throw new Error('XDC receipt block timestamp cannot follow finalized block timestamp');
   for(const key of ['receiptInclusionCrossChecked','finalizedTagCrossChecked',
     'fixedHeightRecheckVerified','chainIdRechecked','readOnly']) flag(observation[key],true,key);
   for(const key of ['transactionSigned','transactionSubmitted',

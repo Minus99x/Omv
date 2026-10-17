@@ -55,7 +55,7 @@ function provider(options = {}) {
       if (tag === '0x2a') {
         result = { number: idx===1 ? (options.inclusionHeightSecond ?? '0x2a') : '0x2a',
           hash: idx===1 ? (options.inclusionHashSecond ?? RECEIPT_BLOCK) : RECEIPT_BLOCK,
-          timestamp: idx===1 ? (options.inclusionTimestampSecond ?? TIME) : TIME };
+          timestamp: idx===1 ? (options.inclusionTimestampSecond ?? TIME) : (options.inclusionTimestampFirst ?? TIME) };
         if (blockCounts.get(k) === 2 && idx===0 && options.inclusionReorg) result.hash=OTHER;
       } else if (tag === 'finalized') {
         result = { number: idx===1 ? (options.finalHeightSecond ?? '0x2b') : (options.finalHeightFirst ?? '0x2b'),
@@ -197,6 +197,12 @@ test('rejects finalized block timestamp too old or in the future',async()=>{
   await assert.rejects(observeApothemFinalityProvenance({
     transactionHash:TX,fetchImpl:provider().fetchImpl,nowSeconds:NOW-221
   }),/future/);
+});
+
+test('rejects stale, future-dated, and nonmonotonic receipt block timestamps',async()=>{
+  await rejects({inclusionTimestampFirst:'0x1',inclusionTimestampSecond:'0x1'},/receipt inclusion block older than 15 minutes/);
+  await rejects({inclusionTimestampFirst:'0x6553f200',inclusionTimestampSecond:'0x6553f200'},/receipt inclusion block more than 2 minutes in the future/);
+  await rejects({inclusionTimestampFirst:'0x6553f101',inclusionTimestampSecond:'0x6553f101'},/receipt block timestamp follows finalized block/);
 });
 
 test('rejects inclusion reorg and finalized fixed-height substitution mid-audit',async()=>{
