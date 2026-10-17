@@ -460,3 +460,159 @@ test('real Scalus heartbeat rejects missing, unauthorized, and expired owner wit
     }).length, 1, 'invalid heartbeat must not consume protected state');
   }
 });
+
+
+// Test-only sequential approval. All observations and signing keys below are
+// ephemeral fixture values; none certifies real public Preprod inclusion.
+function localHeartbeatThenApproval() {
+  const extraUtxos = [
+    new Utxo(CONTACT_FUNDING_TXID, 0, contactAddress, new Value(8_000_000n)),
+    new Utxo(CONTACT_COLLATERAL_TXID, 0, contactAddress, new Value(5_000_000n))
+  ];
+  const phase = initializeThenBuildHeartbeat({ contacts: approvalContacts, extraUtxos });
+  const acceptedHeartbeat = phase.emulator.submitTx(phase.signed);
+  assert.equal(acceptedHeartbeat.isSuccess, true,
+    'heartbeat: ' + acceptedHeartbeat.errorRule + ' ' + acceptedHeartbeat.error);
+  const ref = { txHash: acceptedHeartbeat.txHash, outputIndex: 0 };
+  const observed = phase.emulator.getUtxos({ outRefs: [ref] });
+  assert.equal(observed.length, 1, 'approval input must originate from emulated heartbeat');
+  const datumHex = Buffer.from(observed[0].inlineDatum).toString('hex');
+  const identity = phase.setup.appliedValidatorIdentity;
+  const ownerHash = privateKey.to_public().hash().to_hex();
+  const expectedDatum = createCardanoVaultDatumData({
+    ownerKeyHash: ownerHash, rescueKeyHash: '66'.repeat(28),
+    contactKeyHashes: approvalContacts, threshold: 2, inactivityMs: 60000,
+    lastHeartbeatMs: phase.candidate.validity.nextHeartbeatMs, approvalKeyHashes: []
+  }).to_hex();
+  assert.equal(datumHex, expectedDatum);
+  const selected = approvalContacts[0];
+  const planCore = {
+    schema: 'omegavault.cardano.preprod-real-approval-plan.v1',
+    network: 'preprod', action: 'approve',
+    predecessorStateEvidenceSha256: 'ba'.repeat(32), // SYNTHETIC, never public evidence
+    predecessorTransactionBodyHash: acceptedHeartbeat.txHash,
+    predecessorObservedTip: { hash: 'bc'.repeat(32), slot: SLOT + 70 },
+    validatorIdentitySha256: identity.identitySha256,
+    stateInput: { transaction: { id: acceptedHeartbeat.txHash }, index: 0 },
+    selectedContactKeyHash: selected,
+    contactFundingInput: { transaction: { id: CONTACT_FUNDING_TXID }, index: 0 },
+    contactFundingAddress: contactAddress,
+    contactCollateralInput: { transaction: { id: CONTACT_COLLATERAL_TXID }, index: 0 },
+    contactCollateralAddress: contactAddress,
+    protectedState: {
+      address: identity.recoveryVault.address, lovelace: '10000000',
+      beaconPolicyId: identity.stateBeacon.policyId,
+      beaconAssetNameHex: identity.assetNameHex, beaconQuantity: '1',
+      predecessorInlineDatumCborHex: datumHex,
+      ownerPaymentKeyHash: ownerHash, rescueKeyHash: '66'.repeat(28),
+      contactKeyHashes: approvalContacts, threshold: 2, inactivityMs: 60000,
+      lastHeartbeatMs: phase.candidate.validity.nextHeartbeatMs,
+      predecessorApprovalKeyHashes: [], nextApprovalKeyHashes: [selected]
+    },
+    externalFunding: {
+      fundingLovelace: '8000000', collateralLovelace: '5000000',
+      feeMustComeFromSelectedContactFunding: true, protectedStateMayNotPayFees: true
+    },
+    authorityChecks: {
+      selectedSignerIsConfiguredContact: true, selectedSignerIsNotOwner: true,
+      selectedSignerIsNotRescue: true, duplicateApprovalRejected: true,
+      selectedContactControlsFunding: true, selectedContactControlsCollateral: true,
+      independentContactWalletRequiredForPublicMultipartyProof: true
+    },
+    liveActions: {
+      walletSigningAuthorized: false, transactionSubmissionAuthorized: false,
+      supportClaimAuthorized: false
+    }
+  };
+  const approvalPlan = { ...planCore, planSha256: hashCardanoEvidence(planCore) };
+  const raw = JSON.parse(readFileSync(
+    new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
+  raw.source.independentSourceCount = 2;
+  raw.promotion.independentlyConfirmed = true;
+  const params = normalizeCardanoProtocolParameterSnapshot(raw);
+  const stableTip = { hash: 'bd'.repeat(32), slot: SLOT + 240 };
+  phase.emulator.setSlot(stableTip.slot);
+  const args = {
+    approvalPlan, appliedValidatorIdentity: identity, parameters: params, stableTip,
+    recoveryConfig: {
+      ownerPaymentKeyHash: ownerHash, rescueKeyHash: '66'.repeat(28),
+      contactKeyHashes: approvalContacts, threshold: 2, inactivityMs: 60000,
+      stateLovelace: '10000000'
+    }
+  };
+  const evaluationCandidate = buildCardanoPreprodRealApprovalCandidate({
+    ...args, evaluationMode: true
+  });
+  assert.equal(evaluationCandidate.liveActions.transactionSubmissionAuthorized, false);
+  const evaluation = phase.emulator.evaluateTx(Buffer.from(evaluationCandidate.transaction.cborHex, 'hex'));
+  assert.equal(evaluation.length, 1, 'exactly one actual approval spend script');
+  assert.equal(evaluation[0].tag, 'Spend');
+  const budget = {
+    memory: (BigInt(evaluation[0].budget.memory) * 115n / 100n + 1n).toString(),
+    steps: (BigInt(evaluation[0].budget.steps) * 115n / 100n + 1n).toString()
+  };
+  const candidate = buildCardanoPreprodRealApprovalCandidate({
+    ...args, evaluationMode: false, spendBudget: budget
+  });
+  assert.deepEqual(candidate.stateTransition.nextApprovals, [selected]);
+  assert.equal(candidate.stateTransition.protectedValueUsedForFees, false);
+  const unsigned = CSL.Transaction.from_hex(candidate.transaction.cborHex);
+  const witnesses = CSL.TransactionWitnessSet.from_bytes(unsigned.witness_set().to_bytes());
+  const vkeys = CSL.Vkeywitnesses.new();
+  const bodyHash = CSL.TransactionHash.from_bytes(blake2b(unsigned.body().to_bytes(), { dkLen: 32 }));
+  vkeys.add(CSL.make_vkey_witness(bodyHash, contactAKey));
+  witnesses.set_vkeys(vkeys);
+  const signed = CSL.Transaction.new(unsigned.body(), witnesses, undefined).to_bytes();
+  return { ...phase, ref, selected, candidate, signed, datumHex,
+    heartbeat: acceptedHeartbeat };
+}
+
+test('real Scalus executes initialize, heartbeat, then contact approval (fixture only)', () => {
+  const { emulator, ref, candidate, signed, datumHex, selected, setup } = localHeartbeatThenApproval();
+  const result = emulator.submitTx(signed);
+  assert.equal(result.isSuccess, true, 'approval: ' + result.errorRule + ' ' + result.error);
+  assert.equal(emulator.getUtxos({ outRefs: [ref] }).length, 0, 'old state spent');
+  const next = emulator.getUtxos({ outRefs: [{ txHash: result.txHash, outputIndex: 0 }] });
+  assert.equal(next.length, 1, 'one continuing approval state');
+  assert.equal(next[0].address, setup.appliedValidatorIdentity.recoveryVault.address);
+  assert.equal(next[0].value.coin, 10_000_000n, 'state value protected');
+  assert.equal(next[0].value.assets.length, 1, 'single beacon preserved');
+  assert.notEqual(Buffer.from(next[0].inlineDatum).toString('hex'), datumHex);
+  const expected = createCardanoVaultDatumData({
+    ownerKeyHash: privateKey.to_public().hash().to_hex(),
+    rescueKeyHash: '66'.repeat(28), contactKeyHashes: approvalContacts,
+    threshold: 2, inactivityMs: 60000,
+    lastHeartbeatMs: candidate.stateTransition.lastHeartbeatMs,
+    approvalKeyHashes: [selected]
+  }).to_hex();
+  assert.equal(Buffer.from(next[0].inlineDatum).toString('hex'), expected,
+    'only new contact approval may change; immutable recovery config persists');
+  assert.equal(emulator.submitTx(signed).isSuccess, false, 'approval replay rejected');
+  assert.equal(candidate.liveActions.transactionSubmissionAuthorized, false);
+  assert.equal(candidate.checks.fullPhaseOneValidated, false);
+});
+
+test('real Scalus rejects unsigned, owner-forged, other-contact and expired approvals', () => {
+  for (const variant of ['unsigned', 'owner', 'other-contact', 'expired']) {
+    const { emulator, ref, candidate, signed } = localHeartbeatThenApproval();
+    let attempted;
+    if (variant === 'unsigned') {
+      attempted = Buffer.from(candidate.transaction.cborHex, 'hex');
+    } else if (variant === 'expired') {
+      emulator.setSlot(candidate.validity.upperSlot + 1);
+      attempted = signed;
+    } else {
+      const tx = CSL.Transaction.from_bytes(signed);
+      const witnesses = CSL.TransactionWitnessSet.from_bytes(tx.witness_set().to_bytes());
+      const vkeys = CSL.Vkeywitnesses.new();
+      const bodyHash = CSL.TransactionHash.from_bytes(blake2b(tx.body().to_bytes(), { dkLen: 32 }));
+      vkeys.add(CSL.make_vkey_witness(bodyHash, variant === 'owner' ? privateKey : contactBKey));
+      witnesses.set_vkeys(vkeys);
+      attempted = CSL.Transaction.new(tx.body(), witnesses, undefined).to_bytes();
+    }
+    const rejected = emulator.submitTx(attempted);
+    assert.equal(rejected.isSuccess, false, 'reject ' + variant);
+    assert.equal(emulator.getUtxos({ outRefs: [ref] }).length, 1,
+      'rejected approval must leave previous protected state unspent');
+  }
+});
