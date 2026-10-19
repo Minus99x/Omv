@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { createEvmBlockFinalityEvidence, evmFinalityMatchesProof } from '../src/chains/evm/finality-evidence.js';
 import {
   validateXdcFinalityRpcObservation,
   createXdcProvenanceBoundFinality,
@@ -229,4 +230,18 @@ test('XDC rejects reused block hashes at distinct heights even after checksum re
   }
   const validSameHeight=rehash(o,{finalizedBlock:{...o.receiptBlock}});
   assert.equal(validateXdcFinalityRpcObservation(validSameHeight).claimsConsistent,true);
+});
+
+
+test('shared EVM finality builder rejects cross-height hash reuse even without XDC observation validator',()=>{
+  const o=observation();
+  const p=proof();
+  const args={networkId:'xdc:apothem',proof:p,observedChainIdHex:o.observedChainIdHex,
+    receipt:o.receipt,receiptBlock:o.receiptBlock,observedAt:o.observedAt};
+  const valid=createEvmBlockFinalityEvidence({...args,finalizedBlock:o.finalizedBlock});
+  assert.equal(evmFinalityMatchesProof(valid,p,{networkId:'xdc:apothem',kind:'native-recovery'}),true);
+  assert.throws(()=>createEvmBlockFinalityEvidence({...args,
+    finalizedBlock:{...o.finalizedBlock,hash:o.receiptBlock.hash}}),/reuses receipt block hash/);
+  const forgedCore={...valid,finality:{...valid.finality,finalizedBlockHash:o.receiptBlock.hash}};
+  assert.equal(evmFinalityMatchesProof(forgedCore,p,{networkId:'xdc:apothem',kind:'native-recovery'}),false);
 });
