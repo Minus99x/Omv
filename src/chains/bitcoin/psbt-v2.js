@@ -157,6 +157,15 @@ function normalizeInput(input, index) {
   return { txid: input.txid.toLowerCase(), vout: input.vout, sequence, amountSats, scriptPubKey, witnessScript, partialSignatures };
 }
 
+function assertDistinctOutpoints(inputs) {
+  const seen = new Set();
+  for (const input of inputs) {
+    const key = `${input.txid.toLowerCase()}:${input.vout}`;
+    if (seen.has(key)) throw new Error('PSBTv2 contains duplicate input outpoint.');
+    seen.add(key);
+  }
+}
+
 function normalizeOutput(output, index) {
   return { amountSats: assertMoney(output?.amountSats, `outputs[${index}].amountSats`), scriptPubKey: Buffer.from(assertHex(output?.scriptPubKey, `outputs[${index}].scriptPubKey`), 'hex') };
 }
@@ -168,6 +177,7 @@ export function encodePsbtV2({ txVersion = 2, fallbackLocktime = 0, txModifiable
   if ((txModifiable & 0x03) !== 0) throw new Error('OmegaVault freezes PSBTv2 inputs and outputs before signature collection.');
   if (!Array.isArray(inputs) || !inputs.length || !Array.isArray(outputs) || !outputs.length) throw new TypeError('PSBTv2 requires at least one input and output.');
   const normalizedInputs = inputs.map(normalizeInput);
+  assertDistinctOutpoints(normalizedInputs);
   const normalizedOutputs = outputs.map(normalizeOutput);
   const inputTotal = normalizedInputs.reduce((sum, input) => sum + input.amountSats, 0n);
   const outputTotal = normalizedOutputs.reduce((sum, output) => sum + output.amountSats, 0n);
@@ -253,6 +263,7 @@ export function decodePsbtV2(encoded) {
       witnessScript: witnessScript.toString('hex'), partialSignatures: Object.freeze(partialSignatures)
     }));
   }
+  assertDistinctOutpoints(inputs);
   const outputs = [];
   for (let i = 0; i < outputCount; i++) {
     const parsed = readMap(buffer, offset);
