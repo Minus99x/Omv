@@ -34,8 +34,12 @@ export async function probeXdcApothemReadOnly({fetchImpl=globalThis.fetch}={}){
       method:'POST',
       headers:{accept:'application/json','content-type':'application/json'},
       body:JSON.stringify({jsonrpc:'2.0',id:requestId,method,params}),
+      // A fixed requested URL must not silently follow an unapproved receiver.
+      redirect:'error',credentials:'omit',
       signal:AbortSignal.timeout(15000)
     });
+    if(typeof response?.url==='string' && new URL(response.url).href!==new URL(URL).href)
+      throw new Error('Apothem read-only RPC response redirected outside pinned endpoint.');
     if(response?.ok!==true)throw new Error('Apothem RPC returned HTTP '+String(response?.status??'unknown')+'.');
     let body;
     try{body=await response.json();}catch{throw new Error('Apothem RPC returned invalid JSON.');}
