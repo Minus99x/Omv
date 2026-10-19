@@ -121,3 +121,76 @@ test('operator CLI rejects secret-bearing flags and noncanonical fee parameters'
     assert.equal(existsSync(f.output),false);
   } finally { rmSync(f.dir,{recursive:true,force:true}); }
 });
+
+function coreObservations(tx) {
+  return {
+    schema:'omegavault.bitcoin.core-cross-check-observations.v1',
+    node:{chain:'signet',version:310100,subversion:'/Satoshi:31.1.0/',protocolVersion:70016},
+    decodedTransaction:{
+      txid:tx.txid,hash:tx.wtxid,size:tx.bytes,vsize:tx.virtualBytes,weight:tx.weight,
+      version:2,locktime:0,
+      vin:tx.finalizerEvidence.inputs.map((input,i)=>({
+        txid:input.txid,vout:input.vout,sequence:input.sequence,
+        scriptSig:{hex:''},txinwitness:tx.witnesses[i].stackItems
+      })),
+      vout:tx.finalizerEvidence.outputs.map((output,i)=>({
+        value:(Number(output.amountSats)/100000000).toFixed(8),
+        n:i,scriptPubKey:{hex:output.scriptPubKey}
+      }))
+    },
+    mempoolResult:{
+      txid:tx.txid,wtxid:tx.wtxid,allowed:true,vsize:tx.virtualBytes,
+      fees:{base:'0.00001000','effective-feerate':'0.00005000','effective-includes':[tx.wtxid]}
+    }
+  };
+}
+
+test('offline preparation can feed the existing read-only Bitcoin Core import CLI directly',()=>{
+  const f=workspace();
+  try {
+    const prepared=execute(args(f));
+    assert.equal(prepared.status,0,prepared.stderr);
+    const artifact=JSON.parse(readFileSync(f.output,'utf8'));
+    const observations=join(f.dir,'core-observations.json');
+    const coreOutput=join(f.dir,'core-evidence.json');
+    writeFileSync(observations,JSON.stringify(coreObservations(artifact.transaction)));
+    const imported=spawnSync(process.execPath,[
+      'scripts/verify-bitcoin-core-cross-check.js',
+      '--transaction',f.output,'--observations',observations,'--output',coreOutput
+    ],{cwd:process.cwd(),encoding:'utf8'});
+    assert.equal(imported.status,0,imported.stderr);
+    const evidence=JSON.parse(readFileSync(coreOutput,'utf8'));
+    assert.equal(evidence.txid,artifact.transaction.txid);
+    assert.equal(evidence.observationSource,'imported-json');
+    assert.equal(evidence.bitcoinCoreCrossCheckProven,false);
+    assert.equal(evidence.broadcastAuthorized,false);
+    assert.equal(evidence.signetExecutionProven,false);
+  } finally { rmSync(f.dir,{recursive:true,force:true}); }
+});
+
+test('Core import rejects tampered prepared artifacts without creating evidence',()=>{
+  const f=workspace();
+  try {
+    assert.equal(execute(args(f)).status,0);
+    const artifact=JSON.parse(readFileSync(f.output,'utf8'));
+    const observations=join(f.dir,'core-observations.json'),coreOutput=join(f.dir,'core-evidence.json');
+    writeFileSync(observations,JSON.stringify(coreObservations(artifact.transaction)));
+    const importArgs=[
+      'scripts/verify-bitcoin-core-cross-check.js','--transaction',f.output,
+      '--observations',observations,'--output',coreOutput
+    ];
+    for(const edit of [
+      a=>{a.readyForBroadcast=true;},
+      a=>{a.operatorExpectedFeeSats='999';},
+      a=>{a.finalTransactionEvidence.txid='00'.repeat(32);},
+      a=>{a.transaction.rawHex=a.transaction.rawHex.slice(0,-2)+'00';}
+    ]){
+      const modified=structuredClone(artifact);
+      edit(modified);
+      writeFileSync(f.output,JSON.stringify(modified));
+      const result=spawnSync(process.execPath,importArgs,{cwd:process.cwd(),encoding:'utf8'});
+      assert.notEqual(result.status,0);
+      assert.equal(existsSync(coreOutput),false);
+    }
+  } finally { rmSync(f.dir,{recursive:true,force:true}); }
+});
