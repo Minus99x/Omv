@@ -1,5 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+
+import { createHash } from 'node:crypto';
+
+function canonicalForTest(value) {
+  if (Array.isArray(value)) return value.map(canonicalForTest);
+  if (value && typeof value === 'object')
+    return Object.fromEntries(Object.keys(value).sort().map(k=>[k,canonicalForTest(value[k])]));
+  return value;
+}
+function rehashReceipt(receipt, edit) {
+  const modified=structuredClone(receipt);
+  edit(modified);
+  const {sha256:_old,...core}=modified;
+  return {...core,sha256:createHash('sha256').update(JSON.stringify(canonicalForTest(core))).digest('hex')};
+}
+
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { createBitcoinRecoveryDescriptor } from '../src/chains/bitcoin/descriptor.js';
 import { createBitcoinWitnessV0Sighash, encodePsbtV2 } from '../src/chains/bitcoin/psbt-v2.js';
@@ -308,4 +324,65 @@ test('tampered Bitcoin Core cross-check evidence fails closed', () => {
   const evidence = structuredClone(createBitcoinCoreCrossCheckEvidence({ transaction:tx, ...input }));
   evidence.node.version = 310000;
   assert.equal(verifyBitcoinCoreCrossCheckEvidence({ evidence, transaction:tx, ...input }).ok, false);
+});
+
+
+test('Bitcoin Core receipt chain rejects digest-rewritten authority inflation for every restricted capability',()=>{
+  const tx=transaction(), input=observations(tx);
+  const authentic=createBitcoinCoreCrossCheckEvidence({
+    transaction:tx,...input,observationSource:'offline-fixture',
+    observationContext:context(1,'2026-10-07T05:20:00Z')
+  });
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([authentic]).ok,true);
+  for(const flag of ['broadcastAuthorized','broadcastPerformed','signetExecutionProven','chainPromotionAuthority']){
+    const forged=rehashReceipt(authentic,receipt=>{receipt[flag]=true;});
+    const result=verifyBitcoinCoreCrossCheckEvidenceChain([forged]);
+    assert.equal(result.ok,false,flag+' must reject even with a matching rewritten SHA-256');
+    assert.ok(result.errors.some(error=>error.includes(flag)));
+  }
+});
+
+test('Bitcoin Core receipt chain rejects digest-rewritten proof and fee flag elevation',()=>{
+  const tx=transaction(),input=observations(tx);
+  const imported=createBitcoinCoreCrossCheckEvidence({
+    transaction:tx,...input,observationSource:'imported-json',
+    observationContext:context(1,'2026-10-07T05:20:00Z')
+  });
+  const promoted=rehashReceipt(imported,receipt=>{receipt.bitcoinCoreCrossCheckProven=true;});
+  const rejected=verifyBitcoinCoreCrossCheckEvidenceChain([promoted]);
+  assert.equal(rejected.ok,false);
+  assert.ok(rejected.errors.some(error=>/forged Bitcoin Core cross-check provenance/.test(error)));
+  const mixedFees=rehashReceipt(imported,receipt=>{receipt.mempool.feeDiagnosticsBound=false;});
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([mixedFees]).ok,false);
+  const falseDecoded=rehashReceipt(imported,receipt=>{receipt.decodedTransactionMatches=false;});
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([falseDecoded]).ok,false);
+});
+
+test('Bitcoin Core receipt chain rejects digest-rewritten network/provenance and missing genesis sequence',()=>{
+  const tx=transaction(), input=observations(tx);
+  const first=createBitcoinCoreCrossCheckEvidence({
+    transaction:tx,...input,observationSource:'bitcoin-core-rpc',
+    observationContext:context(1,'2026-10-07T05:20:00Z')
+  });
+  for(const edit of [
+    receipt=>{receipt.networkRef='bitcoin:mainnet';},
+    receipt=>{receipt.node.chain='main';},
+    receipt=>{receipt.observationSource='unverified-rpc';},
+    receipt=>{receipt.observationContext.sequence=7;}
+  ]){
+    const forged=rehashReceipt(first,edit);
+    assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([forged]).ok,false);
+  }
+  const second=createBitcoinCoreCrossCheckEvidence({
+    transaction:tx,...input,observationSource:'bitcoin-core-rpc',
+    observationContext:context(2,'2026-10-07T05:21:00Z',first.sha256)
+  });
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([first,second]).ok,true);
+  const forgedFirst=rehashReceipt(first,receipt=>{receipt.signetExecutionProven=true;});
+  const relinkedSecond=rehashReceipt(second,receipt=>{
+    receipt.observationContext.previousEvidenceSha256=forgedFirst.sha256;
+  });
+  const result=verifyBitcoinCoreCrossCheckEvidenceChain([forgedFirst,relinkedSecond]);
+  assert.equal(result.ok,false,'coordinated receipt rehash and predecessor rewrite must still fail');
+  assert.ok(result.errors.some(error=>/signetExecutionProven/.test(error)));
 });
