@@ -107,6 +107,8 @@ export function validateXdcFinalityRpcObservation(observation) {
   const observedSeconds = BigInt(observedMs / 1000);
   const receiptStamp = freshAtObservedTime(observation.receiptBlock.timestamp,observedSeconds,'receiptBlock.timestamp');
   const finalizedStamp = freshAtObservedTime(observation.finalizedBlock.timestamp,observedSeconds,'finalizedBlock.timestamp');
+  if (finalizedHeight === receiptHeight && receiptStamp !== finalizedStamp)
+    throw new Error('XDC identical inclusion and finalized block must have identical timestamps');
   if (receiptStamp > finalizedStamp)
     throw new Error('XDC receipt block timestamp cannot follow finalized block timestamp');
   for(const key of ['receiptInclusionCrossChecked','finalizedTagCrossChecked',
