@@ -59,8 +59,8 @@ function provider(options = {}) {
         if (blockCounts.get(k) === 2 && idx===0 && options.inclusionReorg) result.hash=OTHER;
       } else if (tag === 'finalized') {
         result = { number: idx===1 ? (options.finalHeightSecond ?? '0x2b') : (options.finalHeightFirst ?? '0x2b'),
-          hash: idx===1 ? (options.finalHashSecond ?? FINAL_BLOCK) : FINAL_BLOCK,
-          timestamp: idx===1 ? (options.finalTimestampSecond ?? TIME) : TIME };
+          hash: idx===1 ? (options.finalHashSecond ?? FINAL_BLOCK) : (options.finalHashFirst ?? FINAL_BLOCK),
+          timestamp: idx===1 ? (options.finalTimestampSecond ?? TIME) : (options.finalTimestampFirst ?? TIME) };
       } else if (tag === '0x2b') {
         result = { number:'0x2b',hash:idx===0 && options.finalReorg ? OTHER : FINAL_BLOCK,
           timestamp:TIME };
@@ -270,4 +270,22 @@ test('read-only XDC RPC probe rejects all-zero transaction and block hashes befo
   await rejects({receiptHashSecond:zero},/all-zero hash/);
   await rejects({inclusionHashSecond:zero},/all-zero hash/);
   await rejects({finalHashSecond:zero},/all-zero hash/);
+});
+
+
+test('XDC read-only observer rejects finalized block hash reuse across different heights before emitting evidence',async()=>{
+  await rejects({finalHashFirst:RECEIPT_BLOCK,finalHashSecond:RECEIPT_BLOCK},/reuses receipt block hash at a different height/);
+});
+
+test('XDC read-only observer enforces same-height finalized block identity and timestamp',async()=>{
+  const sameHeight={finalHeightFirst:'0x2a',finalHeightSecond:'0x2a',
+    finalHashFirst:RECEIPT_BLOCK,finalHashSecond:RECEIPT_BLOCK};
+  await rejects({...sameHeight,finalTimestampFirst:'0x6553f101',finalTimestampSecond:'0x6553f101'},/same-height finalized and inclusion block timestamps disagree/);
+  await rejects({finalHeightFirst:'0x2a',finalHeightSecond:'0x2a'},/finalized head contradicts receipt block/);
+  const {report}=await observe(sameHeight);
+  assert.equal(report.finalizedBlock.number,report.receiptBlock.number);
+  assert.equal(report.finalizedBlock.hash,report.receiptBlock.hash);
+  assert.equal(report.finalizedBlock.timestamp,report.receiptBlock.timestamp);
+  assert.equal(report.rpcAuthenticated,undefined);
+  assert.equal(report.readyForLiveProofPromotion,false);
 });
