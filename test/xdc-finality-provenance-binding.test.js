@@ -216,3 +216,17 @@ test('XDC identical finalized and inclusion blocks require matching timestamps e
   assert.throws(()=>validateXdcFinalityRpcObservation(contradictory),/identical timestamps/);
   assert.throws(()=>createXdcProvenanceBoundFinality({observation:contradictory,proof:proof(),kind:'native-recovery'}),/identical timestamps/);
 });
+
+
+test('XDC rejects reused block hashes at distinct heights even after checksum rewrite for both recovery kinds',()=>{
+  const o=observation();
+  const forged=rehash(o,{
+    finalizedBlock:{...o.finalizedBlock,hash:o.receiptBlock.hash}
+  });
+  assert.throws(()=>validateXdcFinalityRpcObservation(forged),/different-height finalized block cannot reuse/);
+  for (const kind of ['native-recovery','erc20-recovery']) {
+    assert.throws(()=>createXdcProvenanceBoundFinality({observation:forged,proof:proof(kind),kind}),/different-height finalized block cannot reuse/);
+  }
+  const validSameHeight=rehash(o,{finalizedBlock:{...o.receiptBlock}});
+  assert.equal(validateXdcFinalityRpcObservation(validSameHeight).claimsConsistent,true);
+});
