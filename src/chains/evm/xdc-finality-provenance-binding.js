@@ -46,6 +46,8 @@ function decimal(value, label) {
 function hash(value,label) {
   if (typeof value !== 'string' || !HEX_HASH.test(value))
     throw new TypeError(label + ' must be lower-case 32-byte hex');
+  if (/^0x0{64}$/.test(value))
+    throw new Error(label + ' cannot be an all-zero hash');
   return value;
 }
 function flag(value,expected,label) {
