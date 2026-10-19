@@ -202,3 +202,17 @@ test('XDC rejects all-zero transaction and block hashes even with a rewritten ob
     assert.throws(()=>createXdcProvenanceBoundFinality({observation:forged,proof:proof(),kind:'native-recovery'}),/all-zero hash/);
   }
 });
+
+
+test('XDC identical finalized and inclusion blocks require matching timestamps even after checksum rewrite',()=>{
+  const o=observation();
+  const sameBlock=rehash(o,{
+    finalizedBlock:{...o.receiptBlock}
+  });
+  assert.equal(validateXdcFinalityRpcObservation(sameBlock).claimsConsistent,true);
+  const contradictory=rehash(sameBlock,{
+    finalizedBlock:{...sameBlock.finalizedBlock,timestamp:'0x6553f101'}
+  });
+  assert.throws(()=>validateXdcFinalityRpcObservation(contradictory),/identical timestamps/);
+  assert.throws(()=>createXdcProvenanceBoundFinality({observation:contradictory,proof:proof(),kind:'native-recovery'}),/identical timestamps/);
+});
