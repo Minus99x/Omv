@@ -282,6 +282,13 @@ export function decodePsbtV2(encoded) {
   });
 }
 
+/** Validate externally supplied decoded PSBT objects before any recovery processing. */
+function readPsbtForRecovery(psbt) {
+  const decoded = readPsbtForRecovery(psbt);
+  assertDistinctOutpoints(decoded.inputs);
+  return decoded;
+}
+
 function serializeOutpoint(input) {
   return Buffer.concat([Buffer.from(input.txid, 'hex').reverse(), u32le(input.vout)]);
 }
@@ -292,7 +299,7 @@ function serializeOutput(output) {
 }
 
 export function createBitcoinWitnessV0Sighash({ psbt, inputIndex }) {
-  const decoded = typeof psbt?.psbtVersion === 'number' ? psbt : decodePsbtV2(psbt);
+  const decoded = readPsbtForRecovery(psbt);
   if (!Number.isInteger(inputIndex) || inputIndex < 0 || inputIndex >= decoded.inputs.length) throw new TypeError('inputIndex is outside the PSBT input set.');
   const input = decoded.inputs[inputIndex];
   const hashPrevouts = hash256(Buffer.concat(decoded.inputs.map(serializeOutpoint)));
@@ -308,7 +315,7 @@ export function createBitcoinWitnessV0Sighash({ psbt, inputIndex }) {
 }
 
 export function verifyPsbtV2RecoverySignature({ psbt, inputIndex, publicKey, allowedPublicKeys = null }) {
-  const decoded = typeof psbt?.psbtVersion === 'number' ? psbt : decodePsbtV2(psbt);
+  const decoded = readPsbtForRecovery(psbt);
   const normalizedKey = assertHex(publicKey, 'publicKey');
   if (!COMPRESSED_KEY.test(normalizedKey)) throw new TypeError('publicKey must be compressed secp256k1.');
   if (Array.isArray(allowedPublicKeys) && !allowedPublicKeys.map(key => String(key).toLowerCase()).includes(normalizedKey)) throw new Error('Partial signature key is not an allowed recovery contact.');
@@ -323,7 +330,7 @@ export function verifyPsbtV2RecoverySignature({ psbt, inputIndex, publicKey, all
 }
 
 export function verifyPsbtV2RecoveryThreshold({ psbt, inputIndex, requiredPublicKeys, threshold }) {
-  const decoded = typeof psbt?.psbtVersion === 'number' ? psbt : decodePsbtV2(psbt);
+  const decoded = readPsbtForRecovery(psbt);
   if (!Array.isArray(requiredPublicKeys) || !requiredPublicKeys.length) throw new TypeError('requiredPublicKeys must be a non-empty array.');
   const allowed = requiredPublicKeys.map((key, index) => {
     const normalized = assertHex(key, `requiredPublicKeys[${index}]`);
@@ -394,7 +401,7 @@ function validateRecoverySequence({ txVersion, sequence, csvBlocks, inputIndex }
  * construct a different valid spend outside OmegaVault after the CSV delay.
  */
 export function finalizePsbtV2RecoveryTransaction({ psbt, descriptor, rescueScriptPubKey, expectedFeeSats }) {
-  const decoded = typeof psbt?.psbtVersion === 'number' ? psbt : decodePsbtV2(psbt);
+  const decoded = readPsbtForRecovery(psbt);
   if (!descriptor || typeof descriptor !== 'object') throw new TypeError('Bitcoin recovery descriptor is required.');
   if (!Array.isArray(descriptor.contactKeys) || !descriptor.contactKeys.length) throw new TypeError('Descriptor contactKeys are required.');
   if (!Number.isInteger(descriptor.threshold) || descriptor.threshold < 1 || descriptor.threshold > descriptor.contactKeys.length) throw new TypeError('Descriptor threshold is invalid.');
