@@ -58,3 +58,26 @@ test('XDC read-only probe rejects unexpected response URL and omits credentials 
   assert.equal(calls[0].options.redirect,'error');
   assert.equal(calls[0].options.credentials,'omit');
 });
+
+test('XDC accepts explicit pinned response URLs for all four read-only methods',async()=>{
+  const mocked=transport();
+  const fetchImpl=async(url,options)=>({
+    ...await mocked.fetch(url,options),
+    url:URL
+  });
+  const result=await probeXdcApothemReadOnly({fetchImpl});
+  assert.equal(result.readOnly,true);
+  assert.deepEqual(mocked.calls.map(call=>call.method),[
+    'eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_gasPrice'
+  ]);
+});
+
+test('XDC rejects malformed RPC response URLs before parsing their JSON',async()=>{
+  let parsed=false;
+  const fetchImpl=async()=>({
+    url:'not a valid absolute URL',ok:true,
+    async json(){parsed=true;return {jsonrpc:'2.0',id:1,result:'0x33'};}
+  });
+  await assert.rejects(probeXdcApothemReadOnly({fetchImpl}),/Invalid URL|Invalid URL string/i);
+  assert.equal(parsed,false);
+});
