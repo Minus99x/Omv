@@ -258,3 +258,16 @@ test('Apothem finality observation rejects redirected response identity without 
     transactionHash:TX,fetchImpl:redirecting,nowSeconds:NOW
   }),/redirected outside pinned endpoint/);
 });
+
+
+test('read-only XDC RPC probe rejects all-zero transaction and block hashes before reporting evidence',async()=>{
+  const zero='0x'+'00'.repeat(32);
+  const driver=provider();
+  await assert.rejects(observeApothemFinalityProvenance({
+    transactionHash:zero,fetchImpl:driver.fetchImpl,nowSeconds:NOW
+  }),/all-zero hash/);
+  assert.equal(driver.calls.length,0);
+  await rejects({receiptHashSecond:zero},/all-zero hash/);
+  await rejects({inclusionHashSecond:zero},/all-zero hash/);
+  await rejects({finalHashSecond:zero},/all-zero hash/);
+});
