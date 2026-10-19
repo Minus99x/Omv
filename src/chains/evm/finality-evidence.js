@@ -107,6 +107,9 @@ export function createEvmBlockFinalityEvidence({
     if (finalizedBlockNumber === receiptBlockNumber && finalizedBlockHash !== receiptBlockHash) {
       throw new Error('Finalized head hash contradicts recovery receipt block.');
     }
+    if (finalizedBlockNumber !== receiptBlockNumber && finalizedBlockHash === receiptBlockHash) {
+      throw new Error('Finalized head reuses receipt block hash at a different height.');
+    }
     method = 'finalized-tag';
   } else if (confirmationsRequired > 0) {
     if (!latestBlock) throw new Error('This EVM finality policy requires a latest-block observation for confirmation counting.');
@@ -172,7 +175,8 @@ export function evmFinalityMatchesProof(evidence, proof, { networkId, kind }) {
       if (evidence.method !== 'finalized-tag') return false;
       const height = quantity(evidence.finality?.finalizedBlockNumber, 'finalizedBlockNumber');
       const hash = normalizeHash(evidence.finality?.finalizedBlockHash, 'finalizedBlockHash');
-      if (height < receiptHeight || (height === receiptHeight && hash !== evidence.receipt.blockHash)) return false;
+      if (height < receiptHeight || (height === receiptHeight && hash !== evidence.receipt.blockHash) ||
+          (height !== receiptHeight && hash === evidence.receipt.blockHash)) return false;
     } else {
       const required = Number(policy.target?.confirmations ?? 0);
       if (!Number.isSafeInteger(required) || required < 1 || evidence.method !== 'confirmations') return false;
