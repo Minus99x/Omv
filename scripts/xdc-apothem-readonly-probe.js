@@ -38,7 +38,7 @@ export async function probeXdcApothemReadOnly({fetchImpl=globalThis.fetch}={}){
       redirect:'error',credentials:'omit',
       signal:AbortSignal.timeout(15000)
     });
-    if(typeof response?.url==='string' && new URL(response.url).href!==new URL(URL).href)
+    if(typeof response?.url==='string' && new globalThis.URL(response.url).href!==new globalThis.URL(URL).href)
       throw new Error('Apothem read-only RPC response redirected outside pinned endpoint.');
     if(response?.ok!==true)throw new Error('Apothem RPC returned HTTP '+String(response?.status??'unknown')+'.');
     let body;
