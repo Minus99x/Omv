@@ -31,7 +31,7 @@ function fixtures(signers = signerKeys) {
     publicKey:pub(key),
     signature:Buffer.from(secp256k1.sign(digest,key,{prehash:false,lowS:true,format:'der'})).toString('hex')+'01'
   }));
-  const psbt=encodePsbtV2({...intent,inputs:[{...intent.inputs[0],partialSignatures}]});
+  const psbt=encodePsbtV2({...intent,inputs:[{...intent.inputs[0],partialSignatures}]}).toString('base64');
   return {descriptor,psbt};
 }
 
