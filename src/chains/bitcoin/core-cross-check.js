@@ -236,6 +236,36 @@ export function verifyBitcoinCoreCrossCheckEvidence({ evidence, ...inputs }) {
   }
 }
 
+// A checksum alone cannot authenticate authority flags. Re-derive them from
+// the receipt's restricted source class and normalized mempool diagnostics.
+function validateChainedCoreAuthority(evidence, index, errors) {
+  const prefix = `Evidence ${index}`;
+  if (evidence.chainId !== 'bitcoin' || evidence.networkRef !== 'bitcoin:signet' ||
+      evidence.node?.chain !== 'signet') {
+    errors.push(`${prefix} has invalid Signet network identity.`);
+  }
+  const source = evidence.observationSource;
+  if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(source)) {
+    errors.push(`${prefix} has unsupported observation provenance.`);
+  }
+  for (const key of ['signetExecutionProven', 'broadcastPerformed', 'broadcastAuthorized', 'chainPromotionAuthority']) {
+    if (evidence[key] !== false) errors.push(`${prefix} has unauthorized ${key} authority flag.`);
+  }
+  if (evidence.decodedTransactionMatches !== true) {
+    errors.push(`${prefix} does not assert a verified decoded transaction match.`);
+  }
+  const allowed = evidence.mempool?.allowed;
+  const bound = evidence.mempool?.feeDiagnosticsBound;
+  if (typeof allowed !== 'boolean' || typeof bound !== 'boolean' ||
+      evidence.feeDiagnosticsBound !== bound || (bound && !allowed)) {
+    errors.push(`${prefix} has inconsistent mempool fee diagnostics.`);
+  }
+  const proven = source === 'bitcoin-core-rpc' && allowed === true && bound === true;
+  if (evidence.bitcoinCoreCrossCheckProven !== proven) {
+    errors.push(`${prefix} has forged Bitcoin Core cross-check provenance.`);
+  }
+}
+
 export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null, maxAgeMs = null } = {}) {
   const errors = [];
   if (!Array.isArray(evidences) || !evidences.length) return Object.freeze({ ok:false, errors:Object.freeze(['Bitcoin Core evidence chain must be a non-empty array.']) });
@@ -253,6 +283,7 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
     try { normalizedSha = sha256Hex(evidenceSha256, `evidence[${index}].sha256`); }
     catch (error) { errors.push(String(error.message || error)); return; }
     if (normalizedSha !== digest(core)) errors.push(`Evidence ${index} digest is invalid.`);
+    validateChainedCoreAuthority(evidence,index,errors);
     if (seen.has(normalizedSha)) errors.push(`Evidence ${index} replays a previously observed receipt.`);
     seen.add(normalizedSha);
 
@@ -289,8 +320,11 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
       if (context.sequence !== previousContext.sequence + 1) errors.push(`Evidence ${index} observation sequence is reordered or non-contiguous.`);
       if (context.previousEvidenceSha256 !== previous.sha256) errors.push(`Evidence ${index} previousEvidenceSha256 does not bind the preceding receipt.`);
       if (Date.parse(context.observedAt) <= Date.parse(previousContext.observedAt)) errors.push(`Evidence ${index} observation timestamp is stale or reordered.`);
-    } else if (context.previousEvidenceSha256 !== null) {
-      errors.push('First Bitcoin Core evidence receipt must not claim a predecessor.');
+    } else {
+      if (context.sequence !== 1) errors.push('First Bitcoin Core evidence receipt must begin at sequence 1.');
+      if (context.previousEvidenceSha256 !== null) {
+        errors.push('First Bitcoin Core evidence receipt must not claim a predecessor.');
+      }
     }
     previous = { ...evidence, observationContext:context };
   });
