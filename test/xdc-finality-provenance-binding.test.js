@@ -185,3 +185,20 @@ test('a rewritten observation and checksum never authenticate that a provider re
   assert.equal(bundle.authenticatedConsensusCertificate,false);
   assert.equal(bundle.readyForLiveProofPromotion,false);
 });
+
+
+test('XDC rejects all-zero transaction and block hashes even with a rewritten observation checksum',()=>{
+  const o=observation();
+  const zero='0x'+'00'.repeat(32);
+  for(const changed of [
+    {transactionHash:zero},
+    {receipt:{...o.receipt,transactionHash:zero}},
+    {receipt:{...o.receipt,blockHash:zero}},
+    {receiptBlock:{...o.receiptBlock,hash:zero}},
+    {finalizedBlock:{...o.finalizedBlock,hash:zero}}
+  ]) {
+    const forged=rehash(o,changed);
+    assert.throws(()=>validateXdcFinalityRpcObservation(forged),/all-zero hash/);
+    assert.throws(()=>createXdcProvenanceBoundFinality({observation:forged,proof:proof(),kind:'native-recovery'}),/all-zero hash/);
+  }
+});
