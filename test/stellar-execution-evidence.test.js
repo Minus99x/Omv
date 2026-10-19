@@ -43,7 +43,11 @@ function fixture() {
     artifact,
     signedTransactionXdr: transaction.toXdr(),
     accountSnapshot,
-    submission: { includedInLedger: true, successful: true, resultCode: 'txSUCCESS' },
+    submission: {
+      includedInLedger: true, successful: true, resultCode: 'txSUCCESS',
+      transactionHashHex: artifact.transactionHashHex,
+      ledger: '123456', observedAt: '2026-10-04T16:59:59.000Z'
+    },
     finalityObservation
   };
 }
@@ -59,6 +63,11 @@ test('Stellar recovery execution evidence binds signed envelope, preflight, subm
   assert.deepEqual(result.evidence.verifiedContactSigners, [G(3), G(4)]);
   assert.equal(result.evidence.preflight.ready, true);
   assert.equal(result.evidence.submission.preAuthSignerConsumed, true);
+  assert.equal(result.evidence.submission.transactionHashHex, input.artifact.transactionHashHex);
+  assert.equal(result.evidence.submission.ledger, '123456');
+  assert.equal(result.checks.submissionTransactionIdentityMatches, true);
+  assert.equal(result.checks.submissionLedgerMatchesFinality, true);
+  assert.equal(result.checks.submissionPrecedesFinality, true);
   assert.equal(result.evidence.finality.evidence.ledger, 123456);
   assert.match(result.evidence.signedEnvelopeSha256, /^[0-9a-f]{64}$/);
   assert.match(result.evidence.preflight.snapshotSha256, /^[0-9a-f]{64}$/);
@@ -148,9 +157,74 @@ test('Stellar execution evidence preserves valid canonical success and fee-bump 
   for (const code of ['txSUCCESS', 'txFEE_BUMP_INNER_SUCCESS']) {
     const result = createStellarRecoveryExecutionEvidence({
       ...input,
-      submission: { includedInLedger: true, successful: true, resultCode: code }
+      submission: {
+        ...input.submission,
+        resultCode: code,
+        ...(code === 'txFEE_BUMP_INNER_SUCCESS'
+          ? { transactionHashHex: 'aa'.repeat(32),
+              innerTransactionHashHex: input.artifact.transactionHashHex }
+          : {})
+      }
     });
     assert.equal(result.ok, true, code);
     assert.equal(result.checks.submissionResultCodeMatchesOutcome, true);
   }
+});
+
+test('Stellar execution evidence rejects success whose submission identifies another transaction', () => {
+  const input = fixture();
+  const result = createStellarRecoveryExecutionEvidence({
+    ...input, submission: { ...input.submission, transactionHashHex: 'bb'.repeat(32) }
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.checks.submissionTransactionIdentityMatches, false);
+});
+
+test('Stellar execution evidence rejects missing, inconsistent or noncanonical submission ledgers', () => {
+  const input = fixture();
+  for (const ledger of [undefined, '123455', '0123456', '123457', '123456.0', 'not-a-ledger']) {
+    const result = createStellarRecoveryExecutionEvidence({
+      ...input, submission: { ...input.submission, ledger }
+    });
+    assert.equal(result.ok, false, String(ledger));
+    assert.equal(result.checks.submissionLedgerMatchesFinality, false, String(ledger));
+  }
+});
+
+test('Stellar execution evidence rejects future, missing and malformed submission observation times', () => {
+  const input = fixture();
+  for (const observedAt of [undefined, 'not-a-time', '2026-10-04T17:00:01.000Z',
+    '2026-10-04T17:00:00', '2026-13-04T16:00:00.000Z']) {
+    const result = createStellarRecoveryExecutionEvidence({
+      ...input, submission: { ...input.submission, observedAt }
+    });
+    assert.equal(result.ok, false, String(observedAt));
+    assert.equal(result.checks.submissionPrecedesFinality, false, String(observedAt));
+  }
+});
+
+test('Stellar fee-bump evidence rejects wrong or absent inner hash and disguised outer transaction', () => {
+  const input = fixture();
+  for (const variation of [
+    { transactionHashHex: 'aa'.repeat(32), innerTransactionHashHex: 'bb'.repeat(32) },
+    { transactionHashHex: 'aa'.repeat(32), innerTransactionHashHex: undefined },
+    { transactionHashHex: input.artifact.transactionHashHex,
+      innerTransactionHashHex: input.artifact.transactionHashHex }
+  ]) {
+    const result = createStellarRecoveryExecutionEvidence({
+      ...input, submission: { ...input.submission, resultCode: 'txFEE_BUMP_INNER_SUCCESS',
+        ...variation }
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.checks.submissionTransactionIdentityMatches, false);
+  }
+});
+
+test('Stellar execution evidence rejects absent submission hash even with valid finality hash', () => {
+  const input = fixture();
+  const { transactionHashHex: _ignored, ...missingIdentity } = input.submission;
+  const result = createStellarRecoveryExecutionEvidence({ ...input, submission: missingIdentity });
+  assert.equal(result.ok, false);
+  assert.equal(result.checks.finalityTransactionRefMatches, true);
+  assert.equal(result.checks.submissionTransactionIdentityMatches, false);
 });

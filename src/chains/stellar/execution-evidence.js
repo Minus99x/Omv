@@ -28,6 +28,18 @@ function normalizeTransactionHash(value) {
   return /^[0-9a-f]{64}$/.test(normalized) ? normalized : null;
 }
 
+function submissionObservedAtMilliseconds(value) {
+  if (typeof value !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) return NaN;
+  const milliseconds = Date.parse(value);
+  return Number.isFinite(milliseconds) ? milliseconds : NaN;
+}
+
+function canonicalSubmissionLedger(value) {
+  const text = typeof value === 'number' || typeof value === 'string' ? String(value) : '';
+  return /^[1-9]\d*$/.test(text) ? text : null;
+}
+
 function normalizeSnapshot(snapshot) {
   const signers = Array.isArray(snapshot?.signers)
     ? snapshot.signers.map(signer => Object.freeze({
@@ -83,12 +95,29 @@ export function createStellarRecoveryExecutionEvidence({
   const finalityEvidenceHash = normalizeTransactionHash(finalityObservation?.evidence?.transactionHash);
   const ledger = finalityObservation?.evidence?.ledger;
   const ledgerPresent = Number.isSafeInteger(ledger) && ledger > 0;
+  const reportedSubmissionHash = normalizeTransactionHash(submission.transactionHashHex);
+  const reportedInnerHash = normalizeTransactionHash(submission.innerTransactionHashHex);
+  const feeBumpSuccess = assessedSubmission.resultCode === 'txFEE_BUMP_INNER_SUCCESS';
+  // A fee-bump has a distinct outer hash; the inner hash identifies the
+  // exact signed recovery envelope. Both must be bound to the observation.
+  const submissionIdentityMatches = feeBumpSuccess
+    ? reportedSubmissionHash !== null &&
+      reportedSubmissionHash !== expectedTransactionHash &&
+      reportedInnerHash === expectedTransactionHash
+    : reportedSubmissionHash === expectedTransactionHash;
+  const submissionLedger = canonicalSubmissionLedger(submission.ledger);
+  const submissionTime = submissionObservedAtMilliseconds(submission.observedAt);
+  const finalityTime = submissionObservedAtMilliseconds(finalityObservation.observedAt);
 
   const checks = Object.freeze({
     signedEnvelopeValid: signed.valid === true,
     accountPreflightReady: preflight.ready === true,
     submissionIncluded: submission.includedInLedger === true,
     submissionSuccessful: submission.successful === true,
+    submissionTransactionIdentityMatches: submissionIdentityMatches,
+    submissionLedgerMatchesFinality: ledgerPresent && submissionLedger === String(ledger),
+    submissionPrecedesFinality: Number.isFinite(submissionTime) &&
+      Number.isFinite(finalityTime) && submissionTime <= finalityTime,
     // A success flag alone must never override a contradictory Horizon
     // transaction result code. An applied failure can consume preAuthTx.
     submissionResultCodeMatchesOutcome: submission.successful === true
@@ -128,6 +157,10 @@ export function createStellarRecoveryExecutionEvidence({
       includedInLedger: submission.includedInLedger,
       successful: submission.successful,
       resultCode: assessedSubmission.resultCode,
+      transactionHashHex: reportedSubmissionHash,
+      innerTransactionHashHex: reportedInnerHash,
+      ledger: submissionLedger,
+      observedAt: submission.observedAt ?? null,
       preAuthSignerConsumed: assessedSubmission.preAuthSignerConsumed,
       retrySameEnvelope: assessedSubmission.retrySameEnvelope,
       action: assessedSubmission.action
