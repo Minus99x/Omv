@@ -98,6 +98,8 @@ export function validateXdcFinalityRpcObservation(observation) {
     throw new Error('XDC finalized head is incompatible with inclusion and provider heads');
   if (finalizedHeight===receiptHeight && finalizedHash!==receiptHash)
     throw new Error('XDC same-height finalized hash contradicts receipt');
+  if (finalizedHeight!==receiptHeight && finalizedHash===receiptHash)
+    throw new Error('XDC different-height finalized block cannot reuse receipt block hash');
   if (typeof observation.observedAt !== 'string' ||
       !Number.isFinite(Date.parse(observation.observedAt)) ||
       new Date(observation.observedAt).toISOString() !== observation.observedAt)
