@@ -45,3 +45,16 @@ test('XDC Apothem probe rejects unavailable transport or malformed numeric obser
  const mocked=transport({gas:'0x-1'});
  await assert.rejects(probeXdcApothemReadOnly({fetchImpl:mocked.fetch}),/canonical hex quantity/);
 });
+
+test('XDC read-only probe rejects unexpected response URL and omits credentials and redirects',async()=>{
+  const calls=[];
+  const fetchImpl=async(url,options)=>{
+    calls.push({url,options});
+    return {url:'https://untrusted.example/rpc',ok:true,async json(){return {jsonrpc:'2.0',id:1,result:'0x33'};}};
+  };
+  await assert.rejects(probeXdcApothemReadOnly({fetchImpl}),/redirected outside pinned endpoint/);
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].url,URL);
+  assert.equal(calls[0].options.redirect,'error');
+  assert.equal(calls[0].options.credentials,'omit');
+});
