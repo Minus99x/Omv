@@ -20,6 +20,8 @@ const ALLOWED = new Set(['eth_chainId','eth_blockNumber','eth_getTransactionRece
 function hash(value, label) {
   if (typeof value !== 'string' || !HASH.test(value))
     throw new TypeError(label + ' must be a 32-byte hex hash');
+  if (/^0x0{64}$/i.test(value))
+    throw new Error(label + ' cannot be an all-zero hash');
   return value.toLowerCase();
 }
 function quantity(value, label) {
