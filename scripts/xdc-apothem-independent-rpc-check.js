@@ -36,7 +36,7 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,now
     } catch (error) {
       throw new Error('Apothem RPC transport unavailable at '+endpoint+' for '+method+': '+String(error?.message??error));
     }
-    if(typeof response?.url==='string' && new URL(response.url).href!==new URL(endpoint).href)throw Error('Apothem RPC response redirected outside pinned endpoint');
+    if(response?.redirected===true || (typeof response?.url==='string' && response.url && new URL(response.url).href!==new URL(endpoint).href))throw Error('Apothem RPC response redirected outside pinned endpoint');
     if(response?.ok!==true)throw new Error('Apothem provider HTTP status '+String(response?.status??'unknown'));
     let body;try{body=await response.json();}catch{throw Error('Apothem provider invalid JSON');}
     if(body?.jsonrpc!=='2.0'||body.id!==id||Object.hasOwn(body,'error')||!Object.hasOwn(body,'result'))throw Error('Apothem provider malformed response');
