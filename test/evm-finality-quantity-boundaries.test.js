@@ -52,3 +52,22 @@ test('EVM finalized-tag builder accepts distinct canonical block hashes', () => 
   assert.equal(evidence.finality.finalizedBlockHash, FINALIZED_HASH);
   assert.equal(evidence.status, 'finalized');
 });
+
+test('EVM finalized-tag builder accepts matching hash at receipt height despite letter case', () => {
+  const mixedHash = '0x' + 'aB'.repeat(32);
+  const evidence = createEvmBlockFinalityEvidence({
+    ...base,
+    receipt: { ...base.receipt, blockHash: mixedHash },
+    receiptBlock: { ...base.receiptBlock, hash: mixedHash.toLowerCase() },
+    finalizedBlock: { number: '0x10', hash: mixedHash.toUpperCase().replace('0X', '0x') }
+  });
+  assert.equal(evidence.finality.finalizedBlockHash, mixedHash.toLowerCase());
+  assert.equal(evidence.receipt.blockHash, mixedHash.toLowerCase());
+});
+
+test('EVM finalized-tag builder rejects conflicting hashes at receipt height', () => {
+  assert.throws(() => createEvmBlockFinalityEvidence({
+    ...base,
+    finalizedBlock: { number: '0x10', hash: FINALIZED_HASH }
+  }), /contradicts recovery receipt block/);
+});
