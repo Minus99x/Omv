@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { createBitcoinCoreCrossCheckEvidence } from '../src/chains/bitcoin/core-cross-check.js';
+import { createBitcoinCoreCrossCheckEvidence, runBitcoinCoreCrossCheck } from '../src/chains/bitcoin/core-cross-check.js';
+import { createBitcoinSignetCoreCliDriver } from '../src/chains/bitcoin/core-cli-driver.js';
 
 const forbidden = ['--private-key', '--secret-key', '--seed', '--rpc-password', '--rpc-cookie', '--wallet', '--key-output']
   .find(flag => process.argv.includes(flag));
@@ -22,11 +23,26 @@ function exactFields(value, expected, label) {
 const transactionPath = arg('transaction');
 const observationsPath = arg('observations');
 const outputPath = arg('output');
-if (!transactionPath || !observationsPath) {
-  process.stderr.write('Usage: node scripts/verify-bitcoin-core-cross-check.js --transaction <json> --observations <json> [--expected-node-version <integer>] [--output <json>]\n');
+const liveReadOnly = process.argv.includes('--bitcoin-cli-readonly');
+const optionNames = new Set(['--transaction','--observations','--output','--expected-node-version']);
+const seen = new Set();
+for (let i=2;i<process.argv.length;) {
+  const flag=process.argv[i++];
+  if (flag==='--bitcoin-cli-readonly') {
+    if (seen.has(flag)) throw new Error('Duplicate Core CLI mode flag.');
+    seen.add(flag); continue;
+  }
+  if (!optionNames.has(flag) || seen.has(flag) || i>=process.argv.length ||
+      typeof process.argv[i] !== 'string' || process.argv[i].startsWith('--'))
+    throw new Error('Unsupported, duplicate or missing Bitcoin Core verifier option: ' + flag);
+  seen.add(flag);
+  i++;
+}
+if (!transactionPath || (liveReadOnly ? (!outputPath || observationsPath) : !observationsPath)) {
+  process.stderr.write('Usage: --transaction <json> --observations <json> [--output <json>] OR --transaction <json> --bitcoin-cli-readonly --output <json>\n');
   process.exit(2);
 }
-if (outputPath && existsSync(resolve(outputPath))) throw new Error(`Output already exists: ${resolve(outputPath)}`);
+if (outputPath && existsSync(resolve(outputPath))) throw new Error('Output already exists: ' + resolve(outputPath));
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical);
@@ -68,21 +84,28 @@ function extractPreparedTransaction(value) {
 }
 
 const transaction = extractPreparedTransaction(JSON.parse(readFileSync(resolve(transactionPath), 'utf8')));
-const observations = JSON.parse(readFileSync(resolve(observationsPath), 'utf8'));
-exactFields(observations, ['schema', 'node', 'decodedTransaction', 'mempoolResult'], 'Bitcoin Core observation import');
-if (observations.schema !== 'omegavault.bitcoin.core-cross-check-observations.v1') throw new Error('Unsupported Bitcoin Core observation import schema.');
-
 const expectedNodeVersionText = arg('expected-node-version') ?? '310100';
 if (!/^\d+$/.test(expectedNodeVersionText)) throw new TypeError('expected-node-version must be a positive integer.');
 const expectedNodeVersion = Number(expectedNodeVersionText);
-const evidence = createBitcoinCoreCrossCheckEvidence({
-  transaction,
-  node:observations.node,
-  decodedTransaction:observations.decodedTransaction,
-  mempoolResult:observations.mempoolResult,
-  expectedNodeVersion,
-  observationSource:'imported-json'
-});
+let evidence;
+if (liveReadOnly) {
+  // Fixed-method Signet RPC only. This does not sign or submit a transaction.
+  evidence = await runBitcoinCoreCrossCheck({
+    driver:createBitcoinSignetCoreCliDriver(), transaction, expectedNodeVersion
+  });
+} else {
+  const observations = JSON.parse(readFileSync(resolve(observationsPath), 'utf8'));
+  exactFields(observations, ['schema', 'node', 'decodedTransaction', 'mempoolResult'], 'Bitcoin Core observation import');
+  if (observations.schema !== 'omegavault.bitcoin.core-cross-check-observations.v1') throw new Error('Unsupported Bitcoin Core observation import schema.');
+  evidence = createBitcoinCoreCrossCheckEvidence({
+    transaction,
+    node:observations.node,
+    decodedTransaction:observations.decodedTransaction,
+    mempoolResult:observations.mempoolResult,
+    expectedNodeVersion,
+    observationSource:'imported-json'
+  });
+}
 
 const serialized = `${JSON.stringify(evidence, null, 2)}\n`;
 if (outputPath) writeFileSync(resolve(outputPath), serialized, { encoding:'utf8', flag:'wx' });
