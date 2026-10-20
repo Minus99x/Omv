@@ -144,3 +144,24 @@ test('Scalus gate rejects slots outside the evidence-bound validity interval bef
     assert.equal(fake.calls[0].opts.slot, slot);
   }
 });
+
+test('Scalus gate rejects malformed ledger tips before emulator invocation', async () => {
+  for (const [label, tip] of [
+    ['all-zero hash', { hash:'0'.repeat(64), slot:150 }],
+    ['malformed hash', { hash:'bad', slot:150 }],
+    ['negative slot', { hash:'cd'.repeat(32), slot:-1 }],
+    ['fractional slot', { hash:'cd'.repeat(32), slot:150.5 }]
+  ]) {
+    const inputs = fixture();
+    inputs.preSubmitEvidence.currentTip = tip;
+    inputs.preSubmitEvidence.ledgerInputSnapshot.tip = structuredClone(tip);
+    inputs.preSubmitEvidence.ledgerInputSnapshotSha256 = hashCardanoEvidence(inputs.preSubmitEvidence.ledgerInputSnapshot);
+    inputs.preSubmitEvidence.preSubmitSha256 = hashCardanoEvidence(Object.fromEntries(Object.entries(inputs.preSubmitEvidence).filter(([key]) => key !== 'preSubmitSha256')));
+    const fake = fakeScalus();
+    await assert.rejects(() => runCardanoScalusInitializeTrial({ ...inputs, scalusApi:fake.api }), /ledger tip hash or slot invalid/, label);
+    assert.equal(fake.calls.length, 0, `${label} reached emulator`);
+  }
+  const fake = fakeScalus();
+  const result = await runCardanoScalusInitializeTrial({ ...fixture(), scalusApi:fake.api });
+  assert.equal(result.acceptedByEmulator, true);
+});
