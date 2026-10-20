@@ -183,7 +183,7 @@ test('Core import rejects tampered prepared artifacts without creating evidence'
       a=>{a.readyForBroadcast=true;},
       a=>{a.operatorExpectedFeeSats='999';},
       a=>{a.finalTransactionEvidence.txid='00'.repeat(32);},
-      a=>{a.transaction.rawHex=a.transaction.rawHex.slice(0,-2)+'00';}
+      a=>{a.transaction.rawHex=a.transaction.rawHex.slice(0,-2)+(a.transaction.rawHex.endsWith('00')?'01':'00');}
     ]){
       const modified=structuredClone(artifact);
       edit(modified);
