@@ -12,7 +12,7 @@ export const APOTHEM_ENDPOINTS = Object.freeze([
 ]);
 const Q=/^0x(?:0|[1-9a-f][0-9a-f]*)$/i;
 const H=/^0x[a-fA-F0-9]{64}$/;
-const q=(v,label)=>{if(typeof v!=='string'||!Q.test(v))throw new TypeError(label+' not canonical hex');return BigInt(v);};
+const q=(v,label)=>{if(typeof v!=='string'||!Q.test(v))throw new TypeError(label+' not canonical hex');const n=BigInt(v);if(n>=(1n<<256n))throw new TypeError(label+' exceeds uint256');return n;};
 const h=(v,label)=>{if(typeof v!=='string'||!H.test(v)||/^0x0{64}$/i.test(v))throw new TypeError(label+' not a nonzero 32-byte hash');return v.toLowerCase();};
 export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,nowSeconds=Math.floor(Date.now()/1000)}={}){
   if(typeof fetchImpl!=='function')throw new TypeError('fetchImpl is required');
