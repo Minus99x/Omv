@@ -51,28 +51,49 @@ export function createStellarTestnetHorizonHttpTransport({
   fetchImpl = globalThis.fetch,
   sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds)),
   pollIntervalMs = 5000,
-  maxEligibilityAttempts = 120
+  maxEligibilityAttempts = 120,
+  requestTimeoutMs = 15000
 } = {}) {
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl must be a function.');
   if (typeof sleep !== 'function') throw new TypeError('sleep must be a function.');
   const interval = safeInteger(pollIntervalMs, 'pollIntervalMs');
   const attempts = safeInteger(maxEligibilityAttempts, 'maxEligibilityAttempts', { positive: true });
+  const requestTimeout = safeInteger(requestTimeoutMs, 'requestTimeoutMs', { positive: true });
 
   async function request(path, options = {}) {
     const target = `${TESTNET_HORIZON_URL}${path}`;
-    // Never forward a recovery transaction XDR to a redirected endpoint.
-    const response = await fetchImpl(target, { ...options, redirect: 'error' });
-    if (response?.redirected === true ||
-        (typeof response?.url === 'string' && response.url && response.url !== target)) {
-      throw new Error('Stellar Testnet Horizon redirected or substituted the requested endpoint.');
+    const controller = new AbortController();
+    let timer;
+    // Bound BOTH the HTTP request and JSON body consumption. A stalled
+    // Horizon read must not block the bounded eligibility campaign forever.
+    // Never retry a timed-out POST: a submission may already have happened.
+    const exchange = Promise.resolve().then(async () => {
+      const response = await fetchImpl(target, {
+        ...options, redirect: 'error', signal: controller.signal
+      });
+      if (response?.redirected === true ||
+          (typeof response?.url === 'string' && response.url && response.url !== target)) {
+        throw new Error('Stellar Testnet Horizon redirected or substituted the requested endpoint.');
+      }
+      const data = await responseData(response);
+      if (response.ok !== true) {
+        const error = new Error(`Stellar Testnet Horizon request failed with HTTP ${response.status ?? 'unknown'}.`);
+        error.response = { data };
+        throw error;
+      }
+      return data;
+    });
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        controller.abort();
+        reject(new Error('Stellar Testnet Horizon request timed out; result is unconfirmed.'));
+      }, requestTimeout);
+    });
+    try {
+      return await Promise.race([exchange, deadline]);
+    } finally {
+      clearTimeout(timer);
     }
-    const data = await responseData(response);
-    if (response.ok !== true) {
-      const error = new Error(`Stellar Testnet Horizon request failed with HTTP ${response.status ?? 'unknown'}.`);
-      error.response = { data };
-      throw error;
-    }
-    return data;
   }
 
   async function loadLatestLedger() {
