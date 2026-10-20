@@ -173,3 +173,12 @@ test('Horizon request timeout accepts only positive safe millisecond deadlines',
     );
   }
 });
+
+
+test('eligibility polling rejects impossible ledger close dates rather than normalizing them', async () => {
+  const transport = createStellarTestnetHorizonHttpTransport({ fetchImpl:routedFetch([
+    { url:`https://horizon-testnet.stellar.org/accounts/${G(1)}`, data:{ account_id:G(1), sequence:'1001', sequence_time:'1760000000', sequence_ledger:599 } },
+    { url:'https://horizon-testnet.stellar.org/ledgers?order=desc&limit=1', data:{ _embedded:{ records:[{ sequence:600, closed_at:'2025-02-30T10:13:20Z' }] } } }
+  ], []) });
+  await assert.rejects(transport.waitUntilEligible({ sourceAccount:G(1), minAccountSequenceAge:'4800', currentSequence:'1001', recoverySequence:'5000' }), /valid UTC timestamp/);
+});
