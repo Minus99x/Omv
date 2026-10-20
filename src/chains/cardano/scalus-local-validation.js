@@ -62,6 +62,10 @@ export async function runCardanoScalusInitializeTrial({
       !Number.isSafeInteger(slot) || slot < lowerSlot || slot >= upperSlot) {
     fail('simulated slot is outside the evidence-bound validity interval');
   }
+  // UTxOs and protocol context were observed at the bound read-only tip.
+  // Replaying that snapshot at an earlier slot would fabricate historical
+  // context and could falsely present an already-spent input as available.
+  if (slot < tip.slot) fail('simulated slot cannot precede the evidence-bound ledger tip');
   if (!Number.isSafeInteger(evidence.signedTransaction?.bytes) ||
       Buffer.byteLength(normalizedHex, 'hex') !== evidence.signedTransaction.bytes) fail('signed byte-length mismatch');
   const api = scalusApi ?? await import('scalus');
