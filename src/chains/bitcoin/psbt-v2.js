@@ -135,6 +135,7 @@ function countFromValue(value, label) {
 function parseWitnessUtxo(value) {
   if (!value || value.length < 9) throw new Error('PSBT witness UTXO is missing or malformed.');
   const amountSats = value.readBigUInt64LE(0);
+  if (amountSats > MAX_MONEY) throw new Error('PSBT witness UTXO amount exceeds Bitcoin MAX_MONEY.');
   const length = readCompactSize(value, 8);
   if (length.value > BigInt(value.length - length.offset) || length.offset + Number(length.value) !== value.length) throw new Error('PSBT witness UTXO script is malformed.');
   return { amountSats, scriptPubKey: value.subarray(length.offset) };
@@ -183,6 +184,7 @@ export function encodePsbtV2({ txVersion = 2, fallbackLocktime = 0, txModifiable
   const normalizedOutputs = outputs.map(normalizeOutput);
   const inputTotal = normalizedInputs.reduce((sum, input) => sum + input.amountSats, 0n);
   const outputTotal = normalizedOutputs.reduce((sum, output) => sum + output.amountSats, 0n);
+  if (inputTotal > MAX_MONEY || outputTotal > MAX_MONEY) throw new Error('PSBTv2 aggregate value exceeds Bitcoin MAX_MONEY.');
   if (outputTotal > inputTotal) throw new Error('PSBTv2 outputs exceed input value.');
 
   const globalMap = serializeMap([
@@ -230,6 +232,7 @@ export function decodePsbtV2(encoded) {
   if (txVersionValue.length !== 4 || txVersionValue.readInt32LE(0) < 2) throw new Error('Recovery transaction version must be at least 2.');
   const inputCount = countFromValue(single(global.entries, 0x04, { required: true }), 'PSBT input count');
   const outputCount = countFromValue(single(global.entries, 0x05, { required: true }), 'PSBT output count');
+  if (inputCount === 0 || outputCount === 0) throw new Error('PSBTv2 requires at least one input and output.');
   const modifiable = single(global.entries, 0x06);
   if (modifiable && (modifiable.length !== 1 || (modifiable[0] & ~0x07) !== 0)) throw new Error('PSBT_GLOBAL_TX_MODIFIABLE must be a three-bit field.');
   if (modifiable && (modifiable[0] & 0x03) !== 0) throw new Error('PSBTv2 inputs and outputs must be frozen.');
@@ -277,6 +280,10 @@ export function decodePsbtV2(encoded) {
     outputs.push(Object.freeze({ amountSats: amount.readBigUInt64LE(0).toString(), scriptPubKey: script.toString('hex') }));
   }
   if (offset !== buffer.length) throw new Error('PSBT contains trailing bytes.');
+  const inputTotal = inputs.reduce((sum, input) => sum + BigInt(input.amountSats), 0n);
+  const outputTotal = outputs.reduce((sum, output) => sum + BigInt(output.amountSats), 0n);
+  if (inputTotal > MAX_MONEY || outputTotal > MAX_MONEY) throw new Error('PSBTv2 aggregate value exceeds Bitcoin MAX_MONEY.');
+  if (outputTotal > inputTotal) throw new Error('PSBTv2 outputs exceed input value.');
   return Object.freeze({
     psbtVersion: 2, txVersion: txVersionValue.readInt32LE(0), fallbackLocktime: fallback?.readUInt32LE(0) ?? 0,
     txModifiable: modifiable?.[0] ?? 0, canonicalMaps,
