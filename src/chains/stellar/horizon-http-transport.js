@@ -26,7 +26,10 @@ function safeInteger(value, label, { positive = false } = {}) {
 function isoTime(value, label) {
   const text = requiredText(value, label);
   const time = Date.parse(text);
-  if (!Number.isFinite(time)) throw new TypeError(`${label} must be an ISO-compatible timestamp.`);
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(text) || !Number.isFinite(time) ||
+      !new Date(time).toISOString().startsWith(text.slice(0, 19))) {
+    throw new TypeError(`${label} must be a valid UTC timestamp.`);
+  }
   return new Date(time).toISOString();
 }
 
