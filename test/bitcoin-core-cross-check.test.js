@@ -423,3 +423,20 @@ test('Bitcoin Core node identity rejects control-character subversion spoofing',
     }), /subversion.*control characters/);
   }
 });
+
+
+test('Bitcoin Core receipt chain rejects rehashed node subversion control characters', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const valid = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input,
+    observationContext:context(1, '2026-10-07T05:20:00Z')
+  });
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([valid]).ok, true);
+  for (const subversion of ['/Satoshi:31.1.0/\nforged', '/Satoshi:31.1.0/\u0000', '/Satoshi:31.1.0/\t']) {
+    const forged = rehashReceipt(valid, receipt => { receipt.node.subversion = subversion; });
+    const result = verifyBitcoinCoreCrossCheckEvidenceChain([forged]);
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some(error => /node subversion/.test(error)));
+  }
+});
