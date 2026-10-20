@@ -15,7 +15,7 @@ function boundInput(role, snapshot, api) {
   const outputIndex = ref?.index;
   const address = entry?.address;
   const ada = entry?.value?.ada?.lovelace;
-  if (!TX_HASH.test(txHash ?? '') || !Number.isSafeInteger(outputIndex) || outputIndex < 0 || outputIndex > 0xffff_ffff) fail(`${role} UTxO reference invalid`);
+  if (!TX_HASH.test(txHash ?? '') || /^0{64}$/.test(txHash) || !Number.isSafeInteger(outputIndex) || outputIndex < 0 || outputIndex > 0xffff_ffff) fail(`${role} UTxO reference invalid`);
   if (typeof address !== 'string' || !address.startsWith('addr_test1')) fail(`${role} requires a testnet wallet address`);
   if (typeof ada !== 'string' || !LOVELACE.test(ada) || BigInt(ada) < 1n) fail(`${role} lovelace invalid`);
   if (Object.keys(entry.value).length !== 1 || Object.keys(entry.value.ada).length !== 1 ||
@@ -73,7 +73,7 @@ export async function runCardanoScalusInitializeTrial({
   const result = emulator.submitTx(Buffer.from(normalizedHex, 'hex'));
   if (typeof result?.isSuccess !== 'boolean') fail('emulator did not return a recognized validation result');
   const accepted = result.isSuccess === true;
-  if (accepted && !TX_HASH.test(result.txHash ?? '')) fail('emulator accepted without valid local transaction hash');
+  if (accepted && (!TX_HASH.test(result.txHash ?? '') || /^0{64}$/.test(result.txHash))) fail('emulator accepted without valid nonzero local transaction hash');
   return Object.freeze({
     schema: 'omegavault.cardano.scalus-offline-initialize-trial.v1',
     network: 'local-emulated-preprod-rules',
