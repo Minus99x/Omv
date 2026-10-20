@@ -171,6 +171,30 @@ test('Bitcoin Core mempool fee drift fails closed against deterministic extracte
   );
 });
 
+test('Bitcoin Core RPC amounts reject fractional satoshis rather than silently rounding', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const exact = structuredClone(input);
+  exact.decodedTransaction.vout[0].value = 0.00099000;
+  exact.mempoolResult.fees.base = 0.00001000;
+  exact.mempoolResult.fees['effective-feerate'] = 0.00005000;
+  assert.equal(createBitcoinCoreCrossCheckEvidence({ transaction:tx, ...exact }).mempool.feeSats, '1000');
+
+  for (const [label, edit] of [
+    ['decoded output', value => { value.decodedTransaction.vout[0].value = 0.000990001; }],
+    ['mempool base fee', value => { value.mempoolResult.fees.base = 0.000010001; }],
+    ['effective fee rate', value => { value.mempoolResult.fees['effective-feerate'] = 0.000050001; }]
+  ]) {
+    const altered = structuredClone(input);
+    edit(altered);
+    assert.throws(
+      () => createBitcoinCoreCrossCheckEvidence({ transaction:tx, ...altered }),
+      /fractional satoshis/,
+      label
+    );
+  }
+});
+
 test('Bitcoin Core mempool vsize drift fails closed', () => {
   const tx = transaction();
   const input = observations(tx);
