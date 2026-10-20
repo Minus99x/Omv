@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { createBitcoinRecoveryDescriptor } from '../src/chains/bitcoin/descriptor.js';
-import { createBitcoinWitnessV0Sighash, encodePsbtV2 } from '../src/chains/bitcoin/psbt-v2.js';
+import { createBitcoinWitnessV0Sighash, encodePsbtV2, finalizePsbtV2RecoveryTransaction } from '../src/chains/bitcoin/psbt-v2.js';
 import { createBitcoinFinalizerEvidence, verifyBitcoinFinalizerEvidence } from '../src/chains/bitcoin/finalizer-evidence.js';
+import { extractBitcoinRecoveryTransaction } from '../src/chains/bitcoin/transaction-finalizer.js';
 
 const privateKey = value => Buffer.from(value.toString(16).padStart(64, '0'), 'hex');
 const publicKey = key => Buffer.from(secp256k1.getPublicKey(key, true)).toString('hex');
@@ -136,4 +137,31 @@ test('tampered Bitcoin finalizer evidence fails closed', () => {
   const evidence = structuredClone(createBitcoinFinalizerEvidence({ psbt, descriptor, rescueScriptPubKey }));
   evidence.feeSats = '999';
   assert.equal(verifyBitcoinFinalizerEvidence({ evidence, psbt, descriptor, rescueScriptPubKey }).ok, false);
+});
+
+
+test('Bitcoin finalization rejects fee-only zero-value rescue outputs in every path', () => {
+  // Fully signed, policy-matching input. A zero-valued rescue destination
+  // must not be treated as successful recovery with all funds lost to fees.
+  const psbt = signedPsbt({ overrides:{
+    outputs:[{amountSats:'0',scriptPubKey:rescueScriptPubKey}]
+  } });
+  const decoded = encodePsbtV2(intent({
+    outputs:[{amountSats:'0',scriptPubKey:rescueScriptPubKey}]
+  }));
+  assert.ok(decoded.length > 0,'PSBT codec permits representing the invalid rescue intent for rejection at finalization');
+  assert.throws(
+    () => createBitcoinFinalizerEvidence({ psbt, descriptor, rescueScriptPubKey }),
+    /positive-value rescue output/
+  );
+  assert.throws(
+    () => finalizePsbtV2RecoveryTransaction({
+      psbt, descriptor, rescueScriptPubKey, expectedFeeSats:'100000'
+    }),
+    /positive-value rescue output/
+  );
+  assert.throws(
+    () => extractBitcoinRecoveryTransaction({ psbt, descriptor, rescueScriptPubKey }),
+    /positive-value rescue output/
+  );
 });
