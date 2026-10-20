@@ -440,3 +440,23 @@ test('Bitcoin Core receipt chain rejects rehashed node subversion control charac
     assert.ok(result.errors.some(error => /node subversion/.test(error)));
   }
 });
+
+
+test('Bitcoin Core receipt chain rejects rehashed malformed node versions', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const valid = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input,
+    observationContext:context(1, '2026-10-07T05:20:00Z')
+  });
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([valid]).ok, true);
+  for (const [field, value] of [
+    ['version', 0], ['version', '310100'], ['version', 1.5],
+    ['protocolVersion', 0], ['protocolVersion', '70016'], ['protocolVersion', -1]
+  ]) {
+    const forged = rehashReceipt(valid, receipt => { receipt.node[field] = value; });
+    const result = verifyBitcoinCoreCrossCheckEvidenceChain([forged]);
+    assert.equal(result.ok, false, `${field}=${value} must fail even after receipt rehash`);
+    assert.ok(result.errors.some(error => /node version or protocol version/.test(error)));
+  }
+});
