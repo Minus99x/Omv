@@ -33,7 +33,7 @@ test('Apothem read-only comparison validates both chain-51 endpoints at one comm
  assert.equal(proof.sharedHeight,'42');assert.equal(proof.blockHash,HASH);
  assert.equal(proof.gasQuotesAgree,true);assert.equal(proof.quoteDifferenceWei,'0');
  assert.equal(proof.readOnly,true);assert.equal(proof.deploymentApproved,false);
- assert.equal(t.calls.length,10);
+ assert.equal(t.calls.length,12);
  assert.equal(proof.sharedBlockRecheckVerified,true);
  assert.ok(t.calls.every(x=>!/(sendRaw|sign|deploy|personal)/i.test(x.req.method)));
 });
@@ -129,3 +129,54 @@ test('Apothem comparison refuses a substituted final response URL before accepti
     nowSeconds:1700000120,fetchImpl:redirecting
   }),/redirected outside pinned endpoint/);
 });
+
+test('Apothem comparison rejects zero hashes from either provider on either block read',async()=>{
+  for(const endpoint of APOTHEM_ENDPOINTS){
+    for(const read of [1,2]){
+      const driver=mock();let reads=0;
+      const fetchImpl=async(url,options)=>{
+        const response=await driver.fetch(url,options);
+        const request=JSON.parse(options.body);
+        if(url===endpoint&&request.method==='eth_getBlockByNumber'&&++reads===read){
+          const body=await response.json();body.result.hash='0x'+'00'.repeat(32);
+          return {...response,json:async()=>body};
+        }
+        return response;
+      };
+      await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl}),/nonzero 32-byte hash/);
+    }
+  }
+});
+
+test('Apothem comparison reauthenticates both chain identities after all block and fee reads',async()=>{
+  for(const endpoint of APOTHEM_ENDPOINTS){
+    for(const changedId of ['0x32','0x033',null]){
+      const driver=mock();let identityReads=0;
+      const fetchImpl=async(url,options)=>{
+        const response=await driver.fetch(url,options);
+        const request=JSON.parse(options.body);
+        if(url===endpoint&&request.method==='eth_chainId'&&++identityReads===2){
+          return {...response,json:async()=>({jsonrpc:'2.0',id:request.id,result:changedId})};
+        }
+        return response;
+      };
+      await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl}),/chain mismatch|not canonical hex/);
+    }
+  }
+  const driver=mock();
+  const proof=await compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:driver.fetch});
+  assert.equal(proof.chainIdentityRecheckVerified,true);
+  assert.deepEqual(driver.calls.slice(-2).map(({url,req})=>[url,req.method]),
+    APOTHEM_ENDPOINTS.map(url=>[url,'eth_chainId']));
+});
+
+test('Apothem comparison fails closed when final identity reauthentication is unavailable',async()=>{
+  const driver=mock();let identityReads=0;
+  const fetchImpl=async(url,options)=>{
+    const request=JSON.parse(options.body);
+    if(request.method==='eth_chainId'&&++identityReads>2)throw Error('identity recheck offline');
+    return driver.fetch(url,options);
+  };
+  await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl}),/identity recheck offline/);
+});
+

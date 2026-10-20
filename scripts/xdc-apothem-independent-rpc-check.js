@@ -81,6 +81,12 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,now
       throw Error('Apothem shared block changed during provider comparison');
   }
   const feeA=q(gasA,'first fee quote'),feeB=q(gasB,'second fee quote');
+  // Bracket the complete observation with identity checks. A provider can
+  // switch networks after its initial response while serving matching blocks.
+  // This detects observed drift; it is not cryptographic provider attestation.
+  const [finalIdA,finalIdB]=await Promise.all([rpc(a,'eth_chainId'),rpc(b,'eth_chainId')]);
+  if(q(finalIdA,'first rechecked chain ID')!==51n||q(finalIdB,'second rechecked chain ID')!==51n)
+    throw Error('Apothem provider chain mismatch during final identity recheck');
   const delta=feeA>feeB?feeA-feeB:feeB-feeA;
   const min=feeA<feeB?feeA:feeB;
   return Object.freeze({
@@ -88,6 +94,7 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,now
     networkRef:profile.id,chainIdDecimal:51,sharedHeight:common.toString(),
     blockHash:hashA,sharedBlockTimestampSeconds:timestampA.toString(),
     sharedBlockFreshnessVerified:true,sharedBlockRecheckVerified:true,
+    chainIdentityRecheckVerified:true,
     endpoints:Object.freeze([a,b]),
     latestHeights:Object.freeze([ah.toString(),bh.toString()]),
     gasPriceWei:Object.freeze([feeA.toString(),feeB.toString()]),
@@ -102,3 +109,4 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
   compareApothemRpcProviders().then(result=>console.log(JSON.stringify(result,null,2)))
     .catch(e=>{console.error('APOTHEM_RPC_CROSS_CHECK_BLOCKED:',String(e.message??e));process.exitCode=1;});
 }
+
