@@ -100,7 +100,7 @@ function normalizeNode(node, expectedNodeVersion) {
   if (node?.chain !== 'signet') throw new Error('Bitcoin Core cross-check requires Signet chain identity.');
   if (!Number.isSafeInteger(expectedNodeVersion) || expectedNodeVersion < 1) throw new TypeError('expectedNodeVersion must be a positive safe integer.');
   if (node?.version !== expectedNodeVersion) throw new Error(`Bitcoin Core version must equal pinned value ${expectedNodeVersion}.`);
-  if (typeof node?.subversion !== 'string' || !node.subversion.trim()) throw new TypeError('Bitcoin Core subversion is required.');
+  if (typeof node?.subversion !== 'string' || !node.subversion.trim() || /[\u0000-\u001f\u007f]/.test(node.subversion)) throw new TypeError('Bitcoin Core subversion must be non-empty text without control characters.');
   if (!Number.isSafeInteger(node?.protocolVersion) || node.protocolVersion < 1) throw new TypeError('Bitcoin Core protocolVersion is required.');
   return Object.freeze({ chain:'signet', version:node.version, subversion:node.subversion, protocolVersion:node.protocolVersion });
 }
