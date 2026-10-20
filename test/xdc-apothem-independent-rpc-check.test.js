@@ -186,3 +186,11 @@ test('Apothem comparison rejects RPC quantities outside uint256 bounds',async()=
   await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:mock(override).fetch}),/exceeds uint256/);
  }
 });
+
+
+test('Apothem comparison rejects the first value beyond uint256 in every quantity position',async()=>{
+ const overflow='0x1'+'0'.repeat(64);
+ for(const override of [{headB:overflow},{gasA:overflow},{timestampB:overflow}]){
+  await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:mock(override).fetch}),/exceeds uint256/);
+ }
+});
