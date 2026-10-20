@@ -193,6 +193,9 @@ export function normalizeHorizonFinality({
   const ledgerSequence = integerString(ledgerResponse.sequence, 'ledger.sequence', { positive: true });
   if (ledgerSequence !== ledger) throw new Error('Horizon ledger response does not match the transaction ledger.');
   const ledgerHash = hashHex(ledgerResponse.hash, 'ledger.hash');
+  if (transactionResponse.ledger_hash != null && hashHex(transactionResponse.ledger_hash, 'transaction.ledger_hash') !== ledgerHash) {
+    throw new Error('Horizon transaction ledger hash contradicts the independently loaded inclusion ledger.');
+  }
   const transactionTime = isoTime(transactionResponse.created_at, 'transaction.created_at');
   const ledgerClosedAt = isoTime(ledgerResponse.closed_at, 'ledger.closed_at');
   if (Date.parse(transactionTime) > Date.parse(ledgerClosedAt)) throw new Error('Horizon transaction timestamp cannot follow its inclusion ledger close time.');
