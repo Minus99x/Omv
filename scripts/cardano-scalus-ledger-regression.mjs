@@ -158,14 +158,20 @@ test('real Scalus adapter accepts test-only signed CBOR with digest-bound inputs
 });
 
 test('real Scalus adapter rejects test-only expired and unsigned CBOR without inventing public proof', async () => {
-  for (const [bytes, simulatedSlot] of [
-    [signedPayment(), SLOT + 101],
-    [signedPayment({ signed: false }), SLOT]
-  ]) {
+  const expired = signedPayment();
+  // The adapter now rejects an out-of-interval slot before emulator creation.
+  // Direct emulator expiry rejection remains covered by the test above.
+  await assert.rejects(runCardanoScalusInitializeTrial({
+    signedTransactionCborHex: Buffer.from(expired).toString('hex'),
+    preSubmitEvidence: syntheticAdapterEvidence(expired),
+    simulatedSlot: SLOT + 101
+  }), /simulated slot is outside the evidence-bound validity interval/);
+  {
+    const bytes = signedPayment({ signed: false });
     const outcome = await runCardanoScalusInitializeTrial({
       signedTransactionCborHex: Buffer.from(bytes).toString('hex'),
       preSubmitEvidence: syntheticAdapterEvidence(bytes),
-      simulatedSlot
+      simulatedSlot: SLOT
     });
     assert.equal(outcome.acceptedByEmulator, false);
     assert.equal(outcome.localTransactionHash, null);
@@ -904,3 +910,4 @@ test('real Scalus denies unsigned, forged-key and expired recovery execution',()
   assert.equal(phase.emulator.getUtxos({outRefs:[phase.approvedRef]}).length,1);
  }
 });
+

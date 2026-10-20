@@ -245,8 +245,13 @@ test('read-only Signet Core subprocess integrates prepared PSBT with fixed node 
     assert.equal(evidence.broadcastAuthorized,false);
     assert.equal(evidence.signetExecutionProven,false);
     const commands=readFileSync(callsPath,'utf8').trim().split('\n').map(JSON.parse);
-    assert.deepEqual(commands.map(c=>c[1]),[
-      'getnetworkinfo','getblockchaininfo','decoderawtransaction','testmempoolaccept'
+    // Identity reads run concurrently, so subprocess completion order varies.
+    // Both must still complete before decoding and mempool simulation.
+    assert.deepEqual(commands.slice(0,2).map(c=>c[1]).sort(),[
+      'getblockchaininfo','getnetworkinfo'
+    ]);
+    assert.deepEqual(commands.slice(2).map(c=>c[1]),[
+      'decoderawtransaction','testmempoolaccept'
     ]);
     assert.ok(commands.every(c=>c[0]==='-signet'));
     assert.deepEqual(commands[3].slice(2),[JSON.stringify([prepared.transaction.rawHex]),'0']);
