@@ -200,6 +200,27 @@ test('Scalus adapter enforces both validity interval boundaries before local emu
   assert.equal(accepted.authority.supportClaimAuthorized, false);
 });
 
+test('Scalus pre-submit gate refuses time travel behind attested ledger tip', async () => {
+  const signed = signedPayment();
+  const signedTransactionCborHex = Buffer.from(signed).toString('hex');
+  const evidence = syntheticAdapterEvidence(signed);
+  // SLOT - 1 is *inside* the signed transaction validity interval
+  // [SLOT - 10, SLOT + 100), but predates the immutable UTxO snapshot tip.
+  await assert.rejects(
+    runCardanoScalusInitializeTrial({
+      signedTransactionCborHex, preSubmitEvidence:evidence, simulatedSlot:SLOT - 1
+    }),
+    /simulated slot cannot precede the evidence-bound ledger tip/
+  );
+  // The very same CBOR and evidence remain valid at the actual bound tip.
+  const atTip = await runCardanoScalusInitializeTrial({
+    signedTransactionCborHex, preSubmitEvidence:evidence, simulatedSlot:SLOT
+  });
+  assert.equal(atTip.acceptedByEmulator, true, atTip.rejection ?? 'unexpected local denial');
+  assert.equal(atTip.authority.publicPreprodTransactionSubmitted, false);
+  assert.equal(atTip.authority.supportClaimAuthorized, false);
+});
+
 test('real Scalus adapter fails closed before emulation for signed CBOR evidence drift', async () => {
   const bytes = signedPayment();
   const altered = Buffer.from(bytes);
