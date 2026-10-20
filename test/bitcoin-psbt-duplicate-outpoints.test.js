@@ -93,3 +93,28 @@ test('PSBTv2 sighash-type keys reject extra key data instead of bypassing SIGHAS
   const unsupported = Buffer.from('01030402000000', 'hex');
   assert.throws(() => decodePsbtV2(Buffer.concat([before, unsupported, after])), /must use SIGHASH_ALL/);
 });
+
+test('PSBTv2 transaction-modifiable keys reject extra key data instead of claiming frozen inputs and outputs', () => {
+  const encoded = encodePsbtV2(intent([input('ab'.repeat(32))]));
+  const field = Buffer.from('01060100', 'hex');
+  const offset = encoded.indexOf(field);
+  assert.notEqual(offset, -1);
+  assert.equal(encoded.lastIndexOf(field), offset, 'fixture modifiable field is unique');
+  const before = encoded.subarray(0, offset);
+  const after = encoded.subarray(offset + field.length);
+  for (const value of ['00', '01', '02', '03', '08']) {
+    const malformed = Buffer.from('02060001' + value, 'hex');
+    for (const replacement of [malformed, Buffer.concat([field, malformed])]) {
+      assert.throws(() => decodePsbtV2(Buffer.concat([before, replacement, after])),
+        /transaction-modifiable field must not contain key data/);
+    }
+  }
+  assert.equal(decodePsbtV2(encoded).txModifiable, 0);
+  assert.equal(decodePsbtV2(Buffer.concat([before, after])).txModifiable, 0);
+  for (const value of ['01', '02', '03']) {
+    const mutable = Buffer.from('010601' + value, 'hex');
+    assert.throws(() => decodePsbtV2(Buffer.concat([before, mutable, after])), /must be frozen/);
+  }
+  const reservedBit = Buffer.from('01060108', 'hex');
+  assert.throws(() => decodePsbtV2(Buffer.concat([before, reservedBit, after])), /three-bit field/);
+});

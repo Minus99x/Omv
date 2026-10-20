@@ -233,6 +233,9 @@ export function decodePsbtV2(encoded) {
   const inputCount = countFromValue(single(global.entries, 0x04, { required: true }), 'PSBT input count');
   const outputCount = countFromValue(single(global.entries, 0x05, { required: true }), 'PSBT output count');
   if (inputCount === 0 || outputCount === 0) throw new Error('PSBTv2 requires at least one input and output.');
+  if (global.entries.some(entry => entry.key[0] === 0x06 && entry.key.length !== 1)) {
+    throw new Error('PSBT global transaction-modifiable field must not contain key data.');
+  }
   const modifiable = single(global.entries, 0x06);
   if (modifiable && (modifiable.length !== 1 || (modifiable[0] & ~0x07) !== 0)) throw new Error('PSBT_GLOBAL_TX_MODIFIABLE must be a three-bit field.');
   if (modifiable && (modifiable[0] & 0x03) !== 0) throw new Error('PSBTv2 inputs and outputs must be frozen.');
