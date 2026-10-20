@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, mkdirSync, chmodSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, delimiter } from 'node:path';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { createBitcoinRecoveryDescriptor } from '../src/chains/bitcoin/descriptor.js';
 import { createBitcoinWitnessV0Sighash, encodePsbtV2 } from '../src/chains/bitcoin/psbt-v2.js';
@@ -193,4 +193,81 @@ test('Core import rejects tampered prepared artifacts without creating evidence'
       assert.equal(existsSync(coreOutput),false);
     }
   } finally { rmSync(f.dir,{recursive:true,force:true}); }
+});
+
+
+test('read-only Signet Core subprocess integrates prepared PSBT with fixed node observations without submission',()=>{
+  const f=workspace();
+  try {
+    assert.equal(execute(args(f)).status,0);
+    const prepared=JSON.parse(readFileSync(f.output,'utf8'));
+    const checks=coreObservations(prepared.transaction);
+    const binaryDir=join(f.dir,'trusted-cli');
+    mkdirSync(binaryDir);
+    const fixturePath=join(f.dir,'rpc-answers.json'), callsPath=join(f.dir,'rpc-methods.txt');
+    writeFileSync(fixturePath,JSON.stringify({
+      getnetworkinfo:{
+        version:checks.node.version,subversion:checks.node.subversion,
+        protocolversion:checks.node.protocolVersion
+      },
+      getblockchaininfo:{chain:'signet'},
+      decoderawtransaction:checks.decodedTransaction,
+      testmempoolaccept:[checks.mempoolResult]
+    }));
+    const mockCli=join(binaryDir,'bitcoin-cli');
+    writeFileSync(mockCli,[
+      '#!/usr/bin/env node',
+      "const fs=require('node:fs');",
+      "if(process.argv[2]!=='-signet')process.exit(4);",
+      "const method=process.argv[3];",
+      "const allowed=['getnetworkinfo','getblockchaininfo','decoderawtransaction','testmempoolaccept'];",
+      "if(!allowed.includes(method))process.exit(5);",
+      "fs.appendFileSync(process.env.OV_TEST_CORE_CALLS,JSON.stringify(process.argv.slice(2))+'\\n');",
+      "const results=JSON.parse(fs.readFileSync(process.env.OV_TEST_CORE_FIXTURE,'utf8'));",
+      "process.stdout.write(JSON.stringify(results[method]));"
+    ].join('\n')+'\n');
+    chmodSync(mockCli,0o755);
+    const liveOutput=join(f.dir,'core-cli-evidence.json');
+    const result=spawnSync(process.execPath,[
+      'scripts/verify-bitcoin-core-cross-check.js',
+      '--transaction',f.output,'--bitcoin-cli-readonly','--output',liveOutput
+    ],{
+      cwd:process.cwd(),encoding:'utf8',
+      env:{...process.env,PATH:binaryDir+delimiter+(process.env.PATH||''),
+        OV_TEST_CORE_CALLS:callsPath,OV_TEST_CORE_FIXTURE:fixturePath}
+    });
+    assert.equal(result.status,0,result.stderr);
+    const evidence=JSON.parse(readFileSync(liveOutput,'utf8'));
+    assert.equal(evidence.txid,prepared.transaction.txid);
+    assert.equal(evidence.observationSource,'bitcoin-core-rpc');
+    assert.equal(evidence.bitcoinCoreCrossCheckProven,true);
+    assert.equal(evidence.broadcastPerformed,false);
+    assert.equal(evidence.broadcastAuthorized,false);
+    assert.equal(evidence.signetExecutionProven,false);
+    const commands=readFileSync(callsPath,'utf8').trim().split('\n').map(JSON.parse);
+    assert.deepEqual(commands.map(c=>c[1]),[
+      'getnetworkinfo','getblockchaininfo','decoderawtransaction','testmempoolaccept'
+    ]);
+    assert.ok(commands.every(c=>c[0]==='-signet'));
+    assert.deepEqual(commands[3].slice(2),[JSON.stringify([prepared.transaction.rawHex]),'0']);
+  }finally{rmSync(f.dir,{recursive:true,force:true});}
+});
+
+test('Signet live Core CLI mode rejects observation-source mixing, wallet flags and absent output file',()=>{
+  const f=workspace();
+  try {
+    assert.equal(execute(args(f)).status,0);
+    const scenarios=[
+      ['--transaction',f.output,'--bitcoin-cli-readonly'],
+      ['--transaction',f.output,'--bitcoin-cli-readonly','--observations',f.output,'--output',join(f.dir,'bad1.json')],
+      ['--transaction',f.output,'--bitcoin-cli-readonly','--output',join(f.dir,'bad2.json'),'--rpcwallet','default'],
+      ['--transaction',f.output,'--bitcoin-cli-readonly','--output',join(f.dir,'bad3.json'),'--bitcoin-cli-readonly']
+    ];
+    for(const argv of scenarios){
+      const result=spawnSync(process.execPath,['scripts/verify-bitcoin-core-cross-check.js',...argv],{
+        cwd:process.cwd(),encoding:'utf8'
+      });
+      assert.notEqual(result.status,0);
+    }
+  }finally{rmSync(f.dir,{recursive:true,force:true});}
 });
