@@ -85,8 +85,10 @@ export function createStellarTestnetHorizonHttpTransport({
     });
     const deadline = new Promise((_, reject) => {
       timer = setTimeout(() => {
+        const error = new Error('Stellar Testnet Horizon request timed out; result is unconfirmed.');
+        error.code = 'STELLAR_HORIZON_TIMEOUT';
+        reject(error);
         controller.abort();
-        reject(new Error('Stellar Testnet Horizon request timed out; result is unconfirmed.'));
       }, requestTimeout);
     });
     try {
