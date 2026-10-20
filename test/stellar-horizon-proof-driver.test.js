@@ -261,3 +261,17 @@ test('injected Horizon proof driver normalizes tx_bad_minseq_age_or_gap transpor
   assert.equal(result.resultCode, 'tx_bad_minseq_age_or_gap');
   assert.equal(result.includedInLedger, false);
 });
+
+test('Horizon finality rejects zero identifiers and conflicting transaction ledger hashes', () => {
+  const hash = 'aa'.repeat(32);
+  const ledgerHash = 'bb'.repeat(32);
+  const transactionResponse = { hash, successful:true, ledger:501, created_at:'2026-10-03T00:04:00Z' };
+  const ledgerResponse = { sequence:501, hash:ledgerHash, closed_at:'2026-10-03T00:05:00Z' };
+  const normalize = (tx, ledger = ledgerResponse) => normalizeHorizonFinality({ transactionResponse:tx, ledgerResponse:ledger, expectedTransactionHashHex:tx.hash, expectedLedger:'501' });
+  assert.equal(normalize({ ...transactionResponse, ledger_hash:ledgerHash }).ledgerHash, ledgerHash);
+  assert.throws(() => normalize({ ...transactionResponse, ledger_hash:'cc'.repeat(32) }), /contradicts/);
+  assert.throws(() => normalize({ ...transactionResponse, ledger_hash:'not-a-hash' }), /32-byte hexadecimal hash/);
+  assert.throws(() => normalize({ ...transactionResponse, ledger_hash:'0'.repeat(64) }), /nonzero/);
+  assert.throws(() => normalize({ ...transactionResponse, hash:'0'.repeat(64) }), /nonzero/);
+  assert.throws(() => normalize(transactionResponse, { ...ledgerResponse, hash:'0'.repeat(64) }), /nonzero/);
+});
