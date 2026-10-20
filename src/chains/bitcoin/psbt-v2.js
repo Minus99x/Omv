@@ -284,7 +284,9 @@ export function decodePsbtV2(encoded) {
 
 /** Validate externally supplied decoded PSBT objects before any recovery processing. */
 function readPsbtForRecovery(psbt) {
-  const decoded = readPsbtForRecovery(psbt);
+  const decoded = psbt && typeof psbt === 'object' && Array.isArray(psbt.inputs)
+    ? psbt
+    : decodePsbtV2(psbt);
   assertDistinctOutpoints(decoded.inputs);
   return decoded;
 }
