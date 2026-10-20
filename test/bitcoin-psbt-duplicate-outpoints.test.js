@@ -55,3 +55,20 @@ test('PSBTv2 permits distinct vouts from one txid and distinct txids at one vout
     assert.equal(decoded.inputs[0].vout, 0);
   }
 });
+
+test('PSBTv2 sequence keys reject extra key data instead of silently defaulting', () => {
+  const encoded = encodePsbtV2(intent([input('ab'.repeat(32))]));
+  const field = Buffer.from('01100490000000', 'hex');
+  const offset = encoded.indexOf(field);
+  assert.notEqual(offset, -1);
+  assert.equal(encoded.lastIndexOf(field), offset, 'fixture sequence field is unique');
+  const malformed = Buffer.from('0210000490000000', 'hex');
+  const before = encoded.subarray(0, offset);
+  const after = encoded.subarray(offset + field.length);
+  for (const replacement of [malformed, Buffer.concat([field, malformed])]) {
+    assert.throws(() => decodePsbtV2(Buffer.concat([before, replacement, after])),
+      /sequence field must not contain key data/);
+  }
+  assert.equal(decodePsbtV2(encoded).inputs[0].sequence, 144);
+  assert.equal(decodePsbtV2(Buffer.concat([before, after])).inputs[0].sequence, 0xffffffff);
+});

@@ -248,6 +248,9 @@ export function decodePsbtV2(encoded) {
     const txidBytes = single(parsed.entries, 0x0e, { required: true });
     const vout = single(parsed.entries, 0x0f, { required: true });
     if (txidBytes.length !== 32 || vout.length !== 4) throw new Error(`PSBT input ${i} has malformed outpoint fields.`);
+    if (parsed.entries.some(entry => entry.key[0] === 0x10 && entry.key.length !== 1)) {
+      throw new Error(`PSBT input ${i} sequence field must not contain key data.`);
+    }
     const sequence = single(parsed.entries, 0x10);
     const sighashType = single(parsed.entries, 0x03);
     if (sequence && sequence.length !== 4) throw new Error(`PSBT input ${i} has malformed sequence.`);
