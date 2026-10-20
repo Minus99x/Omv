@@ -12,7 +12,7 @@ function requiredText(value, label) {
 
 function hashHex(value, label) {
   const text = requiredText(value, label).toLowerCase();
-  if (!/^[a-f0-9]{64}$/.test(text)) throw new TypeError(`${label} must be a 32-byte hexadecimal hash.`);
+  if (!/^[a-f0-9]{64}$/.test(text) || /^0{64}$/.test(text)) throw new TypeError(`${label} must be a nonzero 32-byte hexadecimal hash.`);
   return text;
 }
 
