@@ -68,6 +68,13 @@ function normalizeObservationContext(context) {
   if (JSON.stringify(fields) !== JSON.stringify(['observedAt','previousEvidenceSha256','sequence'])) {
     throw new TypeError('observationContext must contain only the canonical observation fields.');
   }
+  const fields = Object.keys(context).sort();
+  if (JSON.stringify(fields) !== JSON.stringify(['observedAt', 'previousEvidenceSha256', 'sequence'])) {
+    throw new TypeError('observationContext must contain exactly observedAt, previousEvidenceSha256 and sequence.');
+  }
+  if (context.previousEvidenceSha256 === undefined) {
+    throw new TypeError('observationContext.previousEvidenceSha256 must be null or a SHA-256 digest.');
+  }
   const sequence = positiveInteger(context.sequence, 'observationContext.sequence');
   const observedAt = iso(context.observedAt, 'observationContext.observedAt');
   const previousEvidenceSha256 = context.previousEvidenceSha256 == null
