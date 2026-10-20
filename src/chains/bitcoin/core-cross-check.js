@@ -64,6 +64,10 @@ function btcToSats(value, label) {
 function normalizeObservationContext(context) {
   if (context == null) return null;
   if (!context || typeof context !== 'object' || Array.isArray(context)) throw new TypeError('observationContext must be an object.');
+  const fields = Object.keys(context).sort();
+  if (JSON.stringify(fields) !== JSON.stringify(['observedAt','previousEvidenceSha256','sequence'])) {
+    throw new TypeError('observationContext must contain only the canonical observation fields.');
+  }
   const sequence = positiveInteger(context.sequence, 'observationContext.sequence');
   const observedAt = iso(context.observedAt, 'observationContext.observedAt');
   const previousEvidenceSha256 = context.previousEvidenceSha256 == null
