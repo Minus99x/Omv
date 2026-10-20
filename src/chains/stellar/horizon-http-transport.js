@@ -59,7 +59,13 @@ export function createStellarTestnetHorizonHttpTransport({
   const attempts = safeInteger(maxEligibilityAttempts, 'maxEligibilityAttempts', { positive: true });
 
   async function request(path, options = {}) {
-    const response = await fetchImpl(`${TESTNET_HORIZON_URL}${path}`, options);
+    const target = `${TESTNET_HORIZON_URL}${path}`;
+    // Never forward a recovery transaction XDR to a redirected endpoint.
+    const response = await fetchImpl(target, { ...options, redirect: 'error' });
+    if (response?.redirected === true ||
+        (typeof response?.url === 'string' && response.url && response.url !== target)) {
+      throw new Error('Stellar Testnet Horizon redirected or substituted the requested endpoint.');
+    }
     const data = await responseData(response);
     if (response.ok !== true) {
       const error = new Error(`Stellar Testnet Horizon request failed with HTTP ${response.status ?? 'unknown'}.`);
