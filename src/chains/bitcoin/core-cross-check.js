@@ -245,6 +245,9 @@ function validateChainedCoreAuthority(evidence, index, errors) {
       evidence.node?.chain !== 'signet') {
     errors.push(`${prefix} has invalid Signet network identity.`);
   }
+  if (typeof evidence.node?.subversion !== 'string' || !evidence.node.subversion.trim() || /[\u0000-\u001f\u007f]/.test(evidence.node.subversion)) {
+    errors.push(`${prefix} has invalid Bitcoin Core node subversion.`);
+  }
   const source = evidence.observationSource;
   if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(source)) {
     errors.push(`${prefix} has unsupported observation provenance.`);
