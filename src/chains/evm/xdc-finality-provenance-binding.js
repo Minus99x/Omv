@@ -10,6 +10,7 @@ const HEX_HASH = /^0x[0-9a-f]{64}$/;
 const HEX_NUMBER = /^0x(?:0|[1-9a-f][0-9a-f]*)$/;
 const DEC_NUMBER = /^(?:0|[1-9][0-9]*)$/;
 const SHA256 = /^[a-f0-9]{64}$/;
+const MAX_EVM_QUANTITY = (1n << 256n) - 1n;
 const KINDS = new Set(['native-recovery', 'erc20-recovery']);
 const REPORT_KEYS = [
   'schema','networkRef','chainIdDecimal','observedChainIdHex','transactionHash',
@@ -36,12 +37,16 @@ function assertKeys(value, keys, label) {
 function quantity(value, label) {
   if (typeof value !== 'string' || !HEX_NUMBER.test(value))
     throw new TypeError(label + ' must be canonical hex');
-  return BigInt(value);
+  const parsed = BigInt(value);
+  if (parsed > MAX_EVM_QUANTITY) throw new TypeError(label + ' exceeds uint256');
+  return parsed;
 }
 function decimal(value, label) {
   if (typeof value !== 'string' || !DEC_NUMBER.test(value))
     throw new TypeError(label + ' must be canonical decimal');
-  return BigInt(value);
+  const parsed = BigInt(value);
+  if (parsed > MAX_EVM_QUANTITY) throw new TypeError(label + ' exceeds uint256');
+  return parsed;
 }
 function hash(value,label) {
   if (typeof value !== 'string' || !HEX_HASH.test(value))
