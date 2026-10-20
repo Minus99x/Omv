@@ -14,6 +14,58 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Independent category checks keep unrelated chains visible if the main
+  # sequential verification job stops early on a Scalus or toolchain failure.
+  # No 'needs' dependencies: failures are not masked with continue-on-error.
+  cardano-scalus-independent:
+    name: Cardano genuine Scalus 1.3.0 regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+      - run: npm ci
+      - name: Install isolated Scalus emulator
+        run: npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund scalus@1.3.0
+      - name: Run genuine offline Cardano Scalus tests
+        run: npm run test:cardano:scalus
+
+  bitcoin-independent:
+    name: Bitcoin recovery regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+      - run: npm ci
+      - name: Verify Bitcoin recovery and Signet workflows
+        run: |
+          npm run test:bitcoin-recovery
+          npm run test:bitcoin-native
+          npm run test:bitcoin-signet-cli
+
+  stellar-independent:
+    name: Stellar recovery regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+      - run: npm ci
+      - name: Verify Stellar native and recovery workflows
+        run: |
+          npm run test:stellar-recovery
+          npm run test:stellar-native
+
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
