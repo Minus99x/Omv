@@ -72,3 +72,24 @@ test('PSBTv2 sequence keys reject extra key data instead of silently defaulting'
   assert.equal(decodePsbtV2(encoded).inputs[0].sequence, 144);
   assert.equal(decodePsbtV2(Buffer.concat([before, after])).inputs[0].sequence, 0xffffffff);
 });
+
+test('PSBTv2 sighash-type keys reject extra key data instead of bypassing SIGHASH_ALL validation', () => {
+  const encoded = encodePsbtV2(intent([input('ab'.repeat(32))]));
+  const field = Buffer.from('01030401000000', 'hex');
+  const offset = encoded.indexOf(field);
+  assert.notEqual(offset, -1);
+  assert.equal(encoded.lastIndexOf(field), offset, 'fixture sighash field is unique');
+  const before = encoded.subarray(0, offset);
+  const after = encoded.subarray(offset + field.length);
+  for (const value of ['01000000', '02000000']) {
+    const malformed = Buffer.from('02030004' + value, 'hex');
+    for (const replacement of [malformed, Buffer.concat([field, malformed])]) {
+      assert.throws(() => decodePsbtV2(Buffer.concat([before, replacement, after])),
+        /sighash-type field must not contain key data/);
+    }
+  }
+  assert.equal(decodePsbtV2(encoded).inputs.length, 1);
+  assert.equal(decodePsbtV2(Buffer.concat([before, after])).inputs.length, 1);
+  const unsupported = Buffer.from('01030402000000', 'hex');
+  assert.throws(() => decodePsbtV2(Buffer.concat([before, unsupported, after])), /must use SIGHASH_ALL/);
+});

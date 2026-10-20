@@ -252,6 +252,9 @@ export function decodePsbtV2(encoded) {
       throw new Error(`PSBT input ${i} sequence field must not contain key data.`);
     }
     const sequence = single(parsed.entries, 0x10);
+    if (parsed.entries.some(entry => entry.key[0] === 0x03 && entry.key.length !== 1)) {
+      throw new Error(`PSBT input ${i} sighash-type field must not contain key data.`);
+    }
     const sighashType = single(parsed.entries, 0x03);
     if (sequence && sequence.length !== 4) throw new Error(`PSBT input ${i} has malformed sequence.`);
     if (sighashType && (sighashType.length !== 4 || sighashType.readUInt32LE(0) !== 1)) throw new Error(`PSBT input ${i} must use SIGHASH_ALL.`);
