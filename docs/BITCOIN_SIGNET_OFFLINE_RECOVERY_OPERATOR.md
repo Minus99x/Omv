@@ -58,3 +58,43 @@ wallet, network or production authority.
 
 Focus the CLI regression suite with:
 `npm run test:bitcoin-signet-cli`.
+
+
+## Direct read-only local Signet Bitcoin Core check
+
+This option closes the gap between an offline prepared Signet transaction and the
+running **local** Signet Bitcoin Core node. It is an opt-in operator action; the
+offline preparation above still works without a node or network connection.
+
+Prerequisites: a trusted Bitcoin Core 31.1.0 node running in **Signet** mode,
+the matching trusted \`bitcoin-cli\` binary available on \`PATH\`, and the local
+node's ordinary RPC access already configured on the operator workstation.
+Do not provide RPC passwords, seed phrases, private keys, wallet selectors,
+or custom RPC endpoints to OmegaVault. The tool never requests those options.
+
+\`\`\`sh
+npm run bitcoin:signet:core:readonly -- \
+  --transaction /private/signet-prepared.json \
+  --output /private/signet-live-core-evidence.json
+\`\`\`
+
+On Windows PowerShell:
+
+\`\`\`powershell
+npm run bitcoin:signet:core:readonly -- --transaction .\signet-prepared.json --output .\signet-live-core-evidence.json
+\`\`\`
+
+Exactly four local \`bitcoin-cli -signet\` read-only calls are allowed:
+\`getnetworkinfo\`, \`getblockchaininfo\`, \`decoderawtransaction\`, and
+\`testmempoolaccept\`. The final method checks whether a fully signed transaction
+would be accepted **without broadcasting it**. The configured node version,
+chain identity, decoded witness and outputs, fee and mempool diagnostics are
+checked against the offline finalized transaction. The output is created only
+if checks succeed and never overwrites an existing file.
+
+A successful response is a **point-in-time local-node observation**, not
+public-network inclusion/finality, immutable-rescue enforcement, a production
+release decision, or authorization to submit funds. A mempool rejection stays
+explicitly rejected; it cannot be elevated to a successful cross-check. The
+automated tests simulate Core with a stub executable and must not be described
+as live Signet verification.
