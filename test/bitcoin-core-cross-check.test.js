@@ -460,3 +460,21 @@ test('Bitcoin Core receipt chain rejects rehashed malformed node versions', () =
     assert.ok(result.errors.some(error => /node version or protocol version/.test(error)));
   }
 });
+
+
+test('Bitcoin Core observation creation rejects unknown and missing context fields', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const validContext = context(1, '2026-10-07T05:20:00Z');
+  const valid = createBitcoinCoreCrossCheckEvidence({ transaction:tx, ...input, observationContext:validContext });
+  assert.equal(valid.observationContext.sequence, 1);
+  for (const observationContext of [
+    { ...validContext, authority:'bitcoin-core-rpc' },
+    { sequence:1, observedAt:'2026-10-07T05:20:00Z' },
+    { ...validContext, previousEvidenceSha256:undefined }
+  ]) {
+    assert.throws(() => createBitcoinCoreCrossCheckEvidence({
+      transaction:tx, ...input, observationContext
+    }), /observationContext/);
+  }
+});
