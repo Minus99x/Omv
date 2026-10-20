@@ -71,3 +71,17 @@ test('EVM finalized-tag builder rejects conflicting hashes at receipt height', (
     finalizedBlock: { number: '0x10', hash: FINALIZED_HASH }
   }), /contradicts recovery receipt block/);
 });
+
+test('EVM finalized-tag builder rejects receipt-to-canonical hash substitution', () => {
+  assert.throws(() => createEvmBlockFinalityEvidence({
+    ...base,
+    receiptBlock: { ...base.receiptBlock, hash: FINALIZED_HASH }
+  }), /not bound to the observed canonical block/);
+});
+
+test('EVM finalized-tag builder rejects receipt-to-canonical height substitution', () => {
+  assert.throws(() => createEvmBlockFinalityEvidence({
+    ...base,
+    receiptBlock: { ...base.receiptBlock, number: '0x11' }
+  }), /not bound to the observed canonical block/);
+});
