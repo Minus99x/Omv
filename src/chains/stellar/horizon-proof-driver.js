@@ -236,6 +236,9 @@ export function createInjectedStellarTestnetHorizonDriver({
         const response = await transport.submitTransactionXdr(transactionXdr);
         return normalizeHorizonSubmissionSuccess({ response, expectedTransactionHashHex });
       } catch (error) {
+        // A transport timeout has indeterminate submission outcome. It must
+        // never be normalized as a confirmed Horizon rejection or retried.
+        if (error?.code === 'STELLAR_HORIZON_TIMEOUT') throw error;
         return normalizeHorizonSubmissionError({
           error,
           expectedTransactionHashHex,
