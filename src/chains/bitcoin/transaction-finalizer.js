@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { createBitcoinRecoveryDescriptor } from './descriptor.js';
+import { requireCanonicalBitcoinRecoveryDescriptor } from './descriptor.js';
 import { createBitcoinFinalizerEvidence } from './finalizer-evidence.js';
 import { decodePsbtV2, encodeCompactSize, verifyPsbtV2RecoveryThreshold } from './psbt-v2.js';
 
@@ -60,26 +60,6 @@ function digest(value) {
   return createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
 }
 
-function requireDescriptor(descriptor) {
-  if (!descriptor || descriptor.network !== 'signet') throw new TypeError('Bitcoin transaction extraction is Signet-only.');
-  if (!Array.isArray(descriptor.contactKeys) || !Number.isInteger(descriptor.threshold) || !descriptor.ownerKey) {
-    throw new TypeError('Bitcoin recovery descriptor contact policy is required.');
-  }
-  const rebuilt = createBitcoinRecoveryDescriptor({
-    ownerKey:descriptor.ownerKey,
-    contactKeys:descriptor.contactKeys,
-    threshold:descriptor.threshold,
-    csvBlocks:descriptor.csvBlocks,
-    network:descriptor.network
-  });
-  for (const field of ['witnessScriptHex', 'scriptPubKeyHex', 'policyDigest', 'descriptor', 'checkedDescriptor']) {
-    if (descriptor[field] !== rebuilt[field]) throw new Error(`Bitcoin recovery descriptor ${field} is not canonical.`);
-  }
-  if (JSON.stringify(descriptor.contactKeys) !== JSON.stringify(rebuilt.contactKeys)) {
-    throw new Error('Bitcoin recovery descriptor contactKeys are not in canonical script order.');
-  }
-  return rebuilt;
-}
 
 export function extractBitcoinRecoveryTransaction({
   psbt,
@@ -87,7 +67,8 @@ export function extractBitcoinRecoveryTransaction({
   rescueScriptPubKey,
   strictSingleRescueOutput = true
 }) {
-  const canonicalDescriptor = requireDescriptor(descriptor);
+  if (descriptor?.network !== 'signet') throw new TypeError('Bitcoin transaction extraction is Signet-only.');
+  const canonicalDescriptor = requireCanonicalBitcoinRecoveryDescriptor(descriptor);
   const finalizerEvidence = createBitcoinFinalizerEvidence({
     psbt,
     descriptor:canonicalDescriptor,
@@ -206,3 +187,4 @@ export function verifyBitcoinFinalTransactionEvidence({ evidence, ...options }) 
     return Object.freeze({ ok:false, errors:Object.freeze([String(error?.message || error)]) });
   }
 }
+

@@ -1,3 +1,4 @@
+import { requireCanonicalBitcoinRecoveryDescriptor } from './descriptor.js';
 import { createHash } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 
@@ -408,6 +409,7 @@ export function finalizePsbtV2RecoveryTransaction({ psbt, descriptor, rescueScri
   if (!Array.isArray(descriptor.contactKeys) || !descriptor.contactKeys.length) throw new TypeError('Descriptor contactKeys are required.');
   if (!Number.isInteger(descriptor.threshold) || descriptor.threshold < 1 || descriptor.threshold > descriptor.contactKeys.length) throw new TypeError('Descriptor threshold is invalid.');
   if (!Number.isInteger(descriptor.csvBlocks) || descriptor.csvBlocks < 1 || descriptor.csvBlocks > 0xffff) throw new TypeError('Descriptor csvBlocks are invalid.');
+  descriptor = requireCanonicalBitcoinRecoveryDescriptor(descriptor);
   const expectedWitnessScript = assertHex(descriptor.witnessScriptHex, 'descriptor.witnessScriptHex');
   const expectedScriptPubKey = assertHex(descriptor.scriptPubKeyHex, 'descriptor.scriptPubKeyHex');
   const rescueScript = assertHex(rescueScriptPubKey, 'rescueScriptPubKey');
@@ -503,3 +505,4 @@ export function finalizePsbtV2RecoveryTransaction({ psbt, descriptor, rescueScri
     })
   });
 }
+

@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { createBitcoinRecoveryDescriptor } from '../src/chains/bitcoin/descriptor.js';
-import { createBitcoinWitnessV0Sighash, encodePsbtV2 } from '../src/chains/bitcoin/psbt-v2.js';
+import { createBitcoinWitnessV0Sighash, encodePsbtV2, finalizePsbtV2RecoveryTransaction } from '../src/chains/bitcoin/psbt-v2.js';
+import { createBitcoinFinalizerEvidence } from '../src/chains/bitcoin/finalizer-evidence.js';
 import {
   createBitcoinFinalTransactionEvidence,
   extractBitcoinRecoveryTransaction,
@@ -144,3 +145,36 @@ test('tampered Bitcoin final-transaction evidence fails closed', () => {
   evidence.wtxid = '00'.repeat(32);
   assert.equal(verifyBitcoinFinalTransactionEvidence({ evidence, psbt, descriptor, rescueScriptPubKey }).ok, false);
 });
+
+test('every Bitcoin finalization entry point rejects descriptor policy substitution', () => {
+  const psbt = signedPsbt();
+  for (const changed of [
+    { threshold:1 }, { csvBlocks:1 }, { ownerKey:publicKey(outsiderPrivateKey) },
+    { contactKeys:[...descriptor.contactKeys].reverse() },
+    { policyDigest:'00'.repeat(32) }, { checkedDescriptor:'forged' }
+  ]) {
+    const options = { psbt, descriptor:{ ...descriptor, ...changed }, rescueScriptPubKey, expectedFeeSats:'1000' };
+    for (const finalize of [finalizePsbtV2RecoveryTransaction, createBitcoinFinalizerEvidence, extractBitcoinRecoveryTransaction]) {
+      assert.throws(() => finalize(options), /canonical/, `${finalize.name}: ${JSON.stringify(changed)}`);
+    }
+  }
+});
+
+test('lowered descriptor threshold cannot turn one signature into completed recovery evidence', () => {
+  const options = {
+    psbt:signedPsbt({ signers:[contactPrivateKeyA] }),
+    descriptor:{ ...descriptor, threshold:1 }, rescueScriptPubKey, expectedFeeSats:'1000'
+  };
+  assert.throws(() => createBitcoinFinalizerEvidence(options), /canonical/);
+  assert.throws(() => finalizePsbtV2RecoveryTransaction(options), /canonical/);
+});
+
+test('both Bitcoin finalizers produce identical bytes for a canonical recovery descriptor', () => {
+  const options = { psbt:signedPsbt(), descriptor, rescueScriptPubKey, expectedFeeSats:'1000' };
+  const finalized = finalizePsbtV2RecoveryTransaction(options);
+  const extracted = extractBitcoinRecoveryTransaction(options);
+  assert.equal(finalized.rawTransactionHex, extracted.rawHex);
+  assert.equal(finalized.txid, extracted.txid);
+  assert.equal(finalized.wtxid, extracted.wtxid);
+});
+

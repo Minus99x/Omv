@@ -148,3 +148,26 @@ export function createBitcoinRecoveryDescriptor({ ownerKey, contactKeys, thresho
     semantics: Object.freeze({ ownerPath: 'immediate', recoveryPath: `${threshold}-of-${contacts.length} after ${csvBlocks} blocks`, immutableRescueOutput: false })
   });
 }
+
+
+export function requireCanonicalBitcoinRecoveryDescriptor(descriptor) {
+  if (!descriptor || typeof descriptor !== 'object') throw new TypeError('Bitcoin recovery descriptor is required.');
+  if (!Array.isArray(descriptor.contactKeys) || !Number.isInteger(descriptor.threshold) || !descriptor.ownerKey) {
+    throw new TypeError('Bitcoin recovery descriptor contact policy is required.');
+  }
+  const rebuilt = createBitcoinRecoveryDescriptor({
+    ownerKey:descriptor.ownerKey,
+    contactKeys:descriptor.contactKeys,
+    threshold:descriptor.threshold,
+    csvBlocks:descriptor.csvBlocks,
+    network:descriptor.network
+  });
+  for (const field of ['witnessScriptHex', 'scriptPubKeyHex', 'policyDigest', 'descriptor', 'checkedDescriptor']) {
+    if (descriptor[field] !== rebuilt[field]) throw new Error(`Bitcoin recovery descriptor ${field} is not canonical.`);
+  }
+  if (JSON.stringify(descriptor.contactKeys) !== JSON.stringify(rebuilt.contactKeys)) {
+    throw new Error('Bitcoin recovery descriptor contactKeys are not in canonical script order.');
+  }
+  return rebuilt;
+}
+

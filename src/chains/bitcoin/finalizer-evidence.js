@@ -1,3 +1,4 @@
+import { requireCanonicalBitcoinRecoveryDescriptor } from './descriptor.js';
 import { createHash } from 'node:crypto';
 import { decodePsbtV2, verifyPsbtV2RecoveryThreshold } from './psbt-v2.js';
 import { validateBitcoinCsvRecoveryInput } from './recovery-policy.js';
@@ -42,6 +43,7 @@ export function createBitcoinFinalizerEvidence({
   strictSingleRescueOutput = true
 }) {
   validateDescriptor(descriptor);
+  descriptor = requireCanonicalBitcoinRecoveryDescriptor(descriptor);
   if (typeof strictSingleRescueOutput !== 'boolean') throw new TypeError('strictSingleRescueOutput must be boolean.');
   const rescue = hex(rescueScriptPubKey, 'rescueScriptPubKey');
   const decoded = decodePsbtV2(psbt);
@@ -151,3 +153,4 @@ export function verifyBitcoinFinalizerEvidence({
   if (JSON.stringify(evidence) !== JSON.stringify(expected)) errors.push('Bitcoin finalizer evidence does not match the supplied PSBT and policy.');
   return Object.freeze({ ok:errors.length === 0, errors:Object.freeze(errors) });
 }
+
