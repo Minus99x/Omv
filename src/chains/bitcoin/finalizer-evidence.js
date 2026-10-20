@@ -97,6 +97,10 @@ export function createBitcoinFinalizerEvidence({
 
   const inputTotal = decoded.inputs.reduce((sum, input) => sum + BigInt(input.amountSats), 0n);
   const outputTotal = decoded.outputs.reduce((sum, output) => sum + BigInt(output.amountSats), 0n);
+  const maxMoneySats = 21_000_000n * 100_000_000n;
+  if (inputTotal > maxMoneySats || outputTotal > maxMoneySats) {
+    throw new Error('Bitcoin recovery evidence aggregate value exceeds MAX_MONEY.');
+  }
   if (outputTotal >= inputTotal) throw new Error('Bitcoin recovery evidence requires a positive miner fee.');
 
   const core = Object.freeze({
