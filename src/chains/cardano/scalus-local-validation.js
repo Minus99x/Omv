@@ -53,6 +53,9 @@ export async function runCardanoScalusInitializeTrial({
   const snapshot = evidence.ledgerInputSnapshot;
   if (snapshot?.source !== 'read-only-ogmios-queryLedgerState/utxo' ||
       !same(snapshot.tip, evidence.currentTip)) fail('current ledger UTxOs not bound to same stable tip');
+  const tip = evidence.currentTip;
+  if (!tip || typeof tip !== 'object' || !TX_HASH.test(tip.hash ?? '') || /^0{64}$/.test(tip.hash) ||
+      !Number.isSafeInteger(tip.slot) || tip.slot < 0) fail('evidence-bound ledger tip hash or slot invalid');
   const { lowerSlot, upperSlot } = evidence.validity ?? {};
   const slot = simulatedSlot ?? evidence.currentTip?.slot;
   if (!Number.isSafeInteger(lowerSlot) || !Number.isSafeInteger(upperSlot) || lowerSlot >= upperSlot ||
