@@ -52,6 +52,7 @@ function btcToSats(value, label) {
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || value < 0) throw new TypeError(`${label} must be a non-negative BTC amount.`);
     text = value.toFixed(8);
+    if (Number(text) !== value) throw new TypeError(`${label} must not contain fractional satoshis.`);
   } else {
     text = String(value);
   }
