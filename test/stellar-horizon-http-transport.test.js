@@ -155,7 +155,10 @@ test('timed-out Horizon transaction submission is reported unconfirmed, never re
       return new Promise(()=>{});
     }
   });
-  await assert.rejects(transport.submitTransactionXdr('AAAA+/='), /request timed out; result is unconfirmed/);
+  await assert.rejects(transport.submitTransactionXdr('AAAA+/='), error =>
+    error.code === 'STELLAR_HORIZON_TIMEOUT' &&
+    /request timed out; result is unconfirmed/.test(error.message)
+  );
   assert.equal(count,1);
   assert.equal(options.method,'POST');
   assert.equal(options.redirect,'error');
