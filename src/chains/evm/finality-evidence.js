@@ -175,8 +175,9 @@ export function evmFinalityMatchesProof(evidence, proof, { networkId, kind }) {
       if (evidence.method !== 'finalized-tag') return false;
       const height = quantity(evidence.finality?.finalizedBlockNumber, 'finalizedBlockNumber');
       const hash = normalizeHash(evidence.finality?.finalizedBlockHash, 'finalizedBlockHash');
-      if (height < receiptHeight || (height === receiptHeight && hash !== evidence.receipt.blockHash) ||
-          (height !== receiptHeight && hash === evidence.receipt.blockHash)) return false;
+      const receiptHash = normalizeHash(evidence.receipt.blockHash, 'receipt.blockHash');
+      if (height < receiptHeight || (height === receiptHeight && hash !== receiptHash) ||
+          (height !== receiptHeight && hash === receiptHash)) return false;
     } else {
       const required = Number(policy.target?.confirmations ?? 0);
       if (!Number.isSafeInteger(required) || required < 1 || evidence.method !== 'confirmations') return false;
