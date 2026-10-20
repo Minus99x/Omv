@@ -1,5 +1,6 @@
 import { requireCanonicalBitcoinRecoveryDescriptor } from './descriptor.js';
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 
 const MAGIC = Buffer.from('70736274ff', 'hex');
@@ -285,10 +286,17 @@ export function decodePsbtV2(encoded) {
 
 /** Validate externally supplied decoded PSBT objects before any recovery processing. */
 function readPsbtForRecovery(psbt) {
-  const decoded = psbt && typeof psbt === 'object' && Array.isArray(psbt.inputs)
-    ? psbt
-    : decodePsbtV2(psbt);
-  assertDistinctOutpoints(decoded.inputs);
+  if (!psbt || typeof psbt !== 'object' || !Array.isArray(psbt.inputs)) return decodePsbtV2(psbt);
+  if (typeof psbt.base64 !== 'string' || !psbt.base64) throw new TypeError('Decoded PSBT requires its serialized base64 bytes.');
+  // Reparse the wire representation instead of trusting caller-supplied fields
+  // or validation flags. Return that immutable result to avoid using the caller's
+  // mutable object again after validation (including during nested verification).
+  const decoded = decodePsbtV2(psbt.base64);
+  for (const key of Object.keys(decoded)) {
+    if (!isDeepStrictEqual(psbt[key], decoded[key])) {
+      throw new Error(`Decoded PSBT ${key} does not match its serialized bytes.`);
+    }
+  }
   return decoded;
 }
 

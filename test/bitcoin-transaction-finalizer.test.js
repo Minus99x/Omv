@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { createBitcoinRecoveryDescriptor } from '../src/chains/bitcoin/descriptor.js';
-import { createBitcoinWitnessV0Sighash, encodePsbtV2, finalizePsbtV2RecoveryTransaction } from '../src/chains/bitcoin/psbt-v2.js';
+import { createBitcoinWitnessV0Sighash, decodePsbtV2, encodePsbtV2, finalizePsbtV2RecoveryTransaction, verifyPsbtV2RecoverySignature, verifyPsbtV2RecoveryThreshold } from '../src/chains/bitcoin/psbt-v2.js';
 import { createBitcoinFinalizerEvidence } from '../src/chains/bitcoin/finalizer-evidence.js';
 import {
   createBitcoinFinalTransactionEvidence,
@@ -176,5 +176,37 @@ test('both Bitcoin finalizers produce identical bytes for a canonical recovery d
   assert.equal(finalized.rawTransactionHex, extracted.rawHex);
   assert.equal(finalized.txid, extracted.txid);
   assert.equal(finalized.wtxid, extracted.wtxid);
+});
+
+test('decoded PSBT recovery paths reject fields substituted independently of serialized bytes', () => {
+  const decoded = decodePsbtV2(signedPsbt());
+  const operations = [
+    psbt => createBitcoinWitnessV0Sighash({ psbt, inputIndex:0 }),
+    psbt => verifyPsbtV2RecoverySignature({ psbt, inputIndex:0, publicKey:contactKeyA }),
+    psbt => verifyPsbtV2RecoveryThreshold({ psbt, inputIndex:0, requiredPublicKeys:descriptor.contactKeys, threshold:2 }),
+    psbt => finalizePsbtV2RecoveryTransaction({ psbt, descriptor, rescueScriptPubKey, expectedFeeSats:'1000' })
+  ];
+  for (const mutate of [
+    psbt => { psbt.inputs[0].partialSignatures[0].signature = psbt.inputs[0].partialSignatures[0].signature.slice(0,-2)+'02'; },
+    psbt => { psbt.outputs[0].amountSats = '98000'; },
+    psbt => { psbt.inputs[0].amountSats = '100001'; },
+    psbt => { psbt.canonicalMaps = false; },
+    psbt => { psbt.hex = '00'; },
+    psbt => { delete psbt.base64; }
+  ]) {
+    const substituted = structuredClone(decoded);
+    mutate(substituted);
+    for (const operation of operations) assert.throws(() => operation(substituted), /decoded PSBT/i);
+  }
+});
+
+test('authentic decoded PSBT objects and serialized clones retain identical recovery results', () => {
+  const bytes = signedPsbt();
+  const decoded = decodePsbtV2(bytes);
+  const finalize = psbt => finalizePsbtV2RecoveryTransaction({ psbt, descriptor, rescueScriptPubKey, expectedFeeSats:'1000' });
+  for (const psbt of [decoded, structuredClone(decoded), JSON.parse(JSON.stringify(decoded))]) {
+    assert.deepEqual(finalize(psbt), finalize(bytes));
+    assert.equal(verifyPsbtV2RecoverySignature({ psbt, inputIndex:0, publicKey:contactKeyA }).valid, true);
+  }
 });
 
