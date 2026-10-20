@@ -93,6 +93,7 @@ export function createBitcoinFinalizerEvidence({
 
   const rescueOutputs = decoded.outputs.filter(output => output.scriptPubKey === rescue);
   if (rescueOutputs.length !== 1) throw new Error('Bitcoin finalizer evidence requires exactly one configured rescue output.');
+  if (BigInt(rescueOutputs[0].amountSats) === 0n) throw new Error('Bitcoin recovery requires a positive-value rescue output; no fee-only recovery.');
   if (strictSingleRescueOutput && decoded.outputs.length !== 1) {
     throw new Error('Bitcoin finalizer evidence forbids additional outputs in strict rescue mode.');
   }
