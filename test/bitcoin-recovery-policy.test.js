@@ -98,3 +98,64 @@ test('Bitcoin recovery intent never claims fee-balance verification without prev
   assert.equal(plan.feeBalanceVerified,false);
   assert.equal(plan.unsignedIntent.inputs[0].amountSats,null);
 });
+
+
+test('recovery planner refuses impossible Bitcoin supply, fees, and fee-only rescue destinations', () => {
+  const cap = 21_000_000n * 100_000_000n;
+  const rescue = '0014' + '11'.repeat(20);
+  const baseline = {
+    inputs:[{txid,vout:0,sequence:144,amountSats:'100000'}],
+    outputs:[{amountSats:'99000',scriptPubKey:rescue}],
+    requiredContactKeys:[a,b],threshold:2,feeSats:'1000',
+    rescueScriptPubKey:rescue
+  };
+  assert.equal(createBitcoinPsbtV2RecoveryPlan(baseline).feeBalanceVerified,true);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({
+    ...baseline, feeSats:(cap+1n).toString()
+  }),/feeSats exceeds Bitcoin MAX_MONEY/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({
+    ...baseline, inputs:[{...baseline.inputs[0],amountSats:(cap+1n).toString()}]
+  }),/amountSats exceeds Bitcoin MAX_MONEY/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({
+    ...baseline, outputs:[{...baseline.outputs[0],amountSats:(cap+1n).toString()}]
+  }),/amountSats exceeds Bitcoin MAX_MONEY/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({
+    ...baseline, inputs:[
+      {...baseline.inputs[0],amountSats:(cap/2n+1n).toString()},
+      {txid:'cd'.repeat(32),vout:0,sequence:144,amountSats:(cap/2n+1n).toString()}
+    ],
+    outputs:[{...baseline.outputs[0],amountSats:'2'}],
+    feeSats:cap.toString()
+  }),/aggregate input value exceeds MAX_MONEY/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({
+    ...baseline, inputs:[{txid,vout:0,sequence:144}],
+    outputs:[
+      {amountSats:(cap/2n+1n).toString(),scriptPubKey:rescue},
+      {amountSats:(cap/2n+1n).toString(),scriptPubKey:'0014'+'22'.repeat(20)}
+    ]
+  }),/aggregate output value exceeds MAX_MONEY/);
+  assert.throws(() => createBitcoinPsbtV2RecoveryPlan({
+    ...baseline, outputs:[{...baseline.outputs[0],amountSats:'0'}],
+    feeSats:'100000'
+  }),/zero-value rescue output/);
+  // Unknown prevout amounts are still explicitly unverified, not treated as
+  // sufficient evidence of fee balance or authorization.
+  const unresolved=createBitcoinPsbtV2RecoveryPlan({
+    ...baseline,inputs:[{txid,vout:0,sequence:144}]
+  });
+  assert.equal(unresolved.feeBalanceVerified,false);
+});
+
+test('recovery planner accepts a maximum-supply value without exceeding the supply boundary', () => {
+  const cap = 21_000_000n * 100_000_000n;
+  const rescue='0014'+'11'.repeat(20);
+  const plan=createBitcoinPsbtV2RecoveryPlan({
+    inputs:[{txid,vout:0,sequence:144,amountSats:cap.toString()}],
+    outputs:[{amountSats:(cap-1000n).toString(),scriptPubKey:rescue}],
+    requiredContactKeys:[a,b],threshold:2,feeSats:'1000',
+    rescueScriptPubKey:rescue
+  });
+  assert.equal(plan.feeBalanceVerified,true);
+  assert.equal(plan.rescueOutputPresent,true);
+  assert.equal(plan.unsignedIntent.feeSats,'1000');
+});
