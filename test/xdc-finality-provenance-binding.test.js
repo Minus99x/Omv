@@ -245,3 +245,40 @@ test('shared EVM finality builder rejects cross-height hash reuse even without X
   const forgedCore={...valid,finality:{...valid.finality,finalizedBlockHash:o.receiptBlock.hash}};
   assert.equal(evmFinalityMatchesProof(forgedCore,p,{networkId:'xdc:apothem',kind:'native-recovery'}),false);
 });
+
+
+test('XDC provenance rejects uint256 overflow in every RPC block-height and timestamp field',()=>{
+  const o=observation();
+  const overflowHex='0x1'+'0'.repeat(64);
+  const overflowDecimal=(1n<<256n).toString();
+  const cases=[
+    {latestHeadHeights:[overflowDecimal,o.latestHeadHeights[1]]},
+    {latestHeadHeights:[o.latestHeadHeights[0],overflowDecimal]},
+    {receipt:{...o.receipt,blockNumber:overflowHex}},
+    {receiptBlock:{...o.receiptBlock,number:overflowHex}},
+    {finalizedBlock:{...o.finalizedBlock,number:overflowHex}},
+    {receiptBlock:{...o.receiptBlock,timestamp:overflowHex}},
+    {finalizedBlock:{...o.finalizedBlock,timestamp:overflowHex}}
+  ];
+  for(const changed of cases){
+    const forged=rehash(o,changed);
+    assert.throws(()=>validateXdcFinalityRpcObservation(forged),/exceeds uint256/);
+    for(const kind of ['native-recovery','erc20-recovery']){
+      assert.throws(()=>createXdcProvenanceBoundFinality({
+        observation:forged,proof:proof(kind),kind
+      }),/exceeds uint256/);
+    }
+  }
+});
+
+test('XDC provenance accepts the uint256 maximum for both observed provider heads',()=>{
+  const o=observation();
+  const maximum=((1n<<256n)-1n).toString();
+  const atLimit=rehash(o,{latestHeadHeights:[maximum,maximum]});
+  const checked=validateXdcFinalityRpcObservation(atLimit);
+  assert.equal(checked.claimsConsistent,true);
+  assert.equal(checked.rpcAuthenticated,false);
+  assert.equal(createXdcProvenanceBoundFinality({
+    observation:atLimit,proof:proof(),kind:'native-recovery'
+  }).readyForLiveProofPromotion,false);
+});
