@@ -38,11 +38,11 @@ test('Bitcoin Core CLI driver rejects non-Signet, malformed and multi-transactio
   const driver=createBitcoinSignetCoreCliDriver({
     execute:async()=>{executions++;return {stdout:'{}'};}
   });
-  await assert.rejects(()=>driver.decodeRawTransaction({rawHex:'ab',networkRef:'bitcoin:mainnet'}),/Signet-only/);
-  await assert.rejects(()=>driver.decodeRawTransaction({rawHex:'not-hex',networkRef:'bitcoin:signet'}),/canonical/);
-  await assert.rejects(()=>driver.testMempoolAccept({rawTransactions:['ab','cd'],maxFeeRate:0,networkRef:'bitcoin:signet'}),/single Signet/);
-  await assert.rejects(()=>driver.testMempoolAccept({rawTransactions:['ab'],maxFeeRate:0.1,networkRef:'bitcoin:signet'}),/single Signet/);
-  await assert.rejects(()=>driver.testMempoolAccept({rawTransactions:['ab'],maxFeeRate:0,networkRef:'bitcoin:mainnet'}),/single Signet/);
+  assert.throws(()=>driver.decodeRawTransaction({rawHex:'ab',networkRef:'bitcoin:mainnet'}),/Signet-only/);
+  assert.throws(()=>driver.decodeRawTransaction({rawHex:'not-hex',networkRef:'bitcoin:signet'}),/canonical/);
+  assert.throws(()=>driver.testMempoolAccept({rawTransactions:['ab','cd'],maxFeeRate:0,networkRef:'bitcoin:signet'}),/single Signet/);
+  assert.throws(()=>driver.testMempoolAccept({rawTransactions:['ab'],maxFeeRate:0.1,networkRef:'bitcoin:signet'}),/single Signet/);
+  assert.throws(()=>driver.testMempoolAccept({rawTransactions:['ab'],maxFeeRate:0,networkRef:'bitcoin:mainnet'}),/single Signet/);
   assert.equal(executions,0);
 });
 
