@@ -117,12 +117,30 @@ test('rejects malformed byte length and slot intervals, preserves deterministic 
     await assert.rejects(() => runCardanoScalusInitializeTrial({ ...inputs, scalusApi: fakeScalus().api }));
   }
   const fake = fakeScalus({ isSuccess: false, error: 'ExpiredValidityInterval' });
-  const output = await runCardanoScalusInitializeTrial({ ...fixture(), simulatedSlot: 201, scalusApi: fake.api });
-  assert.equal(fake.calls[0].opts.slot, 201);
+  const output = await runCardanoScalusInitializeTrial({ ...fixture(), simulatedSlot: 199, scalusApi: fake.api });
+  assert.equal(fake.calls[0].opts.slot, 199);
   assert.equal(output.acceptedByEmulator, false);
 });
 
 test('refuses unrecognized emulator result rather than treating any truthy value as accepted', async () => {
   await assert.rejects(() => runCardanoScalusInitializeTrial({ ...fixture(), scalusApi: fakeScalus({ isSuccess: 'yes' }).api }), /recognized validation result/);
   await assert.rejects(() => runCardanoScalusInitializeTrial({ ...fixture(), scalusApi: fakeScalus({ isSuccess: true }).api }), /local transaction hash/);
+});
+
+test('Scalus gate rejects slots outside the evidence-bound validity interval before emulator invocation', async () => {
+  for (const slot of [99, 200, 201]) {
+    const fake = fakeScalus();
+    await assert.rejects(
+      () => runCardanoScalusInitializeTrial({ ...fixture(), simulatedSlot: slot, scalusApi: fake.api }),
+      /outside the evidence-bound validity interval/
+    );
+    assert.equal(fake.calls.length, 0, `emulator invoked for out-of-range slot ${slot}`);
+  }
+  for (const slot of [100, 150, 199]) {
+    const fake = fakeScalus();
+    const output = await runCardanoScalusInitializeTrial({ ...fixture(), simulatedSlot: slot, scalusApi: fake.api });
+    assert.equal(output.simulatedSlot, slot);
+    assert.equal(output.acceptedByEmulator, true);
+    assert.equal(fake.calls[0].opts.slot, slot);
+  }
 });
