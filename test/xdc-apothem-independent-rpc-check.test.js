@@ -180,3 +180,9 @@ test('Apothem comparison fails closed when final identity reauthentication is un
   await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl}),/identity recheck offline/);
 });
 
+test('Apothem comparison rejects RPC quantities outside uint256 bounds',async()=>{
+ const huge='0x1'+'0'.repeat(64);
+ for(const override of [{headA:huge},{gasB:huge},{timestampA:huge}]){
+  await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:mock(override).fetch}),/exceeds uint256/);
+ }
+});
