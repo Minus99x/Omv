@@ -275,3 +275,29 @@ test('Horizon finality rejects zero identifiers and conflicting transaction ledg
   assert.throws(() => normalize({ ...transactionResponse, hash:'0'.repeat(64) }), /nonzero/);
   assert.throws(() => normalize(transactionResponse, { ...ledgerResponse, hash:'0'.repeat(64) }), /nonzero/);
 });
+
+
+test('indeterminate Horizon timeout cannot be normalized into a confirmed recovery rejection', async () => {
+  let submissions = 0;
+  const timeout = Object.assign(
+    new Error('Stellar Testnet Horizon request timed out; result is unconfirmed.'),
+    { code:'STELLAR_HORIZON_TIMEOUT' }
+  );
+  const transport = {
+    async loadAccount(){ throw new Error('not called'); },
+    async submitTransactionXdr(){
+      submissions++;
+      throw timeout;
+    },
+    async loadTransaction(){ throw new Error('not called'); },
+    async loadLedger(){ throw new Error('not called'); },
+    async waitUntilEligible(){ throw new Error('not called'); }
+  };
+  const driver=createInjectedStellarTestnetHorizonDriver({transport});
+  await assert.rejects(
+    driver.submitEnvelope({transactionXdr:'signed-envelope-fixture',expectedTransactionHashHex:'aa'.repeat(32)}),
+    error => error === timeout && error.code === 'STELLAR_HORIZON_TIMEOUT' &&
+      /result is unconfirmed/.test(error.message)
+  );
+  assert.equal(submissions,1,'do not retry a potentially submitted transaction');
+});
