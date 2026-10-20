@@ -179,6 +179,27 @@ test('real Scalus adapter rejects test-only expired and unsigned CBOR without in
   }
 });
 
+test('Scalus adapter enforces both validity interval boundaries before local emulation', async () => {
+  const bytes = signedPayment();
+  const evidence = syntheticAdapterEvidence(bytes);
+  const signedTransactionCborHex = Buffer.from(bytes).toString('hex');
+  for (const simulatedSlot of [SLOT - 11, SLOT + 100, SLOT + 101, -1, Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(
+      runCardanoScalusInitializeTrial({
+        signedTransactionCborHex, preSubmitEvidence:evidence, simulatedSlot
+      }),
+      /simulated slot is outside the evidence-bound validity interval/,
+      'out-of-range slot ' + simulatedSlot + ' cannot enter Scalus'
+    );
+  }
+  const accepted = await runCardanoScalusInitializeTrial({
+    signedTransactionCborHex, preSubmitEvidence:evidence, simulatedSlot:SLOT + 99
+  });
+  assert.equal(accepted.acceptedByEmulator, true, accepted.rejection ?? 'valid last slot unexpectedly rejected');
+  assert.equal(accepted.authority.publicPreprodTransactionSubmitted, false);
+  assert.equal(accepted.authority.supportClaimAuthorized, false);
+});
+
 test('real Scalus adapter fails closed before emulation for signed CBOR evidence drift', async () => {
   const bytes = signedPayment();
   const altered = Buffer.from(bytes);
