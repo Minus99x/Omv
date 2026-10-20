@@ -248,6 +248,10 @@ function validateChainedCoreAuthority(evidence, index, errors) {
   if (typeof evidence.node?.subversion !== 'string' || !evidence.node.subversion.trim() || /[\u0000-\u001f\u007f]/.test(evidence.node.subversion)) {
     errors.push(`${prefix} has invalid Bitcoin Core node subversion.`);
   }
+  if (!Number.isSafeInteger(evidence.node?.version) || evidence.node.version < 1 ||
+      !Number.isSafeInteger(evidence.node?.protocolVersion) || evidence.node.protocolVersion < 1) {
+    errors.push(`${prefix} has invalid Bitcoin Core node version or protocol version.`);
+  }
   const source = evidence.observationSource;
   if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(source)) {
     errors.push(`${prefix} has unsupported observation provenance.`);
