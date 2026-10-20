@@ -120,6 +120,11 @@ function readMap(buffer, start) {
 }
 
 function single(entries, type, { required = false } = {}) {
+  // A singleton's type is its entire key. Do not silently discard malformed
+  // variants, even when a canonical copy is also present in the same map.
+  if (entries.some(entry => entry.key[0] === type && entry.key.length !== 1)) {
+    throw new Error(`PSBT field type 0x${type.toString(16)} must not contain key data.`);
+  }
   const found = entries.filter(entry => entry.key.length === 1 && entry.key[0] === type);
   if (found.length > 1) throw new Error(`Duplicate PSBT field type 0x${type.toString(16)}.`);
   if (required && found.length !== 1) throw new Error(`Missing PSBT field type 0x${type.toString(16)}.`);
