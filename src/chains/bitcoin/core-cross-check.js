@@ -65,10 +65,6 @@ function normalizeObservationContext(context) {
   if (context == null) return null;
   if (!context || typeof context !== 'object' || Array.isArray(context)) throw new TypeError('observationContext must be an object.');
   const fields = Object.keys(context).sort();
-  if (JSON.stringify(fields) !== JSON.stringify(['observedAt','previousEvidenceSha256','sequence'])) {
-    throw new TypeError('observationContext must contain only the canonical observation fields.');
-  }
-  const fields = Object.keys(context).sort();
   if (JSON.stringify(fields) !== JSON.stringify(['observedAt', 'previousEvidenceSha256', 'sequence'])) {
     throw new TypeError('observationContext must contain exactly observedAt, previousEvidenceSha256 and sequence.');
   }
