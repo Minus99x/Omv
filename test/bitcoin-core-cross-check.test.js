@@ -410,3 +410,16 @@ test('Bitcoin Core receipt chain rejects digest-rewritten network/provenance and
   assert.equal(result.ok,false,'coordinated receipt rehash and predecessor rewrite must still fail');
   assert.ok(result.errors.some(error=>/signetExecutionProven/.test(error)));
 });
+
+
+test('Bitcoin Core node identity rejects control-character subversion spoofing', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const clean = createBitcoinCoreCrossCheckEvidence({ transaction:tx, ...input });
+  assert.ok(clean.node.subversion);
+  for (const subversion of ['/Satoshi:31.1.0/\nspoof', '/Satoshi:31.1.0/\u0000', '/Satoshi:31.1.0/\t']) {
+    assert.throws(() => createBitcoinCoreCrossCheckEvidence({
+      transaction:tx, ...input, node:{ ...input.node, subversion }
+    }), /subversion.*control characters/);
+  }
+});
