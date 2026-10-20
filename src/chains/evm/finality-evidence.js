@@ -22,9 +22,12 @@ function normalizeHash(value, label) {
   return value.toLowerCase();
 }
 
+const MAX_EVM_QUANTITY = (1n << 256n) - 1n;
+
 function quantity(value, label) {
   if (typeof value === 'bigint') {
     if (value < 0n) throw new TypeError(`${label} must be non-negative.`);
+    if (value > MAX_EVM_QUANTITY) throw new TypeError(`${label} exceeds uint256.`);
     return value;
   }
   if (typeof value === 'number') {
@@ -34,6 +37,7 @@ function quantity(value, label) {
   if (typeof value === 'string' && (/^0x[0-9a-f]+$/i.test(value) || /^\d+$/.test(value))) {
     const parsed = BigInt(value);
     if (parsed < 0n) throw new TypeError(`${label} must be non-negative.`);
+    if (parsed > MAX_EVM_QUANTITY) throw new TypeError(`${label} exceeds uint256.`);
     return parsed;
   }
   throw new TypeError(`${label} must be an integer-like EVM quantity.`);
