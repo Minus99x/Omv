@@ -438,6 +438,7 @@ export function finalizePsbtV2RecoveryTransaction({ psbt, descriptor, rescueScri
   if (!decoded.canonicalMaps) throw new Error('OmegaVault finalization requires canonically ordered PSBT maps.');
   if (decoded.txModifiable !== 0) throw new Error('OmegaVault finalization requires frozen PSBTv2 inputs and outputs.');
   if (decoded.outputs.length !== 1 || decoded.outputs[0].scriptPubKey !== rescueScript) throw new Error('OmegaVault recovery finalization requires exactly one caller-confirmed rescue output.');
+  if (BigInt(decoded.outputs[0].amountSats) === 0n) throw new Error('Bitcoin recovery requires a positive-value rescue output; no fee-only recovery.');
 
   const inputTotal = decoded.inputs.reduce((sum, input) => sum + BigInt(input.amountSats), 0n);
   const outputTotal = decoded.outputs.reduce((sum, output) => sum + BigInt(output.amountSats), 0n);
