@@ -56,7 +56,9 @@ export async function runCardanoScalusInitializeTrial({
   const { lowerSlot, upperSlot } = evidence.validity ?? {};
   const slot = simulatedSlot ?? evidence.currentTip?.slot;
   if (!Number.isSafeInteger(lowerSlot) || !Number.isSafeInteger(upperSlot) || lowerSlot >= upperSlot ||
-      !Number.isSafeInteger(slot) || slot < 0) fail('invalid validity interval or simulated slot');
+      !Number.isSafeInteger(slot) || slot < lowerSlot || slot >= upperSlot) {
+    fail('simulated slot is outside the evidence-bound validity interval');
+  }
   if (!Number.isSafeInteger(evidence.signedTransaction?.bytes) ||
       Buffer.byteLength(normalizedHex, 'hex') !== evidence.signedTransaction.bytes) fail('signed byte-length mismatch');
   const api = scalusApi ?? await import('scalus');
