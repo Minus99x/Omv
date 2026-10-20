@@ -3,11 +3,18 @@ import crypto from 'node:crypto';
 const XONLY = /^[0-9a-fA-F]{64}$/;
 const COMPRESSED = /^(?:02|03)[0-9a-fA-F]{64}$/;
 const TXID = /^[0-9a-fA-F]{64}$/;
+const MAX_MONEY_SATS = 21_000_000n * 100_000_000n;
 
 function satoshis(value,label) {
   if (typeof value === 'number' && !Number.isSafeInteger(value)) throw new TypeError(`${label} must be a safe integer when supplied as a number.`);
   if (!/^\d+$/.test(String(value))) throw new TypeError(`${label} must be a non-negative integer.`);
   return BigInt(String(value));
+}
+
+function boundedSatoshis(value, label) {
+  const amount = satoshis(value, label);
+  if (amount > MAX_MONEY_SATS) throw new RangeError(`${label} exceeds Bitcoin MAX_MONEY.`);
+  return amount;
 }
 
 function assertKey(key, label) {
@@ -67,24 +74,26 @@ export function createBitcoinPsbtV2RecoveryPlan({ inputs, outputs, requiredConta
   const keys = requiredContactKeys.map((key, i) => assertKey(key, `requiredContactKeys[${i}]`));
   if (new Set(keys).size !== keys.length) throw new TypeError('requiredContactKeys must be unique.');
   if (!Number.isInteger(threshold) || threshold < 1 || threshold > keys.length) throw new TypeError('threshold must be reachable.');
-  const fee = satoshis(feeSats, 'feeSats');
+  const fee = boundedSatoshis(feeSats, 'feeSats');
   const normalizedInputs = inputs.map((input, i) => {
     if (!TXID.test(input.txid) || !Number.isInteger(input.vout) || input.vout < 0 || input.vout > 0xffffffff) throw new TypeError(`inputs[${i}] must contain txid/vout within uint32.`);
     if (input.sequence != null && (!Number.isInteger(input.sequence) || input.sequence < 0 || input.sequence > 0xffffffff)) throw new TypeError(`inputs[${i}].sequence must be uint32.`);
-    const amount = input.amountSats == null ? null : satoshis(input.amountSats, `inputs[${i}].amountSats`).toString();
+    const amount = input.amountSats == null ? null : boundedSatoshis(input.amountSats, `inputs[${i}].amountSats`).toString();
     return Object.freeze({ txid: input.txid.toLowerCase(), vout: input.vout, sequence: input.sequence ?? null, amountSats: amount });
   });
   const refs = normalizedInputs.map(input => `${input.txid}:${input.vout}`);
   if (new Set(refs).size !== refs.length) throw new TypeError('Duplicate Bitcoin recovery input outpoint.');
   const normalizedOutputs = outputs.map((output, i) => {
-    const amount = satoshis(output.amountSats, `outputs[${i}].amountSats`);
+    const amount = boundedSatoshis(output.amountSats, `outputs[${i}].amountSats`);
     if (typeof output.scriptPubKey !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(output.scriptPubKey)) throw new TypeError(`outputs[${i}].scriptPubKey must be nonempty even-length hex.`);
     return Object.freeze({ amountSats: amount.toString(), scriptPubKey: output.scriptPubKey.toLowerCase() });
   });
+  const totalOut = normalizedOutputs.reduce((sum, output) => sum + BigInt(output.amountSats), 0n);
+  if (totalOut > MAX_MONEY_SATS) throw new RangeError('Bitcoin recovery aggregate output value exceeds MAX_MONEY.');
   const feeBalanceVerified = normalizedInputs.every(input => input.amountSats !== null);
   if (feeBalanceVerified) {
     const totalIn = normalizedInputs.reduce((sum, input) => sum + BigInt(input.amountSats), 0n);
-    const totalOut = normalizedOutputs.reduce((sum, output) => sum + BigInt(output.amountSats), 0n);
+    if (totalIn > MAX_MONEY_SATS) throw new RangeError('Bitcoin recovery aggregate input value exceeds MAX_MONEY.');
     if (totalIn - totalOut !== fee) throw new Error('Bitcoin recovery PSBT intent inputs, outputs and miner fee do not balance.');
   }
   if (rescueScriptPubKey != null && (typeof rescueScriptPubKey !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(rescueScriptPubKey))) {
@@ -92,6 +101,9 @@ export function createBitcoinPsbtV2RecoveryPlan({ inputs, outputs, requiredConta
   }
   const unsignedIntent = Object.freeze({ version: 2, inputs: Object.freeze(normalizedInputs), outputs: Object.freeze(normalizedOutputs), feeSats: fee.toString(), sighashPolicy: 'SIGHASH_ALL', inputsModifiable: false, outputsModifiable: false });
   const rescueOutputPresent = rescueScriptPubKey == null ? null : normalizedOutputs.some(o => o.scriptPubKey === rescueScriptPubKey.toLowerCase());
+  if (rescueOutputPresent && normalizedOutputs.some(o => o.scriptPubKey === rescueScriptPubKey.toLowerCase() && BigInt(o.amountSats) === 0n)) {
+    throw new Error('Bitcoin recovery cannot designate a zero-value rescue output.');
+  }
   return Object.freeze({
     format: 'PSBTv2', unsignedIntent, intentDigest: digest(unsignedIntent), requiredContactKeys: Object.freeze(keys), threshold,
     signerChecks: Object.freeze(['prevout matches expected UTXO', 'witness/redeem/miniscript matches policy', 'sighash policy accepted', 'all output amounts and scripts displayed/verified', 'fee and feerate policy accepted']),
