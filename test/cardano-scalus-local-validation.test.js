@@ -136,7 +136,17 @@ test('Scalus gate rejects slots outside the evidence-bound validity interval bef
     );
     assert.equal(fake.calls.length, 0, `emulator invoked for out-of-range slot ${slot}`);
   }
-  for (const slot of [100, 150, 199]) {
+  for (const slot of [100, 149]) {
+    // These slots satisfy the transaction validity interval but predate the
+    // immutable UTxO snapshot taken at ledger tip 150. No historical replay.
+    const fake = fakeScalus();
+    await assert.rejects(
+      () => runCardanoScalusInitializeTrial({ ...fixture(), simulatedSlot: slot, scalusApi: fake.api }),
+      /cannot precede the evidence-bound ledger tip/
+    );
+    assert.equal(fake.calls.length, 0, 'historically inconsistent slot reached Scalus');
+  }
+  for (const slot of [150, 199]) {
     const fake = fakeScalus();
     const output = await runCardanoScalusInitializeTrial({ ...fixture(), simulatedSlot: slot, scalusApi: fake.api });
     assert.equal(output.simulatedSlot, slot);
