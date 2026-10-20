@@ -114,3 +114,59 @@ test('transport rejects malformed addresses, hashes, ledgers and unsafe polling 
   assert.throws(() => createStellarTestnetHorizonHttpTransport({ pollIntervalMs:-1 }), /safe integer/);
   assert.throws(() => createStellarTestnetHorizonHttpTransport({ maxEligibilityAttempts:0 }), /positive safe integer/);
 });
+
+
+test('Horizon transport times out stalled requests and aborts the active fetch signal', async () => {
+  let signal, calls = 0;
+  const transport = createStellarTestnetHorizonHttpTransport({
+    requestTimeoutMs: 8,
+    fetchImpl: async (_url, options) => {
+      calls++;
+      signal = options.signal;
+      return new Promise(() => {}); // Deliberately noncooperative network adapter.
+    }
+  });
+  await assert.rejects(transport.loadAccount(G(1)), /request timed out; result is unconfirmed/);
+  assert.equal(calls, 1);
+  assert.equal(signal.aborted, true);
+});
+
+test('Horizon transport enforces deadline across a stalled JSON response body', async () => {
+  let calls=0, signal;
+  const transport = createStellarTestnetHorizonHttpTransport({
+    requestTimeoutMs: 8,
+    fetchImpl: async (_url, options) => {
+      calls++;
+      signal=options.signal;
+      return { ok:true, status:200, async json(){return new Promise(()=>{});} };
+    }
+  });
+  await assert.rejects(transport.loadAccount(G(1)), /request timed out; result is unconfirmed/);
+  assert.equal(calls, 1);
+  assert.equal(signal.aborted, true);
+});
+
+test('timed-out Horizon transaction submission is reported unconfirmed, never retried automatically', async () => {
+  let count=0, options;
+  const transport=createStellarTestnetHorizonHttpTransport({
+    requestTimeoutMs: 8,
+    fetchImpl:async (_url, opts)=>{
+      count++;options=opts;
+      return new Promise(()=>{});
+    }
+  });
+  await assert.rejects(transport.submitTransactionXdr('AAAA+/='), /request timed out; result is unconfirmed/);
+  assert.equal(count,1);
+  assert.equal(options.method,'POST');
+  assert.equal(options.redirect,'error');
+  assert.equal(options.signal.aborted,true);
+});
+
+test('Horizon request timeout accepts only positive safe millisecond deadlines', () => {
+  for (const timeout of [0,-1,1.5,Number.POSITIVE_INFINITY,Number.MAX_SAFE_INTEGER+1]) {
+    assert.throws(
+      () => createStellarTestnetHorizonHttpTransport({requestTimeoutMs:timeout}),
+      /requestTimeoutMs must be a positive safe integer/
+    );
+  }
+});
