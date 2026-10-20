@@ -41,7 +41,7 @@ function workspace(signers) {
   const data=fixtures(signers);
   writeFileSync(desc,JSON.stringify(data.descriptor));
   writeFileSync(psbt,data.psbt+'\n');
-  return {dir,desc,psbt,output,...data};
+  return {dir,desc,psbt,output,descriptor:data.descriptor,psbtBase64:data.psbt};
 }
 function args(f) {
   return ['--psbt',f.psbt,'--descriptor',f.desc,'--rescue-script-pubkey',rescue,
@@ -68,7 +68,7 @@ test('operator CLI creates deterministic frozen signed Signet recovery and verif
     assert.equal(artifact.transaction.broadcastAuthorized,false);
     assert.deepEqual(
       verifyBitcoinFinalTransactionEvidence({
-        evidence:artifact.finalTransactionEvidence,psbt:f.psbt,descriptor:f.descriptor,rescueScriptPubKey:rescue
+        evidence:artifact.finalTransactionEvidence,psbt:f.psbtBase64,descriptor:f.descriptor,rescueScriptPubKey:rescue
       }),{ok:true,errors:[]});
   } finally { rmSync(f.dir,{recursive:true,force:true}); }
 });
