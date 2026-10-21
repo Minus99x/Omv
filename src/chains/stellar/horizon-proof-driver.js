@@ -299,12 +299,14 @@ export function createStellarTestnetHorizonProofDriver({
   sleep,
   pollIntervalMs,
   maxEligibilityAttempts,
+  requestTimeoutMs,
   clock = () => new Date().toISOString()
 } = {}) {
   const transportOptions = { fetchImpl };
   if (sleep !== undefined) transportOptions.sleep = sleep;
   if (pollIntervalMs !== undefined) transportOptions.pollIntervalMs = pollIntervalMs;
   if (maxEligibilityAttempts !== undefined) transportOptions.maxEligibilityAttempts = maxEligibilityAttempts;
+  if (requestTimeoutMs !== undefined) transportOptions.requestTimeoutMs = requestTimeoutMs;
   return createInjectedStellarTestnetHorizonDriver({
     transport: createStellarTestnetHorizonHttpTransport(transportOptions),
     clock

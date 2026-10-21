@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { Keypair, StrKey } from '@stellar/stellar-sdk';
 import {
   createInjectedStellarTestnetHorizonDriver,
+  createStellarTestnetHorizonProofDriver,
   extractHorizonBalanceUnits,
   normalizeHorizonAccountSnapshot,
   normalizeHorizonFinality,
@@ -518,4 +519,65 @@ test('Horizon proof integer fields retain bigint and exact decimal primitives', 
     assert.equal(result.sequence, '1001');
     assert.equal(result.sequenceTime, '1001');
   }
+});
+
+test('Horizon proof factory validates request timeout configuration', () => {
+  for (const requestTimeoutMs of [null, 0, -1, true, [], 2147483648]) {
+    assert.throws(() => createStellarTestnetHorizonProofDriver({
+      fetchImpl: async () => { throw new Error('No request expected'); },
+      requestTimeoutMs
+    }), /requestTimeoutMs/);
+  }
+});
+
+for (const stalledPhase of ['fetch', 'body']) {
+  test(`Horizon proof factory bounds stalled account ${stalledPhase}`, { timeout: 2000 }, async () => {
+    let signal;
+    let calls = 0;
+    const driver = createStellarTestnetHorizonProofDriver({
+      requestTimeoutMs: 10,
+      fetchImpl: async (_url, options) => {
+        calls++;
+        signal = options.signal;
+        if (stalledPhase === 'fetch') return new Promise(() => {});
+        return { ok: true, json: () => new Promise(() => {}) };
+      }
+    });
+    await assert.rejects(driver.readAccountSnapshot(G(1)), { code: 'STELLAR_HORIZON_TIMEOUT' });
+    assert.equal(signal.aborted, true);
+    assert.equal(calls, 1);
+  });
+}
+
+test('Horizon proof factory preserves unconfirmed submission timeout without retry', { timeout: 2000 }, async () => {
+  let signal;
+  let calls = 0;
+  const driver = createStellarTestnetHorizonProofDriver({
+    requestTimeoutMs: 10,
+    fetchImpl: async (_url, options) => {
+      calls++;
+      signal = options.signal;
+      assert.equal(options.method, 'POST');
+      return new Promise(() => {});
+    }
+  });
+  await assert.rejects(driver.submitEnvelope({
+    transactionXdr: 'offline-fixture',
+    expectedTransactionHashHex: 'aa'.repeat(32)
+  }), error => {
+    assert.equal(error.code, 'STELLAR_HORIZON_TIMEOUT');
+    assert.match(error.message, /unconfirmed/);
+    return true;
+  });
+  assert.equal(signal.aborted, true);
+  assert.equal(calls, 1);
+});
+
+test('Horizon proof factory retains default timeout for completed account reads', async () => {
+  const driver = createStellarTestnetHorizonProofDriver({
+    fetchImpl: async () => ({ ok: true, json: async () => accountResponse() })
+  });
+  const snapshot = await driver.readAccountSnapshot(G(1));
+  assert.equal(snapshot.account, G(1));
+  assert.equal(snapshot.sequence, '1001');
 });
