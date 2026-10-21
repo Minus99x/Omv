@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {
-  encodePsbtV2, decodePsbtV2, createBitcoinWitnessV0Sighash
+  encodePsbtV2, decodePsbtV2, createBitcoinWitnessV0Sighash,
+  verifyPsbtV2RecoverySignature, verifyPsbtV2RecoveryThreshold,
+  finalizePsbtV2RecoveryTransaction
 } from '../src/chains/bitcoin/psbt-v2.js';
 
 // Synthetic offline codec fixtures: no wallet keys, signing or network access.
@@ -118,4 +120,64 @@ test('PSBT singleton validation still permits unknown keyed extensions in every 
     createBitcoinWitnessV0Sighash({ psbt: extended, inputIndex: 0 }).digest,
     createBitcoinWitnessV0Sighash({ psbt: encoded, inputIndex: 0 }).digest
   );
+});
+
+function requiredLocktimeEntry(type, value, extraKeyData = false) {
+  const bytes = Buffer.alloc(4);
+  bytes.writeUInt32LE(value);
+  return { key: Buffer.from(extraKeyData ? [type, 0x42] : [type]), value: bytes };
+}
+
+for (const [type, value, label] of [
+  [0x11, 1700000000, 'time'], [0x12, 850000, 'height']
+]) {
+  test('PSBT rejects unsupported required ' + label + ' locktime with or without fallback', () => {
+    for (const fallback of [true, false]) {
+      for (const extraKeyData of [false, true]) {
+        const maps = mapsOf(fixture());
+        if (!fallback) maps[0] = maps[0].filter(entry => entry.key[0] !== 0x03);
+        maps[1].push(requiredLocktimeEntry(type, value, extraKeyData));
+        assert.throws(() => decodePsbtV2(wire(maps)), /input 0 required locktime fields are unsupported/);
+      }
+    }
+  });
+
+  test('PSBT rejects malformed required ' + label + ' locktime values', () => {
+    for (const valueBytes of [Buffer.alloc(0), Buffer.alloc(3), Buffer.alloc(4), Buffer.alloc(5)]) {
+      const maps = mapsOf(fixture());
+      maps[1].push({ key: Buffer.from([type]), value: valueBytes });
+      assert.throws(() => decodePsbtV2(wire(maps)), /required locktime fields are unsupported/);
+    }
+  });
+}
+
+test('PSBT rejects combined required locktime types on a later input', () => {
+  const maps = mapsOf(fixture());
+  maps[0].find(entry => entry.key[0] === 0x04).value = Buffer.from([2]);
+  const second = maps[1].map(entry => ({
+    key: Buffer.from(entry.key), value: Buffer.from(entry.value)
+  }));
+  second.find(entry => entry.key[0] === 0x0e).value = Buffer.alloc(32, 0xcd);
+  second.push(requiredLocktimeEntry(0x11, 1700000000), requiredLocktimeEntry(0x12, 850000));
+  maps.splice(2, 0, second);
+  assert.throws(() => decodePsbtV2(wire(maps)), /input 1 required locktime fields are unsupported/);
+});
+
+test('PSBT required locktime cannot bypass recovery entry points through bytes or decoded objects', () => {
+  const clean = fixture();
+  const maps = mapsOf(clean);
+  maps[1].push(requiredLocktimeEntry(0x12, 850000));
+  const encoded = wire(maps);
+  const forged = { ...decodePsbtV2(clean), base64: encoded.toString('base64') };
+  for (const psbt of [encoded, encoded.toString('base64'), forged]) {
+    for (const invoke of [
+      () => createBitcoinWitnessV0Sighash({ psbt, inputIndex: 0 }),
+      () => verifyPsbtV2RecoverySignature({ psbt, inputIndex: 0 }),
+      () => verifyPsbtV2RecoveryThreshold({ psbt, inputIndex: 0 }),
+      () => finalizePsbtV2RecoveryTransaction({ psbt })
+    ]) {
+      // Require the locktime error before descriptor/key/threshold handling.
+      assert.throws(invoke, /required locktime fields are unsupported/);
+    }
+  }
 });

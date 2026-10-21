@@ -253,6 +253,12 @@ export function decodePsbtV2(encoded) {
     const parsed = readMap(buffer, offset);
     offset = parsed.offset;
     canonicalMaps &&= parsed.canonicalOrder;
+    // BIP370 input locktime requirements override the global fallback.
+    // This recovery codec supports fallback-only locktime; never discard an
+    // unsupported requirement and sign or finalize a different transaction.
+    if (parsed.entries.some(entry => entry.key[0] === 0x11 || entry.key[0] === 0x12)) {
+      throw new Error(`PSBT input ${i} required locktime fields are unsupported by OmegaVault recovery.`);
+    }
     const txidBytes = single(parsed.entries, 0x0e, { required: true });
     const vout = single(parsed.entries, 0x0f, { required: true });
     if (txidBytes.length !== 32 || vout.length !== 4) throw new Error(`PSBT input ${i} has malformed outpoint fields.`);
