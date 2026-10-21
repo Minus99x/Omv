@@ -445,3 +445,42 @@ test('Horizon finality retains millisecond ordering after timestamp validation',
   args.ledgerResponse.closed_at = args.transactionResponse.created_at;
   assert.equal(normalizeHorizonFinality(args).observedAt, '2026-10-03T00:05:00.001Z');
 });
+
+for (const [field, normalizedField] of [
+  ['sequence_ledger', 'sequenceLedger'],
+  ['last_modified_ledger', 'lastModifiedLedger']
+]) {
+  test('Horizon account rejects coercive and unsafe optional ledger: ' + field, () => {
+    let coercions = 0;
+    const object = {
+      valueOf() { coercions++; return 501; },
+      toString() { coercions++; return '501'; }
+    };
+    for (const value of [
+      true, false, [], [501], ['501'], {}, object,
+      '', ' ', ' 501 ', '+501', '0501', '5.01e2', '0x1f5', '501.0',
+      0, -1, 1.5, Infinity, NaN, Number.MAX_SAFE_INTEGER + 1,
+      '9007199254740992', 9007199254740992n
+    ]) {
+      assert.throws(() => normalizeHorizonAccountSnapshot({
+        accountResponse: accountResponse({ [field]: value })
+      }), /positive safe integer/);
+    }
+    assert.equal(coercions, 0, 'untrusted objects must not be coerced');
+  });
+
+  test('Horizon account preserves exact and absent optional ledger: ' + field, () => {
+    for (const value of [1, 501, '501', 501n, Number.MAX_SAFE_INTEGER, String(Number.MAX_SAFE_INTEGER)]) {
+      const result = normalizeHorizonAccountSnapshot({
+        accountResponse: accountResponse({ [field]: value })
+      });
+      assert.equal(result[normalizedField], Number(value));
+    }
+    for (const value of [null, undefined]) {
+      const result = normalizeHorizonAccountSnapshot({
+        accountResponse: accountResponse({ [field]: value })
+      });
+      assert.equal(result[normalizedField], null);
+    }
+  });
+}

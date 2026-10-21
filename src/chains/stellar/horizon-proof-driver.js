@@ -29,6 +29,12 @@ function isoTime(value, label) {
 
 function optionalLedger(value, label) {
   if (value == null) return null;
+  // Validate representation before conversion; Number(true), Number([1]),
+  // and numeric-looking objects must never become ledger evidence.
+  if ((typeof value !== 'number' && typeof value !== 'string' && typeof value !== 'bigint') ||
+      (typeof value === 'string' && !/^[1-9]\d*$/.test(value))) {
+    throw new TypeError(`${label} must be a positive safe integer.`);
+  }
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < 1) throw new TypeError(`${label} must be a positive safe integer.`);
   return number;
