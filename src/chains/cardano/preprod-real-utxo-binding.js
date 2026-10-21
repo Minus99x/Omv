@@ -229,8 +229,14 @@ export function createCardanoPreprodRealUtxoBindingEvidence({
   const planCheck = verifyCardanoPreprodRealUtxoBindingPlan(value);
   if (!planCheck.valid) throw new Error(`Real UTxO binding plan verification failed: ${planCheck.errors.join('; ')}`);
 
-  const beforeHash = String(tipBefore?.hash ?? '').toLowerCase();
-  const afterHash = String(tipAfter?.hash ?? '').toLowerCase();
+  const parseTipHash = (hash, label) => {
+    if (typeof hash !== 'string' || !HEX_32.test(hash)) {
+      throw new TypeError(`${label} must be a 32-byte hex string.`);
+    }
+    return hash.toLowerCase();
+  };
+  const beforeHash = parseTipHash(tipBefore?.hash, 'tipBefore.hash');
+  const afterHash = parseTipHash(tipAfter?.hash, 'tipAfter.hash');
   const parseSlot = (slot, label) => {
     if (typeof slot === 'number' && Number.isSafeInteger(slot) && slot >= 0) return slot;
     if (typeof slot === 'string' && /^(0|[1-9][0-9]*)$/.test(slot)) {

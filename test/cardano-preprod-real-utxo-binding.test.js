@@ -303,3 +303,46 @@ test('Cardano real UTxO binding rejects coercive output indices at plan and evid
     }), /non-negative safe integer/, String(index));
   }
 });
+
+
+test('Cardano real UTxO stable-tip hashes reject coercible containers and noncanonical evidence', () => {
+  const plan = initializePlan();
+  const hash = 'dd'.repeat(32);
+  const tip = { hash, slot: 135700000 };
+  const queriedUtxo = [
+    walletUtxo(plan.roles.seed, 10000000),
+    walletUtxo(plan.roles.collateral, 5000000)
+  ];
+  let coercions = 0;
+  const trap = { toString() { coercions++; return hash; } };
+  const invalid = [
+    [hash], { hash }, trap, new String(hash), true, false, null, undefined,
+    0, '', `0x${hash}`, hash.slice(2)
+  ];
+  for (const badHash of invalid) {
+    for (const side of ['tipBefore', 'tipAfter']) {
+      const options = { plan, tipBefore: tip, tipAfter: tip, queriedUtxo };
+      options[side] = { ...tip, hash: badHash };
+      assert.throws(
+        () => createCardanoPreprodRealUtxoBindingEvidence(options),
+        /32-byte hex string/,
+        `${side}: ${typeof badHash}`
+      );
+    }
+  }
+  assert.equal(coercions, 0, 'Untrusted hash coercion hooks must never execute');
+
+  const uppercaseTip = { ...tip, hash: hash.toUpperCase() };
+  const evidence = createCardanoPreprodRealUtxoBindingEvidence({
+    plan, tipBefore: uppercaseTip, tipAfter: tip, queriedUtxo
+  });
+  assert.equal(evidence.stableTip.hash, hash);
+  assert.equal(verifyCardanoPreprodRealUtxoBindingEvidence({
+    evidence, plan, tipBefore: uppercaseTip, tipAfter: tip, queriedUtxo
+  }).valid, true);
+  const rejected = verifyCardanoPreprodRealUtxoBindingEvidence({
+    evidence, plan, tipBefore: { ...tip, hash: [hash] }, tipAfter: tip, queriedUtxo
+  });
+  assert.equal(rejected.valid, false);
+  assert.match(rejected.errors.join('; '), /32-byte hex string/);
+});
