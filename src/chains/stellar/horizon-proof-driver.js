@@ -41,6 +41,9 @@ function optionalLedger(value, label) {
 }
 
 function integerString(value, label, { positive = false } = {}) {
+  if (!['string', 'number', 'bigint'].includes(typeof value)) {
+    throw new TypeError(`${label} must be a primitive integer value.`);
+  }
   if (typeof value === 'number' && !Number.isSafeInteger(value)) {
     throw new TypeError(`${label} must use an exact integer string or safe integer number.`);
   }

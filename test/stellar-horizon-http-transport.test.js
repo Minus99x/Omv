@@ -257,3 +257,47 @@ test('Horizon eligibility preserves exact large decimal sequences and safe numer
     assert.equal(result.sequenceTime, '1760000000');
   }
 });
+
+test('Horizon integer request arguments reject coercible containers before fetch', async () => {
+  let calls = 0, coercions = 0;
+  const trap = { toString() { coercions++; return '1001'; } };
+  const transport = createStellarTestnetHorizonHttpTransport({
+    fetchImpl: async () => { calls++; throw new Error('unexpected fetch'); }
+  });
+  for (const value of [[1001], ['1001'], trap, new String('1001'), true, null, undefined]) {
+    await assert.rejects(transport.loadLedger(value), /primitive integer value/);
+    for (const field of ['currentSequence', 'recoverySequence', 'minAccountSequenceAge']) {
+      await assert.rejects(transport.waitUntilEligible({
+        ...eligibilityArguments(), [field]: value
+      }), /primitive integer value/);
+    }
+  }
+  assert.equal(calls, 0);
+  assert.equal(coercions, 0);
+});
+
+test('Horizon integer observations reject arrays in every eligibility evidence field', async () => {
+  for (const field of ['sequence', 'sequence_time', 'sequence_ledger', 'latestLedger']) {
+    const account = {
+      account_id: G(1), sequence: '1001', sequence_time: '1760000000', sequence_ledger: 599
+    };
+    const ledger = { sequence: 600, closed_at: '2025-10-09T10:13:20Z' };
+    if (field === 'latestLedger') ledger.sequence = [600];
+    else account[field] = [account[field]];
+    const transport = createStellarTestnetHorizonHttpTransport({
+      fetchImpl: async url => jsonResponse(url.includes('/accounts/')
+        ? account : { _embedded: { records: [ledger] } })
+    });
+    await assert.rejects(transport.waitUntilEligible(eligibilityArguments()),
+      /primitive integer value/, field);
+  }
+});
+
+test('Horizon ledger requests preserve integer primitive compatibility', async () => {
+  const urls = [];
+  const transport = createStellarTestnetHorizonHttpTransport({
+    fetchImpl: async url => { urls.push(url); return jsonResponse({ sequence: 501 }); }
+  });
+  for (const value of [501, '501', 501n]) await transport.loadLedger(value);
+  assert.deepEqual(urls, Array(3).fill('https://horizon-testnet.stellar.org/ledgers/501'));
+});

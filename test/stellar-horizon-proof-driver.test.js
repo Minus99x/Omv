@@ -484,3 +484,38 @@ for (const [field, normalizedField] of [
     }
   });
 }
+
+test('Horizon proof integer fields reject arrays and objects without invoking coercion', () => {
+  let coercions = 0;
+  const trap = { toString() { coercions++; return '1001'; } };
+  for (const value of [[1001], ['1001'], trap, new String('1001'), true, null, undefined]) {
+    const paths = [
+      () => normalizeHorizonAccountSnapshot({ accountResponse: accountResponse({ sequence: value }) }),
+      () => normalizeHorizonSubmissionSuccess({
+        response: { hash: 'aa'.repeat(32), successful: true, ledger: value, created_at: '2026-10-03T00:00:00Z' }
+      }),
+      ...['transaction', 'ledger', 'expected'].map(field => () => {
+        const args = precisionFinalityFixture();
+        if (field === 'transaction') args.transactionResponse.ledger = value;
+        if (field === 'ledger') args.ledgerResponse.sequence = value;
+        if (field === 'expected') args.expectedLedger = value;
+        return normalizeHorizonFinality(args);
+      })
+    ];
+    for (const invoke of paths) assert.throws(invoke, /primitive integer value/);
+    if (value != null) assert.throws(() => normalizeHorizonAccountSnapshot({
+      accountResponse: accountResponse({ sequence_time: value })
+    }), /primitive integer value/);
+  }
+  assert.equal(coercions, 0);
+});
+
+test('Horizon proof integer fields retain bigint and exact decimal primitives', () => {
+  for (const value of [1001, '1001', 1001n]) {
+    const result = normalizeHorizonAccountSnapshot({
+      accountResponse: accountResponse({ sequence: value, sequence_time: value })
+    });
+    assert.equal(result.sequence, '1001');
+    assert.equal(result.sequenceTime, '1001');
+  }
+});

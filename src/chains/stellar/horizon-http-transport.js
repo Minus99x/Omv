@@ -9,6 +9,9 @@ function requiredText(value, label) {
 }
 
 function integerString(value, label, { positive = false } = {}) {
+  if (!['string', 'number', 'bigint'].includes(typeof value)) {
+    throw new TypeError(`${label} must be a primitive integer value.`);
+  }
   // JSON numbers beyond the safe range may already have lost precision.
   // Preserve exact decimal strings and bigint values without rounding them.
   if (typeof value === 'number' && !Number.isSafeInteger(value)) {
