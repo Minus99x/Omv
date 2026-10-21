@@ -194,3 +194,25 @@ test('Apothem comparison rejects the first value beyond uint256 in every quantit
   await assert.rejects(compareApothemRpcProviders({nowSeconds:1700000120,fetchImpl:mock(override).fetch}),/exceeds uint256/);
  }
 });
+
+test('Apothem comparison rejects malformed JSON-RPC envelopes from either pinned provider',async()=>{
+ for(const endpoint of APOTHEM_ENDPOINTS){
+  for(const failure of ['wrong-id','rpc-error','missing-result','wrong-version']){
+   const driver=mock();
+   const fetchImpl=async(url,options)=>{
+    const response=await driver.fetch(url,options);
+    if(url!==endpoint)return response;
+    const request=JSON.parse(options.body);
+    const body=await response.json();
+    if(failure==='wrong-id')body.id=request.id+1;
+    if(failure==='rpc-error')body.error={code:-32000,message:'unavailable'};
+    if(failure==='missing-result')delete body.result;
+    if(failure==='wrong-version')body.jsonrpc='1.0';
+    return {...response,json:async()=>body};
+   };
+   await assert.rejects(compareApothemRpcProviders({
+    nowSeconds:1700000120,fetchImpl
+   }),/malformed response/,endpoint+' '+failure);
+  }
+ }
+});
