@@ -216,3 +216,83 @@ test('Apothem comparison rejects malformed JSON-RPC envelopes from either pinned
   }
  }
 });
+
+test('Apothem comparison validates request deadlines before any provider request',async()=>{
+ for(const requestTimeoutMs of [null,0,-1,1.5,NaN,Infinity,true,'10',[],2147483648]){
+  let calls=0;
+  await assert.rejects(compareApothemRpcProviders({
+   nowSeconds:1700000120,requestTimeoutMs,
+   fetchImpl:async()=>{calls++;throw Error('Unexpected request');}
+  }),/requestTimeoutMs/);
+  assert.equal(calls,0);
+ }
+});
+
+for(const phase of ['fetch','body']){
+ test(`Apothem comparison bounds stalled ${phase} even when cancellation is ignored`,{timeout:2000},async()=>{
+  const fixture=mock();
+  let signal;
+  await assert.rejects(compareApothemRpcProviders({
+   nowSeconds:1700000120,requestTimeoutMs:10,
+   fetchImpl:async(url,options)=>{
+    if(url!==APOTHEM_ENDPOINTS[0])return fixture.fetch(url,options);
+    signal=options.signal;
+    if(phase==='fetch')return new Promise(()=>{});
+    return {ok:true,json:()=>new Promise(()=>{})};
+   }
+  }),{code:'APOTHEM_RPC_TIMEOUT'});
+  assert.equal(signal.aborted,true);
+  assert.equal(fixture.calls.length,1);
+  assert.equal(fixture.calls[0].req.method,'eth_chainId');
+ });
+}
+
+test('Apothem comparison cannot issue evidence when final identity response body stalls',{timeout:2000},async()=>{
+ const fixture=mock();
+ let identityReads=0;
+ let stalledSignal;
+ await assert.rejects(compareApothemRpcProviders({
+  nowSeconds:1700000120,requestTimeoutMs:10,
+  fetchImpl:async(url,options)=>{
+   const request=JSON.parse(options.body);
+   const response=await fixture.fetch(url,options);
+   if(url===APOTHEM_ENDPOINTS[1]&&request.method==='eth_chainId'&&++identityReads===2){
+    stalledSignal=options.signal;
+    return {ok:true,json:()=>new Promise(()=>{})};
+   }
+   return response;
+  }
+ }),{code:'APOTHEM_RPC_TIMEOUT'});
+ assert.equal(stalledSignal.aborted,true);
+ assert.equal(fixture.calls.length,12);
+});
+
+test('Apothem comparison clears request deadlines after successful responses',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const fixture=mock();
+ const signals=[];
+ const result=await compareApothemRpcProviders({
+  nowSeconds:1700000120,
+  fetchImpl:async(url,options)=>{signals.push(options.signal);return fixture.fetch(url,options);}
+ });
+ t.mock.timers.tick(15001);
+ assert.equal(signals.length,12);
+ assert.ok(signals.every(signal=>!signal.aborted));
+ assert.equal(result.chainIdentityRecheckVerified,true);
+ assert.equal(result.transactionSubmitted,false);
+});
+
+test('Apothem comparison clears request deadlines after malformed response failure',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const signals=[];
+ await assert.rejects(compareApothemRpcProviders({
+  nowSeconds:1700000120,
+  fetchImpl:async(_url,options)=>{
+   signals.push(options.signal);
+   return {ok:true,json:async()=>{throw Error('Invalid JSON fixture');}};
+  }
+ }),/invalid JSON/);
+ t.mock.timers.tick(15001);
+ assert.equal(signals.length,2);
+ assert.ok(signals.every(signal=>!signal.aborted));
+});

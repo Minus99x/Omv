@@ -14,9 +14,11 @@ const Q=/^0x(?:0|[1-9a-f][0-9a-f]*)$/i;
 const H=/^0x[a-fA-F0-9]{64}$/;
 const q=(v,label)=>{if(typeof v!=='string'||!Q.test(v))throw new TypeError(label+' not canonical hex');const n=BigInt(v);if(n>=(1n<<256n))throw new TypeError(label+' exceeds uint256');return n;};
 const h=(v,label)=>{if(typeof v!=='string'||!H.test(v)||/^0x0{64}$/i.test(v))throw new TypeError(label+' not a nonzero 32-byte hash');return v.toLowerCase();};
-export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,nowSeconds=Math.floor(Date.now()/1000)}={}){
+export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,nowSeconds=Math.floor(Date.now()/1000),requestTimeoutMs=15000}={}){
   if(typeof fetchImpl!=='function')throw new TypeError('fetchImpl is required');
   if(!Number.isSafeInteger(nowSeconds)||nowSeconds<=0)throw new TypeError('nowSeconds must be a positive safe integer');
+  if(!Number.isSafeInteger(requestTimeoutMs)||requestTimeoutMs<1||requestTimeoutMs>2147483647)
+    throw new TypeError('requestTimeoutMs must be an integer from 1 to 2147483647 milliseconds');
   const clock=BigInt(nowSeconds);
   const profile=getNetwork('xdc:apothem');
   if(profile?.chainIdHex!=='0x33'||profile.environment!=='testnet')throw Error('Apothem chain identity is not fixed to 51');
@@ -25,22 +27,41 @@ export async function compareApothemRpcProviders({fetchImpl=globalThis.fetch,now
     if(!APOTHEM_ENDPOINTS.includes(endpoint)||
        !['eth_chainId','eth_blockNumber','eth_getBlockByNumber','eth_gasPrice'].includes(method))throw Error('RPC method or host not allowlisted');
     const id=++n;
-    let response;
+    const controller=new AbortController();
+    let timer;
+    // Bound fetch AND body consumption, even when an injected transport ignores
+    // cancellation. Aborting alone does not guarantee its promise will settle.
+    const deadline=new Promise((_,reject)=>{
+      timer=setTimeout(()=>{
+        const error=new Error('Apothem RPC request timed out at '+endpoint+' for '+method);
+        error.code='APOTHEM_RPC_TIMEOUT';
+        reject(error);
+        controller.abort();
+      },requestTimeoutMs);
+    });
+    const exchange=(async()=>{
+      let response;
+      try {
+        response=await fetchImpl(endpoint,{
+          method:'POST',headers:{accept:'application/json','content-type':'application/json'},
+          body:JSON.stringify({jsonrpc:'2.0',id,method,params}),
+          // Never follow redirects outside the two fixed RPC endpoint origins.
+          redirect:'error',credentials:'omit',signal:controller.signal
+        });
+      } catch (error) {
+        throw new Error('Apothem RPC transport unavailable at '+endpoint+' for '+method+': '+String(error?.message??error));
+      }
+      if(response?.redirected===true || (typeof response?.url==='string' && response.url && new URL(response.url).href!==new URL(endpoint).href))throw Error('Apothem RPC response redirected outside pinned endpoint');
+      if(response?.ok!==true)throw new Error('Apothem provider HTTP status '+String(response?.status??'unknown'));
+      let body;try{body=await response.json();}catch{throw Error('Apothem provider invalid JSON');}
+      if(body?.jsonrpc!=='2.0'||body.id!==id||Object.hasOwn(body,'error')||!Object.hasOwn(body,'result'))throw Error('Apothem provider malformed response');
+      return body.result;
+    })();
     try {
-      response=await fetchImpl(endpoint,{
-        method:'POST',headers:{accept:'application/json','content-type':'application/json'},
-        body:JSON.stringify({jsonrpc:'2.0',id,method,params}),
-        // Never follow redirects outside the two fixed RPC endpoint origins.
-        redirect:'error',credentials:'omit',signal:AbortSignal.timeout(15000)
-      });
-    } catch (error) {
-      throw new Error('Apothem RPC transport unavailable at '+endpoint+' for '+method+': '+String(error?.message??error));
+      return await Promise.race([exchange,deadline]);
+    } finally {
+      clearTimeout(timer);
     }
-    if(response?.redirected===true || (typeof response?.url==='string' && response.url && new URL(response.url).href!==new URL(endpoint).href))throw Error('Apothem RPC response redirected outside pinned endpoint');
-    if(response?.ok!==true)throw new Error('Apothem provider HTTP status '+String(response?.status??'unknown'));
-    let body;try{body=await response.json();}catch{throw Error('Apothem provider invalid JSON');}
-    if(body?.jsonrpc!=='2.0'||body.id!==id||Object.hasOwn(body,'error')||!Object.hasOwn(body,'result'))throw Error('Apothem provider malformed response');
-    return body.result;
   }
   const [a,b]=APOTHEM_ENDPOINTS;
   const [idA,idB]=await Promise.all([rpc(a,'eth_chainId'),rpc(b,'eth_chainId')]);
