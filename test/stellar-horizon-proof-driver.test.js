@@ -176,7 +176,7 @@ test('Horizon proof normalization rejects malformed hashes, timestamps, ledgers 
   assert.throws(() => normalizeHorizonSubmissionSuccess({
     response:{ hash, successful:true, created_at:'not-a-time', ledger:501 },
     expectedTransactionHashHex:hash
-  }), /ISO-compatible timestamp/);
+  }), /valid UTC timestamp/);
   assert.throws(() => normalizeHorizonAccountSnapshot({
     accountResponse:accountResponse({ last_modified_ledger:Number.MAX_SAFE_INTEGER + 1 }),
     expectedAccount:G(1)
@@ -380,4 +380,68 @@ test('injected Horizon finality rejects unsafe expected ledgers before lookup', 
     transactionHashHex: 'aa'.repeat(32), ledger: Number.MAX_SAFE_INTEGER + 1
   }), /expectedLedger must use an exact integer string/);
   assert.equal(calls, 0);
+});
+
+const timestampProofPaths = {
+  account: value => normalizeHorizonAccountSnapshot({
+    accountResponse: accountResponse({ last_modified_time: value })
+  }).lastModifiedTime,
+  submission: value => normalizeHorizonSubmissionSuccess({
+    response: { hash: 'aa'.repeat(32), successful: true, ledger: 501, created_at: value }
+  }).observedAt,
+  rejection: value => normalizeHorizonSubmissionError({
+    error: { result_codes: { transaction: 'tx_bad_minseq_age_or_gap' } },
+    expectedTransactionHashHex: 'aa'.repeat(32), observedAt: value
+  }).observedAt,
+  transaction: value => {
+    const args = precisionFinalityFixture();
+    args.transactionResponse.created_at = value;
+    args.ledgerResponse.closed_at = '2099-01-01T00:00:00Z';
+    return normalizeHorizonFinality(args).observedAt;
+  },
+  ledger: value => {
+    const args = precisionFinalityFixture();
+    args.transactionResponse.created_at = '2000-01-01T00:00:00Z';
+    args.ledgerResponse.closed_at = value;
+    return normalizeHorizonFinality(args).observedAt;
+  }
+};
+
+for (const [label, normalize] of Object.entries(timestampProofPaths)) {
+  test('Horizon ' + label + ' proof rejects impossible or ambiguous timestamps', () => {
+    for (const value of [
+      '2025-02-29T00:00:00Z', '2026-02-30T00:00:00Z',
+      '2026-04-31T00:00:00Z', '2026-01-01T24:00:00Z',
+      '2026-01-01', '2026-01-01T00:00:00',
+      '2026-01-01T00:00:00+00:00', '01/02/2026',
+      '2026-01-01T00:00:00.1234Z'
+    ]) {
+      assert.throws(() => normalize(value), /valid UTC timestamp/, value);
+    }
+  });
+}
+
+test('Horizon proof timestamps preserve leap days and supported fractional UTC precision', () => {
+  for (const value of [
+    '2024-02-29T12:34:56Z', '2024-02-29T12:34:56.1Z',
+    '2024-02-29T12:34:56.12Z', '2024-02-29T12:34:56.123Z'
+  ]) {
+    const expected = new Date(value).toISOString();
+    for (const [label, normalize] of Object.entries(timestampProofPaths)) {
+      const result = normalize(value);
+      if (label !== 'transaction') assert.equal(result, expected, label);
+    }
+  }
+  assert.equal(normalizeHorizonAccountSnapshot({
+    accountResponse: accountResponse({ last_modified_time: null })
+  }).lastModifiedTime, null);
+});
+
+test('Horizon finality retains millisecond ordering after timestamp validation', () => {
+  const args = precisionFinalityFixture();
+  args.transactionResponse.created_at = '2026-10-03T00:05:00.001Z';
+  args.ledgerResponse.closed_at = '2026-10-03T00:05:00.000Z';
+  assert.throws(() => normalizeHorizonFinality(args), /cannot follow/);
+  args.ledgerResponse.closed_at = args.transactionResponse.created_at;
+  assert.equal(normalizeHorizonFinality(args).observedAt, '2026-10-03T00:05:00.001Z');
 });
