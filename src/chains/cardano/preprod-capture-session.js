@@ -59,6 +59,19 @@ function verifyCapturePlan(plan) {
   if (!Array.isArray(plan.evaluationRequest?.params?.additionalUtxo) || plan.evaluationRequest.params.additionalUtxo.length < 1) {
     errors.push('Capture plan must carry an Ogmios v7 supplemental UTxO evaluation context.');
   }
+  // The self-digest only authenticates the fields as written; it does not
+  // establish that separately recorded CBOR and supplemental UTxO evidence
+  // actually match the transaction and evaluation request.
+  if (typeof plan.transactionCborHex !== 'string' ||
+      !/^(?:[0-9a-f]{2})+$/i.test(plan.transactionCborHex) ||
+      plan.evaluationRequest?.params?.transaction?.cbor?.toLowerCase() !== plan.transactionCborHex.toLowerCase()) {
+    errors.push('Capture plan evaluation-request CBOR does not match its transaction CBOR.');
+  }
+  if (Array.isArray(plan.evaluationRequest?.params?.additionalUtxo) &&
+      plan.evaluationRequest.params.additionalUtxo.length > 0 &&
+      hashCardanoEvidence(plan.evaluationRequest.params.additionalUtxo) !== plan.evaluationContext?.supplementalUtxoSha256) {
+    errors.push('Capture plan supplemental UTxO digest does not match its evaluation context.');
+  }
   if (plan.evaluationContext?.syntheticSupplementalUtxoContext !== true ||
       plan.evaluationContext?.fullPhaseOneValidationPerformed !== false) {
     errors.push('Capture plan evaluation-only boundary is invalid.');
