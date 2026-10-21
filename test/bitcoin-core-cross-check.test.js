@@ -478,3 +478,22 @@ test('Bitcoin Core observation creation rejects unknown and missing context fiel
     }), /observationContext/);
   }
 });
+
+test('Bitcoin Core receipt-chain freshness rejects future and just-expired observations', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const evidence = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input,
+    observationContext:context(1, '2026-10-07T05:20:00Z')
+  });
+  const check = (now, maxAgeMs) =>
+    verifyBitcoinCoreCrossCheckEvidenceChain([evidence], { now, maxAgeMs });
+  assert.equal(check('2026-10-07T05:20:00Z', 0).ok, true);
+  assert.equal(check('2026-10-07T05:20:01Z', 1000).ok, true);
+  const expired = check('2026-10-07T05:20:01Z', 999);
+  assert.equal(expired.ok, false);
+  assert.ok(expired.errors.some(message => /stale/.test(message)));
+  const future = check('2026-10-07T05:19:59Z', 1000);
+  assert.equal(future.ok, false);
+  assert.ok(future.errors.some(message => /future/.test(message)));
+});
