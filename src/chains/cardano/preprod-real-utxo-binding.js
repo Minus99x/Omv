@@ -231,8 +231,16 @@ export function createCardanoPreprodRealUtxoBindingEvidence({
 
   const beforeHash = String(tipBefore?.hash ?? '').toLowerCase();
   const afterHash = String(tipAfter?.hash ?? '').toLowerCase();
-  const beforeSlot = Number(tipBefore?.slot);
-  const afterSlot = Number(tipAfter?.slot);
+  const parseSlot = (slot, label) => {
+    if (typeof slot === 'number' && Number.isSafeInteger(slot) && slot >= 0) return slot;
+    if (typeof slot === 'string' && /^(0|[1-9][0-9]*)$/.test(slot)) {
+      const parsed = Number(slot);
+      if (Number.isSafeInteger(parsed)) return parsed;
+    }
+    throw new TypeError(`${label} must be a non-negative safe integer.`);
+  };
+  const beforeSlot = parseSlot(tipBefore?.slot, 'tipBefore.slot');
+  const afterSlot = parseSlot(tipAfter?.slot, 'tipAfter.slot');
   if (!HEX_32.test(beforeHash) || !HEX_32.test(afterHash) ||
       !Number.isSafeInteger(beforeSlot) || !Number.isSafeInteger(afterSlot) ||
       beforeHash !== afterHash || beforeSlot !== afterSlot) {
