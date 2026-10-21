@@ -262,3 +262,44 @@ test('Cardano real state UTxO binding uses the bound dynamic recovery address, b
     /state beacon/
   );
 });
+
+test('Cardano real UTxO binding rejects coercive output indices at plan and evidence boundaries', () => {
+  const identity = appliedIdentity();
+  const seed = {
+    transaction: { id: fixtureEvidence.parameters.seedTxId },
+    index: fixtureEvidence.parameters.seedOutputIndex
+  };
+  const invalid = [null, true, false, '', ' ', '0x10', '1e2', '-1', '01', '1.0', -1, 1.5, Number.MAX_SAFE_INTEGER + 1, {}, []];
+  for (const index of invalid) {
+    assert.throws(() => createCardanoPreprodRealUtxoBindingPlan({
+      action: 'initialize',
+      roles: { seed, collateral: ref('cc', index) },
+      appliedValidatorIdentity: identity
+    }), /non-negative safe integer/, String(index));
+  }
+
+  const plan = initializePlan();
+  for (const index of invalid) {
+    const tampered = structuredClone(plan);
+    tampered.roles.collateral.index = index;
+    assert.equal(verifyCardanoPreprodRealUtxoBindingPlan(tampered).valid, false, String(index));
+  }
+
+  const canonical = createCardanoPreprodRealUtxoBindingPlan({
+    action: 'initialize',
+    roles: { seed, collateral: ref('cc', '2') },
+    appliedValidatorIdentity: identity
+  });
+  assert.equal(canonical.roles.collateral.index, 2);
+  assert.equal(verifyCardanoPreprodRealUtxoBindingPlan(canonical).valid, true);
+
+  const tip = { hash: 'dd'.repeat(32), slot: 135700000 };
+  const utxos = [walletUtxo(plan.roles.seed, 10000000), walletUtxo(plan.roles.collateral, 5000000)];
+  for (const index of invalid) {
+    const altered = structuredClone(utxos);
+    altered[1].index = index;
+    assert.throws(() => createCardanoPreprodRealUtxoBindingEvidence({
+      plan, tipBefore: tip, tipAfter: tip, queriedUtxo: altered
+    }), /non-negative safe integer/, String(index));
+  }
+});
