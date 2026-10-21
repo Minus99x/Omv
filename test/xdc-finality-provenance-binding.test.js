@@ -282,3 +282,44 @@ test('XDC provenance accepts the uint256 maximum for both observed provider head
     observation:atLimit,proof:proof(),kind:'native-recovery'
   }).readyForLiveProofPromotion,false);
 });
+
+
+test('shared EVM XDC finality rejects coercible chain IDs and receipt statuses without invoking hooks', () => {
+  const o = observation();
+  let coercions = 0;
+  const chainTrap = {
+    toString() { coercions++; return '0x33'; },
+    valueOf() { coercions++; return '0x33'; }
+  };
+  const statusTrap = {
+    toString() { coercions++; return '0x1'; },
+    valueOf() { coercions++; return 1; }
+  };
+  for (const kind of ['native-recovery', 'erc20-recovery']) {
+    const p = proof(kind);
+    const args = {
+      networkId: 'xdc:apothem', proof: p,
+      observedChainIdHex: o.observedChainIdHex,
+      receipt: o.receipt, receiptBlock: o.receiptBlock,
+      finalizedBlock: o.finalizedBlock, observedAt: o.observedAt
+    };
+    for (const value of [chainTrap, ['0x33'], new String('0x33'), 51, null]) {
+      assert.throws(() => createEvmBlockFinalityEvidence({
+        ...args, observedChainIdHex: value
+      }), /chain ID/, 'non-primitive chain ID must fail closed');
+    }
+    for (const value of [statusTrap, ['0x1'], new String('0x1'), { status: '0x1' }]) {
+      assert.throws(() => createEvmBlockFinalityEvidence({
+        ...args, receipt: { ...o.receipt, status: value }
+      }), /receipt does not report success/, 'non-primitive success must fail closed');
+    }
+    for (const value of [true, 1, 1n, '1', '0x1', '0X1']) {
+      const evidence = createEvmBlockFinalityEvidence({
+        ...args, receipt: { ...o.receipt, status: value }
+      });
+      assert.equal(evidence.receipt.status, 'success');
+      assert.equal(evmFinalityMatchesProof(evidence, p, { networkId: 'xdc:apothem', kind }), true);
+    }
+  }
+  assert.equal(coercions, 0, 'untrusted identity and status coercion hooks must not execute');
+});
