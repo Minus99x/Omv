@@ -301,3 +301,51 @@ test('Horizon ledger requests preserve integer primitive compatibility', async (
   for (const value of [501, '501', 501n]) await transport.loadLedger(value);
   assert.deepEqual(urls, Array(3).fill('https://horizon-testnet.stellar.org/ledgers/501'));
 });
+
+test('Horizon polling settings reject coercible containers and noncanonical strings', () => {
+  let coercions = 0, calls = 0;
+  const trap = { valueOf() { coercions++; return 1; }, toString() { coercions++; return '1'; } };
+  for (const field of ['pollIntervalMs', 'requestTimeoutMs', 'maxEligibilityAttempts']) {
+    for (const value of [true, false, null, [], [1], {}, trap, new Number(1), '', ' ', ' 1 ', '+1', '01', '1e2', '0x10', '1.0']) {
+      assert.throws(() => createStellarTestnetHorizonHttpTransport({
+        [field]: value, fetchImpl: async () => { calls++; }
+      }), /safe integer/, field);
+    }
+  }
+  assert.equal(coercions, 0);
+  assert.equal(calls, 0);
+});
+
+test('Horizon timer settings reject the first overflow and retain exact upper bounds', () => {
+  for (const field of ['pollIntervalMs', 'requestTimeoutMs']) {
+    for (const value of [2147483648, '2147483648', 2147483648n, Number.MAX_SAFE_INTEGER]) {
+      assert.throws(() => createStellarTestnetHorizonHttpTransport({ [field]: value }),
+        /must not exceed 2147483647 milliseconds/, field);
+    }
+    for (const value of [2147483647, '2147483647', 2147483647n]) {
+      assert.doesNotThrow(() => createStellarTestnetHorizonHttpTransport({ [field]: value }));
+    }
+  }
+  assert.doesNotThrow(() => createStellarTestnetHorizonHttpTransport({ pollIntervalMs: 0 }));
+  assert.throws(() => createStellarTestnetHorizonHttpTransport({ requestTimeoutMs: 0 }), /positive safe integer/);
+});
+
+test('Horizon validates primitive polling settings while preserving bounded attempt behavior', async () => {
+  for (const value of [2, '2', 2n]) {
+    let calls = 0;
+    const sleeps = [];
+    const transport = createStellarTestnetHorizonHttpTransport({
+      maxEligibilityAttempts: value, pollIntervalMs: '2147483647', requestTimeoutMs: 2147483647,
+      sleep: async delay => { sleeps.push(delay); },
+      fetchImpl: async url => {
+        calls++;
+        return jsonResponse(url.includes('/accounts/')
+          ? { account_id: G(1), sequence: '1001', sequence_time: '1760000000', sequence_ledger: 599 }
+          : { _embedded: { records: [{ sequence: 600, closed_at: '2025-10-09T10:13:19Z' }] } });
+      }
+    });
+    await assert.rejects(transport.waitUntilEligible(eligibilityArguments()), /not established after 2 Horizon observations/);
+    assert.equal(calls, 4);
+    assert.deepEqual(sleeps, [2147483647]);
+  }
+});

@@ -1,6 +1,7 @@
 import { StrKey } from '@stellar/stellar-sdk';
 
 const TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
+const MAX_TIMER_DELAY_MS = 2147483647;
 
 function requiredText(value, label) {
   const text = typeof value === 'string' ? value.trim() : '';
@@ -23,11 +24,16 @@ function integerString(value, label, { positive = false } = {}) {
   return text;
 }
 
-function safeInteger(value, label, { positive = false } = {}) {
+function safeInteger(value, label, { positive = false, max = Number.MAX_SAFE_INTEGER } = {}) {
+  if (!['number', 'string', 'bigint'].includes(typeof value) ||
+      (typeof value === 'string' && !/^(0|[1-9]\d*)$/.test(value))) {
+    throw new TypeError(`${label} must be a ${positive ? 'positive ' : ''}safe integer.`);
+  }
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < (positive ? 1 : 0)) {
     throw new TypeError(`${label} must be a ${positive ? 'positive ' : ''}safe integer.`);
   }
+  if (number > max) throw new RangeError(`${label} must not exceed ${max} milliseconds.`);
   return number;
 }
 
@@ -67,9 +73,9 @@ export function createStellarTestnetHorizonHttpTransport({
 } = {}) {
   if (typeof fetchImpl !== 'function') throw new TypeError('fetchImpl must be a function.');
   if (typeof sleep !== 'function') throw new TypeError('sleep must be a function.');
-  const interval = safeInteger(pollIntervalMs, 'pollIntervalMs');
+  const interval = safeInteger(pollIntervalMs, 'pollIntervalMs', { max: MAX_TIMER_DELAY_MS });
   const attempts = safeInteger(maxEligibilityAttempts, 'maxEligibilityAttempts', { positive: true });
-  const requestTimeout = safeInteger(requestTimeoutMs, 'requestTimeoutMs', { positive: true });
+  const requestTimeout = safeInteger(requestTimeoutMs, 'requestTimeoutMs', { positive: true, max: MAX_TIMER_DELAY_MS });
 
   async function request(path, options = {}) {
     const target = `${TESTNET_HORIZON_URL}${path}`;
