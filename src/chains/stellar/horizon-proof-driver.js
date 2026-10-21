@@ -31,6 +31,9 @@ function optionalLedger(value, label) {
 }
 
 function integerString(value, label, { positive = false } = {}) {
+  if (typeof value === 'number' && !Number.isSafeInteger(value)) {
+    throw new TypeError(`${label} must use an exact integer string or safe integer number.`);
+  }
   const text = String(value ?? '');
   if (!/^\d+$/.test(text)) throw new TypeError(`${label} must be a non-negative integer string.`);
   if (positive && BigInt(text) === 0n) throw new TypeError(`${label} must be greater than zero.`);
@@ -99,7 +102,7 @@ export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccou
     account,
     sequence,
     sequenceLedger: optionalLedger(accountResponse.sequence_ledger, 'accountResponse.sequence_ledger'),
-    sequenceTime: accountResponse.sequence_time == null ? null : String(accountResponse.sequence_time),
+    sequenceTime: accountResponse.sequence_time == null ? null : integerString(accountResponse.sequence_time, 'accountResponse.sequence_time'),
     lastModifiedLedger: optionalLedger(accountResponse.last_modified_ledger, 'accountResponse.last_modified_ledger'),
     lastModifiedTime: accountResponse.last_modified_time == null ? null : isoTime(accountResponse.last_modified_time, 'accountResponse.last_modified_time'),
     masterWeight,
@@ -187,7 +190,7 @@ export function normalizeHorizonFinality({
   const hash = hashHex(transactionResponse.hash, 'transaction.hash');
   if (hash !== hashHex(expectedTransactionHashHex, 'expectedTransactionHashHex')) throw new Error('Horizon finality response is for a different transaction.');
   const ledger = integerString(transactionResponse.ledger, 'transaction.ledger', { positive: true });
-  if (ledger !== String(expectedLedger)) throw new Error('Horizon finality response ledger does not match the inclusion ledger.');
+  if (ledger !== integerString(expectedLedger, 'expectedLedger', { positive: true })) throw new Error('Horizon finality response ledger does not match the inclusion ledger.');
   if (transactionResponse.successful !== true) throw new Error('Horizon finality response is not successful.');
 
   const ledgerSequence = integerString(ledgerResponse.sequence, 'ledger.sequence', { positive: true });
@@ -254,9 +257,10 @@ export function createInjectedStellarTestnetHorizonDriver({
     },
 
     async observeFinality({ transactionHashHex, ledger }) {
+      const expectedLedger = integerString(ledger, 'expectedLedger', { positive: true });
       const transactionResponse = await transport.loadTransaction(transactionHashHex);
       const transactionLedger = integerString(transactionResponse?.ledger, 'transaction.ledger', { positive: true });
-      if (transactionLedger !== String(ledger)) throw new Error('Horizon transaction lookup returned a different inclusion ledger.');
+      if (transactionLedger !== expectedLedger) throw new Error('Horizon transaction lookup returned a different inclusion ledger.');
       const ledgerResponse = await transport.loadLedger(transactionLedger);
       return normalizeHorizonFinality({
         transactionResponse,

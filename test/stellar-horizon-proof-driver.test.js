@@ -301,3 +301,83 @@ test('indeterminate Horizon timeout cannot be normalized into a confirmed recove
   );
   assert.equal(submissions,1,'do not retry a potentially submitted transaction');
 });
+
+test('Horizon account proof rejects unsafe sequence and sequence-time numbers', () => {
+  for (const field of ['sequence', 'sequence_time']) {
+    for (const value of [Number.MAX_SAFE_INTEGER + 1, Infinity, NaN, 1.5]) {
+      assert.throws(() => normalizeHorizonAccountSnapshot({
+        accountResponse: accountResponse({ [field]: value }), expectedAccount: G(1)
+      }), /exact integer string or safe integer number/, field);
+    }
+  }
+  for (const value of ['invalid', '-1', '1.5']) {
+    assert.throws(() => normalizeHorizonAccountSnapshot({
+      accountResponse: accountResponse({ sequence_time: value })
+    }), /non-negative integer string/);
+  }
+});
+
+test('Horizon account proof preserves exact large sequences and optional sequence times', () => {
+  for (const sequence of ['9007199254740993', 1001]) {
+    const snapshot = normalizeHorizonAccountSnapshot({
+      accountResponse: accountResponse({ sequence, sequence_time: 1760000000 })
+    });
+    assert.equal(snapshot.sequence, String(sequence));
+    assert.equal(snapshot.sequenceTime, '1760000000');
+  }
+  assert.equal(normalizeHorizonAccountSnapshot({
+    accountResponse: accountResponse({ sequence_time: null })
+  }).sequenceTime, null);
+});
+
+function precisionFinalityFixture() {
+  return {
+    transactionResponse: {
+      hash: 'aa'.repeat(32), successful: true, ledger: '9007199254740992',
+      created_at: '2026-10-03T00:04:00Z'
+    },
+    ledgerResponse: {
+      sequence: '9007199254740992', hash: 'bb'.repeat(32),
+      closed_at: '2026-10-03T00:05:00Z'
+    },
+    expectedTransactionHashHex: 'aa'.repeat(32),
+    expectedLedger: '9007199254740992'
+  };
+}
+
+test('Horizon inclusion proof rejects unsafe numeric submission ledgers', () => {
+  const response = precisionFinalityFixture().transactionResponse;
+  assert.throws(() => normalizeHorizonSubmissionSuccess({
+    response: { ...response, ledger: Number.MAX_SAFE_INTEGER + 1 }
+  }), /submission.ledger must use an exact integer string/);
+  assert.equal(normalizeHorizonSubmissionSuccess({
+    response: { ...response, ledger: 501 }
+  }).ledger, '501');
+});
+
+test('Horizon finality rejects rounded ledgers on every side of the evidence comparison', () => {
+  for (const field of ['transaction', 'ledger', 'expected']) {
+    const args = precisionFinalityFixture();
+    const unsafe = Number.MAX_SAFE_INTEGER + 1;
+    if (field === 'transaction') args.transactionResponse.ledger = unsafe;
+    if (field === 'ledger') args.ledgerResponse.sequence = unsafe;
+    if (field === 'expected') args.expectedLedger = unsafe;
+    assert.throws(() => normalizeHorizonFinality(args),
+      /exact integer string or safe integer number/, field);
+  }
+});
+
+test('injected Horizon finality rejects unsafe expected ledgers before lookup', async () => {
+  let calls = 0;
+  const unexpected = async () => { calls++; throw new Error('unexpected transport call'); };
+  const driver = createInjectedStellarTestnetHorizonDriver({
+    transport: {
+      loadAccount: unexpected, submitTransactionXdr: unexpected,
+      loadTransaction: unexpected, loadLedger: unexpected, waitUntilEligible: unexpected
+    }
+  });
+  await assert.rejects(driver.observeFinality({
+    transactionHashHex: 'aa'.repeat(32), ledger: Number.MAX_SAFE_INTEGER + 1
+  }), /expectedLedger must use an exact integer string/);
+  assert.equal(calls, 0);
+});
