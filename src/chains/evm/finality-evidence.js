@@ -44,7 +44,9 @@ function quantity(value, label) {
 }
 
 function receiptSucceeded(status) {
-  return status === true || status === 1 || status === 1n || status === '1' || String(status).toLowerCase() === '0x1';
+  // Never invoke untrusted object coercion while deciding whether a receipt succeeded.
+  return status === true || status === 1 || status === 1n || status === '1' ||
+    (typeof status === 'string' && status.toLowerCase() === '0x1');
 }
 
 function policyForNetwork(networkRef) {
@@ -75,7 +77,9 @@ export function createEvmBlockFinalityEvidence({
   if (!network || network.rpcProtocol !== 'evm-json-rpc') throw new TypeError('EVM finality evidence requires a registered EVM JSON-RPC network.');
   const policy = policyForNetwork(network.id);
   if (!policy || policy.model !== 'evm-block') throw new Error('This finality evidence builder supports evm-block policies only.');
-  if (String(observedChainIdHex ?? '').toLowerCase() !== String(network.chainIdHex).toLowerCase()) throw new Error('Observed EVM chain ID does not match the selected network.');
+  if (typeof observedChainIdHex !== 'string' ||
+      observedChainIdHex.toLowerCase() !== String(network.chainIdHex).toLowerCase())
+    throw new Error('Observed EVM chain ID does not match the selected network.');
   if (typeof observedAt !== 'string' || !Number.isFinite(Date.parse(observedAt))) throw new TypeError('observedAt must be an ISO-compatible timestamp.');
 
   const transactionRef = validateProofBinding(proof, network);
