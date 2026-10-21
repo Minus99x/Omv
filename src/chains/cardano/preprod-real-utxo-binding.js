@@ -28,7 +28,12 @@ function withoutDigest(value, key) {
 function normalizeReference(value, label) {
   const reference = plainObject(value, label);
   const txId = String(reference?.transaction?.id ?? '').toLowerCase();
-  const index = Number(reference?.index);
+  const rawIndex = reference?.index;
+  const index = typeof rawIndex === 'number' && Number.isSafeInteger(rawIndex)
+    ? rawIndex
+    : typeof rawIndex === 'string' && /^(0|[1-9][0-9]*)$/.test(rawIndex)
+      ? Number(rawIndex)
+      : NaN;
   if (!HEX_32.test(txId)) throw new TypeError(`${label}.transaction.id must be 32-byte hex.`);
   if (!Number.isSafeInteger(index) || index < 0) throw new TypeError(`${label}.index must be a non-negative safe integer.`);
   return Object.freeze({ transaction: Object.freeze({ id: txId }), index });
