@@ -184,3 +184,76 @@ test('eligibility polling rejects impossible ledger close dates rather than norm
     await assert.rejects(transport.waitUntilEligible({ sourceAccount:G(1), minAccountSequenceAge:'4800', currentSequence:'1001', recoverySequence:'5000' }), /valid UTC timestamp/, closedAt);
   }
 });
+
+test('Horizon transport rejects unsafe numeric ledger identifiers before fetching', async () => {
+  let calls = 0;
+  const transport = createStellarTestnetHorizonHttpTransport({
+    fetchImpl: async () => { calls++; throw new Error('unexpected fetch'); }
+  });
+  for (const value of [Number.MAX_SAFE_INTEGER + 1, Infinity, NaN, 1.5]) {
+    await assert.rejects(transport.loadLedger(value), /exact integer string or safe integer number/);
+  }
+  assert.equal(calls, 0);
+});
+
+const eligibilityArguments = () => ({
+  sourceAccount: G(1), minAccountSequenceAge: '4800',
+  currentSequence: '1001', recoverySequence: '5000'
+});
+
+test('Horizon eligibility rejects unsafe numeric arguments before any observation', async () => {
+  let calls = 0;
+  const transport = createStellarTestnetHorizonHttpTransport({
+    fetchImpl: async () => { calls++; throw new Error('unexpected fetch'); }
+  });
+  for (const field of ['currentSequence', 'recoverySequence', 'minAccountSequenceAge']) {
+    await assert.rejects(transport.waitUntilEligible({
+      ...eligibilityArguments(), [field]: Number.MAX_SAFE_INTEGER + 1
+    }), new RegExp(field + ' must use an exact integer string'));
+  }
+  assert.equal(calls, 0);
+});
+
+test('Horizon eligibility rejects unsafe numeric evidence fields instead of accepting rounded values', async () => {
+  for (const field of ['sequence', 'sequence_time', 'sequence_ledger', 'latestLedger']) {
+    const unsafe = Number.MAX_SAFE_INTEGER + 1;
+    const account = {
+      account_id: G(1), sequence: '1001', sequence_time: '1760000000', sequence_ledger: 599
+    };
+    const ledger = { sequence: 600, closed_at: '2025-10-09T10:13:20Z' };
+    if (field === 'latestLedger') ledger.sequence = unsafe;
+    else account[field] = unsafe;
+    const transport = createStellarTestnetHorizonHttpTransport({
+      fetchImpl: async url => jsonResponse(url.includes('/accounts/')
+        ? account : { _embedded: { records: [ledger] } })
+    });
+    const args = eligibilityArguments();
+    if (field === 'sequence') {
+      // Previously these rounded values compared equal and yielded eligible:true.
+      args.currentSequence = String(unsafe);
+      args.recoverySequence = '9007199254740993';
+    }
+    await assert.rejects(transport.waitUntilEligible(args),
+      /exact integer string or safe integer number/, field);
+  }
+});
+
+test('Horizon eligibility preserves exact large decimal sequences and safe numeric observations', async () => {
+  for (const sequence of ['9007199254740993', 1001]) {
+    const account = {
+      account_id: G(1), sequence, sequence_time: 1760000000, sequence_ledger: 599
+    };
+    const transport = createStellarTestnetHorizonHttpTransport({
+      fetchImpl: async url => jsonResponse(url.includes('/accounts/') ? account : {
+        _embedded: { records: [{ sequence: 600, closed_at: '2025-10-09T10:13:20Z' }] }
+      })
+    });
+    const result = await transport.waitUntilEligible({
+      ...eligibilityArguments(), currentSequence: String(sequence),
+      recoverySequence: '9007199254740994'
+    });
+    assert.equal(result.eligible, true);
+    assert.equal(result.accountSequence, String(sequence));
+    assert.equal(result.sequenceTime, '1760000000');
+  }
+});

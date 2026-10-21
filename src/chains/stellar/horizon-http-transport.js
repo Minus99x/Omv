@@ -9,6 +9,11 @@ function requiredText(value, label) {
 }
 
 function integerString(value, label, { positive = false } = {}) {
+  // JSON numbers beyond the safe range may already have lost precision.
+  // Preserve exact decimal strings and bigint values without rounding them.
+  if (typeof value === 'number' && !Number.isSafeInteger(value)) {
+    throw new TypeError(`${label} must use an exact integer string or safe integer number.`);
+  }
   const text = String(value ?? '');
   if (!/^\d+$/.test(text)) throw new TypeError(`${label} must be a non-negative integer string.`);
   if (positive && BigInt(text) === 0n) throw new TypeError(`${label} must be greater than zero.`);
