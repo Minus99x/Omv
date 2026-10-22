@@ -188,6 +188,14 @@ export async function observeApothemFinalityProvenance({
     if (!sameBlock(observation,finalized))
       throw new Error('Apothem finalized block changed during observation');
   }
+  // A stable block snapshot alone does not establish that the providers still
+  // report this transaction as successfully included in that block.
+  const receiptRechecks = (await both('eth_getTransactionReceipt',[txHash]))
+    .map((raw,i)=>receipt(raw,txHash,'receipt recheck '+i));
+  for (const rechecked of receiptRechecks) {
+    if (rechecked.blockNumber !== found.blockNumber || rechecked.blockHash !== found.blockHash)
+      throw new Error('Apothem receipt changed during observation');
+  }
   await checkChainIdentity();
 
   const core = {

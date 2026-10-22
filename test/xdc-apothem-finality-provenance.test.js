@@ -107,7 +107,7 @@ test('read-only Apothem proof compares both fixed providers and rechecks both ca
   assert.equal(report.chainIdRechecked,true);
   assert.equal(report.observedChainIdHex,'0x33');
   assert.equal(report.endpoints.length,2);
-  assert.equal(mock.calls.length,16);
+  assert.equal(mock.calls.length,18);
   assert.equal(mock.calls.filter(x=>x.input.method==='eth_chainId').length,4);
   assert.equal(report.readOnly,true);
   assert.equal(report.transactionSubmitted,false);
@@ -227,7 +227,7 @@ test('read-only dual-RPC probe constructs a digest-bound XDC finality package en
   assert.equal(evidencePackage.readyForLiveProofPromotion,false);
   assert.equal(xdcProvenancePackageMatchesProof(
     evidencePackage,observation,proof,'native-recovery'),true);
-  assert.equal(driver.calls.length,16);
+  assert.equal(driver.calls.length,18);
   assert.ok(driver.calls.every(call=>[
     'eth_chainId','eth_blockNumber','eth_getTransactionReceipt','eth_getBlockByNumber'
   ].includes(call.input.method)));
@@ -348,7 +348,7 @@ test('XDC finality refuses evidence when final identity response body stalls',{t
     }
   }),{code:'APOTHEM_RPC_TIMEOUT'});
   assert.equal(signal.aborted,true);
-  assert.equal(mock.calls.length,16);
+  assert.equal(mock.calls.length,18);
 });
 
 test('XDC finality binding forwards deadline and never packages a timed-out observation',{timeout:2000},async()=>{
@@ -390,7 +390,7 @@ for (const fails of [false,true]) {
       assert.equal(evidencePackage.readyForLiveProofPromotion,false);
     }
     t.mock.timers.tick(15001);
-    assert.equal(signals.length,fails?2:16);
+    assert.equal(signals.length,fails?2:18);
     assert.ok(signals.every(signal=>!signal.aborted));
   });
 }
@@ -401,7 +401,7 @@ const FINALITY_QUANTITY_STAGES = [
   ['finalized height',5,'number'], ['finalized timestamp',5,'timestamp'],
   ['inclusion recheck height',6,'number'], ['inclusion recheck timestamp',6,'timestamp'],
   ['finalized recheck height',7,'number'], ['finalized recheck timestamp',7,'timestamp'],
-  ['final chain ID',8,null]
+  ['receipt recheck height',8,'blockNumber'], ['final chain ID',9,null]
 ];
 
 for (const [label, ordinal, field] of FINALITY_QUANTITY_STAGES) {
@@ -477,7 +477,7 @@ test('XDC finality accepts exact supported observation-clock boundaries through 
 for (const endpoint of APOTHEM_ENDPOINTS) {
   for (const entry of [observeApothemFinalityProvenance,observeAndBindApothemFinality]) {
     test(`XDC ${entry.name} rejects redirect flags from ${endpoint} before body parsing`,async()=>{
-      for (const ordinal of [1,8]) {
+      for (const ordinal of [1,9]) {
         for (const responseUrl of [undefined,endpoint]) {
           const mock=provider();
           let reads=0;
@@ -498,3 +498,100 @@ for (const endpoint of APOTHEM_ENDPOINTS) {
     });
   }
 }
+
+const RECEIPT_DRIFT_CASES = [
+  ['disappeared',()=>null,/32-byte hex hash/],
+  ['failed',r=>({...r,status:'0x0'}),/successful inclusion/],
+  ['different transaction',r=>({...r,transactionHash:OTHER}),/successful inclusion/],
+  ['moved height',r=>({...r,blockNumber:'0x2b'}),/receipt changed during observation/],
+  ['changed block hash',r=>({...r,blockHash:OTHER}),/receipt changed during observation/],
+  ['zero block hash',r=>({...r,blockHash:'0x'+'00'.repeat(32)}),/all-zero hash/]
+];
+for (const endpoint of APOTHEM_ENDPOINTS) {
+  for (const [label,mutate,expected] of RECEIPT_DRIFT_CASES) {
+    test(`XDC receipt recheck rejects ${label} from ${endpoint}`,async()=>{
+      for (const entry of [observeApothemFinalityProvenance,observeAndBindApothemFinality]) {
+        const mock=provider();
+        let receiptReads=0;
+        await assert.rejects(entry({
+          transactionHash:TX,proof:timeoutBindingProof(),kind:'native-recovery',nowSeconds:NOW,
+          fetchImpl:async(url,options)=>{
+            const response=await mock.fetchImpl(url,options);
+            if (url!==endpoint || JSON.parse(options.body).method!=='eth_getTransactionReceipt' ||
+                ++receiptReads!==2) return response;
+            const body=await response.json();
+            body.result=mutate(body.result);
+            return {ok:true,json:async()=>body};
+          }
+        }),expected);
+        assert.equal(receiptReads,2);
+        assert.equal(mock.calls.length,16);
+        assert.equal(mock.calls.filter(c=>c.input.method==='eth_chainId').length,2);
+      }
+    });
+  }
+
+  test(`XDC receipt recheck rejects unavailable or malformed responses from ${endpoint}`,async()=>{
+    for (const fault of ['transport','http','json','identity','redirect']) {
+      const mock=provider();
+      let receiptReads=0;
+      await assert.rejects(observeAndBindApothemFinality({
+        transactionHash:TX,proof:timeoutBindingProof(),kind:'native-recovery',nowSeconds:NOW,
+        fetchImpl:async(url,options)=>{
+          const response=await mock.fetchImpl(url,options);
+          if (url!==endpoint || JSON.parse(options.body).method!=='eth_getTransactionReceipt' ||
+              ++receiptReads!==2) return response;
+          if (fault==='transport') throw Error('receipt recheck unavailable');
+          if (fault==='http') return {ok:false,status:503};
+          if (fault==='json') return {ok:true,json:async()=>{throw Error('bad JSON');}};
+          if (fault==='redirect') return {...response,redirected:true};
+          const body=await response.json();
+          body.id++;
+          return {ok:true,json:async()=>body};
+        }
+      }),/transport unavailable|HTTP failure|invalid JSON|response identity|redirected/);
+      assert.equal(receiptReads,2);
+      assert.equal(mock.calls.length,16);
+    }
+  });
+
+  test(`XDC receipt recheck deadline prevents evidence packaging for ${endpoint}`,{timeout:2000},async()=>{
+    const mock=provider();
+    let receiptReads=0;
+    let signal;
+    await assert.rejects(observeAndBindApothemFinality({
+      transactionHash:TX,proof:timeoutBindingProof(),kind:'native-recovery',nowSeconds:NOW,
+      requestTimeoutMs:10,
+      fetchImpl:async(url,options)=>{
+        const response=await mock.fetchImpl(url,options);
+        if (url!==endpoint || JSON.parse(options.body).method!=='eth_getTransactionReceipt' ||
+            ++receiptReads!==2) return response;
+        signal=options.signal;
+        return {ok:true,json:()=>new Promise(()=>{})};
+      }
+    }),{code:'APOTHEM_RPC_TIMEOUT'});
+    assert.equal(signal.aborted,true);
+    assert.equal(mock.calls.length,16);
+  });
+}
+
+test('XDC receipt rechecks follow fixed-height checks and precede final identity checks',async()=>{
+  const mock=provider();
+  const proof=timeoutBindingProof();
+  const {observation,evidencePackage}=await observeAndBindApothemFinality({
+    transactionHash:TX,proof,kind:'native-recovery',nowSeconds:NOW,
+    fetchImpl:mock.fetchImpl
+  });
+  for (const idx of [0,1]) {
+    const calls=mock.calls.filter(c=>c.idx===idx);
+    assert.deepEqual(calls.map(c=>c.input.method),[
+      'eth_chainId','eth_blockNumber','eth_getTransactionReceipt',
+      'eth_getBlockByNumber','eth_getBlockByNumber','eth_getBlockByNumber',
+      'eth_getBlockByNumber','eth_getTransactionReceipt','eth_chainId'
+    ]);
+    assert.deepEqual(calls[7].input.params,[TX]);
+    assert.deepEqual(calls[6].input.params,['0x2b',false]);
+  }
+  assert.equal(xdcProvenancePackageMatchesProof(evidencePackage,observation,proof,'native-recovery'),true);
+  assert.equal(evidencePackage.readyForLiveProofPromotion,false);
+});
