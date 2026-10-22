@@ -42,7 +42,7 @@ function integer(value, label, { positive = false } = {}) {
 function iso(value, label) {
   const text = textValue(value, label);
   const invalid = () => new TypeError(`${label} must be a valid ISO-8601 timestamp with a real calendar date and timezone.`);
-  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(text);
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(text);
   if (!parts) throw invalid();
   const [, yearText, monthText, dayText, hourText, minuteText, secondText,
     fraction = '', , offsetSign, offsetHourText, offsetMinuteText] = parts;
