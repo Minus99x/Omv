@@ -174,6 +174,8 @@ export function createStellarTestnetHorizonHttpTransport({
         throw new Error('currentSequence must remain below recoverySequence while waiting for eligibility.');
       }
 
+      let previousLedgerSequence = null;
+      let previousLedgerClosedSeconds = null;
       for (let attempt = 1; attempt <= attempts; attempt += 1) {
         const [accountState, latestLedger] = await Promise.all([
           transport.loadAccount(account),
@@ -196,6 +198,18 @@ export function createStellarTestnetHorizonHttpTransport({
         }
         const eligibleAtSeconds = BigInt(sequenceTime) + BigInt(minimumAge);
         const ledgerClosedSeconds = BigInt(Math.floor(Date.parse(closedAt) / 1000));
+        const ledgerNumber = BigInt(latestLedgerSequence);
+        // A later observation must not trust a rolled-back ledger, a reversed
+        // close time, or conflicting close times for the same ledger.
+        if (previousLedgerSequence !== null &&
+            (ledgerNumber < previousLedgerSequence ||
+             ledgerClosedSeconds < previousLedgerClosedSeconds ||
+             (ledgerNumber === previousLedgerSequence &&
+              ledgerClosedSeconds !== previousLedgerClosedSeconds))) {
+          throw new Error('Horizon latest-ledger observations regressed or conflicted during eligibility polling.');
+        }
+        previousLedgerSequence = ledgerNumber;
+        previousLedgerClosedSeconds = ledgerClosedSeconds;
         if (ledgerClosedSeconds >= eligibleAtSeconds) {
           return Object.freeze({
             eligible: true,
