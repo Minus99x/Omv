@@ -27,6 +27,9 @@ function hash(value, label) {
 function quantity(value, label) {
   if (typeof value !== 'string' || !QUANTITY.test(value))
     throw new TypeError(label + ' must be a canonical hex quantity');
+  // Canonical uint256 quantities contain at most 64 hexadecimal digits.
+  // Reject oversized values before allocating an arbitrary-precision integer.
+  if (value.length > 66) throw new TypeError(label + ' exceeds uint256');
   return BigInt(value);
 }
 function block(value, label) {
@@ -61,6 +64,8 @@ export async function observeApothemFinalityProvenance({
   if (typeof fetchImpl !== 'function') throw new TypeError('A fetch transport is required');
   if (!Number.isSafeInteger(nowSeconds) || nowSeconds <= 0)
     throw new TypeError('nowSeconds must be a positive safe integer');
+  if (nowSeconds > 8640000000000)
+    throw new TypeError('nowSeconds must be representable as a UTC observation timestamp');
   if (!Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 2147483647)
     throw new TypeError('requestTimeoutMs must be an integer from 1 to 2147483647 milliseconds');
   if (APOTHEM_ENDPOINTS.length !== 2 || new Set(APOTHEM_ENDPOINTS).size !== 2)
@@ -100,7 +105,8 @@ export async function observeApothemFinalityProvenance({
       } catch (error) {
         throw new Error('Apothem read-only transport unavailable: ' + String(error?.message ?? error));
       }
-      if (typeof response?.url === 'string' && new URL(response.url).href !== new URL(endpoint).href)
+      if (response?.redirected === true ||
+          (typeof response?.url === 'string' && new URL(response.url).href !== new URL(endpoint).href))
         throw new Error('Apothem finality RPC response redirected outside pinned endpoint');
       if (response?.ok !== true) throw new Error('Apothem provider HTTP failure: ' + String(response?.status ?? 'unknown'));
       let body;

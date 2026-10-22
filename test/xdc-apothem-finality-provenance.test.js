@@ -394,3 +394,107 @@ for (const fails of [false,true]) {
     assert.ok(signals.every(signal=>!signal.aborted));
   });
 }
+
+const FINALITY_QUANTITY_STAGES = [
+  ['initial chain ID',1,null], ['latest head',2,null], ['receipt height',3,'blockNumber'],
+  ['inclusion height',4,'number'], ['inclusion timestamp',4,'timestamp'],
+  ['finalized height',5,'number'], ['finalized timestamp',5,'timestamp'],
+  ['inclusion recheck height',6,'number'], ['inclusion recheck timestamp',6,'timestamp'],
+  ['finalized recheck height',7,'number'], ['finalized recheck timestamp',7,'timestamp'],
+  ['final chain ID',8,null]
+];
+
+for (const [label, ordinal, field] of FINALITY_QUANTITY_STAGES) {
+  for (const endpoint of APOTHEM_ENDPOINTS) {
+    test(`XDC observer rejects uint256 overflow in ${label} from ${endpoint}`,async()=>{
+      for (const overflow of ['0x1'+'0'.repeat(64), '0x'+'f'.repeat(4096)]) {
+        const mock = provider();
+        let reads = 0;
+        await assert.rejects(observeApothemFinalityProvenance({
+          transactionHash:TX,nowSeconds:NOW,
+          fetchImpl:async(url,options)=>{
+            const response = await mock.fetchImpl(url,options);
+            if (url!==endpoint || ++reads!==ordinal) return response;
+            const body = await response.json();
+            if (field===null) body.result=overflow;
+            else body.result[field]=overflow;
+            return {ok:true,json:async()=>body};
+          }
+        }),/exceeds uint256/);
+        assert.equal(reads,ordinal, 'must reject at the malformed observation');
+        assert.equal(mock.calls.length,ordinal*2, 'must not request later evidence');
+      }
+    });
+  }
+}
+
+test('XDC observer and binding preserve maximum uint256 provider heads exactly',async()=>{
+  const maximum='0x'+'f'.repeat(64);
+  const mock=provider({headFirst:maximum,headSecond:maximum});
+  const proof=timeoutBindingProof();
+  const {observation,evidencePackage}=await observeAndBindApothemFinality({
+    transactionHash:TX,proof,kind:'native-recovery',fetchImpl:mock.fetchImpl,nowSeconds:NOW
+  });
+  assert.deepEqual(observation.latestHeadHeights,[
+    ((1n<<256n)-1n).toString(), ((1n<<256n)-1n).toString()
+  ]);
+  assert.equal(xdcProvenancePackageMatchesProof(evidencePackage,observation,proof,'native-recovery'),true);
+  assert.equal(evidencePackage.readyForLiveProofPromotion,false);
+});
+
+test('XDC finality rejects unrepresentable observation clocks before any provider calls',async()=>{
+  for (const entry of [observeApothemFinalityProvenance,observeAndBindApothemFinality]) {
+    for (const nowSeconds of [8640000000001,Number.MAX_SAFE_INTEGER]) {
+      const mock=provider();
+      await assert.rejects(entry({
+        transactionHash:TX,proof:timeoutBindingProof(),kind:'native-recovery',
+        fetchImpl:mock.fetchImpl,nowSeconds
+      }),/nowSeconds.*representable/);
+      assert.equal(mock.calls.length,0);
+    }
+  }
+});
+
+test('XDC finality accepts exact supported observation-clock boundaries through binding',async()=>{
+  for (const nowSeconds of [1,8640000000000]) {
+    const timestamp='0x'+BigInt(nowSeconds).toString(16);
+    const mock=provider();
+    const proof=timeoutBindingProof();
+    const {observation,evidencePackage}=await observeAndBindApothemFinality({
+      transactionHash:TX,proof,kind:'native-recovery',nowSeconds,
+      fetchImpl:async(url,options)=>{
+        const response=await mock.fetchImpl(url,options);
+        const body=await response.json();
+        if (JSON.parse(options.body).method==='eth_getBlockByNumber') body.result.timestamp=timestamp;
+        return {ok:true,json:async()=>body};
+      }
+    });
+    assert.equal(observation.observedAt,new Date(nowSeconds*1000).toISOString());
+    assert.equal(xdcProvenancePackageMatchesProof(evidencePackage,observation,proof,'native-recovery'),true);
+  }
+});
+
+for (const endpoint of APOTHEM_ENDPOINTS) {
+  for (const entry of [observeApothemFinalityProvenance,observeAndBindApothemFinality]) {
+    test(`XDC ${entry.name} rejects redirect flags from ${endpoint} before body parsing`,async()=>{
+      for (const ordinal of [1,8]) {
+        for (const responseUrl of [undefined,endpoint]) {
+          const mock=provider();
+          let reads=0;
+          let redirectedBodyReads=0;
+          await assert.rejects(entry({
+            transactionHash:TX,proof:timeoutBindingProof(),kind:'native-recovery',nowSeconds:NOW,
+            fetchImpl:async(url,options)=>{
+              const response=await mock.fetchImpl(url,options);
+              if (url!==endpoint || ++reads!==ordinal) return response;
+              return {ok:true,redirected:true,...(responseUrl===undefined?{}:{url:responseUrl}),
+                json:async()=>{redirectedBodyReads++;return response.json();}};
+            }
+          }),/redirected outside pinned endpoint/);
+          assert.equal(redirectedBodyReads,0);
+          assert.equal(mock.calls.length,ordinal*2);
+        }
+      }
+    });
+  }
+}
