@@ -114,6 +114,13 @@ export function createBitcoinSignetObservationEvidence({
   if (finalTransactionEvidence.rescueScriptPubKey !== finalizerEvidence.rescueScriptPubKey || finalTransactionEvidence.rescueAmountSats !== finalizerEvidence.rescueAmountSats) {
     throw new Error('Bitcoin final transaction rescue output does not match finalizer evidence.');
   }
+  // Two individually digest-valid receipts may still describe different
+  // recoveries. Bind the PSBT, descriptor and economics across both records.
+  for (const field of ['psbtSha256', 'descriptorPolicyDigest', 'feeSats']) {
+    if (finalTransactionEvidence[field] !== finalizerEvidence[field]) {
+      throw new Error(`Bitcoin final transaction ${field} does not match finalizer evidence.`);
+    }
+  }
   if (!Number.isSafeInteger(minimumConfirmations) || minimumConfirmations < 1) {
     throw new TypeError('minimumConfirmations must be a positive safe integer.');
   }
@@ -135,6 +142,9 @@ export function createBitcoinSignetObservationEvidence({
   const tipHeight = integer(chainTip?.blockHeight, 'chainTip.blockHeight', { positive:true });
   const tipObservedAt = iso(chainTip?.observedAt, 'chainTip.observedAt');
   if (BigInt(tipHeight) < BigInt(blockHeight)) throw new Error('Bitcoin chain tip predates the observed transaction block.');
+  if (tipHeight === blockHeight && tipHash !== blockHash) {
+    throw new Error('Bitcoin chain tip hash does not match the transaction block at equal height.');
+  }
   const derivedConfirmations = BigInt(tipHeight) - BigInt(blockHeight) + 1n;
   if (derivedConfirmations.toString() !== confirmations) throw new Error('Bitcoin confirmation count does not match the bound chain tip.');
   if (Date.parse(tipObservedAt) < Date.parse(observedAt)) throw new Error('Bitcoin chain-tip observation is stale relative to the transaction observation.');

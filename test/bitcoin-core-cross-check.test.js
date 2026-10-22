@@ -497,3 +497,49 @@ test('Bitcoin Core receipt-chain freshness rejects future and just-expired obser
   assert.equal(future.ok, false);
   assert.ok(future.errors.some(message => /future/.test(message)));
 });
+
+test('Bitcoin Core receipt chain rejects coordinated digest rewrites of transaction and fee identities', () => {
+  const tx = transaction(), input = observations(tx);
+  const baseline = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input,
+    observationSource:'bitcoin-core-rpc',
+    observationContext:context(1,'2026-10-07T05:20:00Z')
+  });
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([baseline]).ok,true);
+  for (const [name, edit] of [
+    ['fee', receipt=>{receipt.mempool.feeSats='999';}],
+    ['vsize', receipt=>{receipt.mempool.vsize+=1;}],
+    ['txid', receipt=>{receipt.mempool.txid='55'.repeat(32);}],
+    ['wtxid', receipt=>{receipt.mempool.wtxid='66'.repeat(32);}],
+    ['effective-includes', receipt=>{receipt.mempool.effectiveIncludes=['77'.repeat(32)];}]
+  ]) {
+    const forged=rehashReceipt(baseline,edit);
+    const result=verifyBitcoinCoreCrossCheckEvidenceChain([forged]);
+    assert.equal(result.ok,false,name+' digest-rewritten mismatch must fail');
+    assert.ok(result.errors.some(error=>/mempool transaction identity|mempool fee, size or effective-includes/.test(error)),name);
+  }
+});
+
+test('Bitcoin Core receipt chain rejects digest-rewritten successful diagnostics on rejected mempool results', () => {
+  const tx = transaction(), input = observations(tx);
+  const rejected = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input,
+    mempoolResult:{
+      txid:tx.txid, wtxid:tx.wtxid, allowed:false,
+      'reject-reason':'missing-inputs'
+    },
+    observationSource:'imported-json',
+    observationContext:context(1,'2026-10-07T05:20:00Z')
+  });
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([rejected]).ok,true);
+  for(const edit of [
+    receipt=>{receipt.mempool.vsize=tx.virtualBytes;},
+    receipt=>{receipt.mempool.feeSats='1000';},
+    receipt=>{receipt.mempool.effectiveIncludes=[tx.wtxid];}
+  ]){
+    const forged=rehashReceipt(rejected,edit);
+    const result=verifyBitcoinCoreCrossCheckEvidenceChain([forged]);
+    assert.equal(result.ok,false);
+    assert.ok(result.errors.some(error=>/rejected mempool result carries successful diagnostics/.test(error)));
+  }
+});

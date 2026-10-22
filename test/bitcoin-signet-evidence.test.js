@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { secp256k1 } from '@noble/curves/secp256k1.js';
 import { createBitcoinRecoveryDescriptor } from '../src/chains/bitcoin/descriptor.js';
 import { createBitcoinWitnessV0Sighash, encodePsbtV2 } from '../src/chains/bitcoin/psbt-v2.js';
@@ -394,4 +395,49 @@ test('Bitcoin Signet rescue observation binds exact finalizer vout', () => {
     evidence:proof, finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction,
     ...wrongOutpoint
   }).ok, false);
+});
+
+test('Bitcoin Signet rejects individually rehashed but cross-wired final transaction records', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const input = observations(finalizer);
+  const stable = value => Array.isArray(value) ? value.map(stable) :
+    value && typeof value === 'object'
+      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]))
+      : value;
+  for (const field of ['psbtSha256', 'descriptorPolicyDigest', 'feeSats']) {
+    const modified = { ...finalTransaction, [field]: field === 'feeSats' ? '999' : '00'.repeat(32) };
+    const { sha256:_old, ...core } = modified;
+    modified.sha256 = createHash('sha256').update(JSON.stringify(stable(core))).digest('hex');
+    assert.throws(() => createBitcoinSignetObservationEvidence({
+      finalizerEvidence:finalizer, finalTransactionEvidence:modified, ...input
+    }), new RegExp(field + ' does not match finalizer evidence'));
+    assert.equal(verifyBitcoinSignetObservationEvidence({
+      evidence:createBitcoinSignetObservationEvidence({
+        finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, ...input
+      }),
+      finalizerEvidence:finalizer, finalTransactionEvidence:modified, ...input
+    }).ok, false);
+  }
+});
+
+test('Bitcoin Signet requires identical tip and inclusion hashes for one-confirmation observations', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const input = observations(finalizer, {
+    transaction:{ confirmations:'1' },
+    chainTip:{ blockHeight:'300000', blockHash:'ef'.repeat(32) }
+  });
+  const valid = createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction,
+    ...input, minimumConfirmations:1
+  });
+  assert.equal(valid.transaction.confirmations, '1');
+  assert.equal(valid.chainTip.blockHash, valid.transaction.blockHash);
+  const altered = observations(finalizer, {
+    transaction:{ confirmations:'1' },
+    chainTip:{ blockHeight:'300000', blockHash:'ab'.repeat(32) }
+  });
+  assert.throws(() => createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction,
+    ...altered, minimumConfirmations:1
+  }), /chain tip hash does not match the transaction block/);
 });

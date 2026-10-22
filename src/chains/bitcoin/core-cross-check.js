@@ -275,6 +275,28 @@ function validateChainedCoreAuthority(evidence, index, errors) {
       evidence.feeDiagnosticsBound !== bound || (bound && !allowed)) {
     errors.push(`${prefix} has inconsistent mempool fee diagnostics.`);
   }
+  // Receipt chains must recheck internal transaction/fee consistency: a
+  // rewritten SHA-256 cannot legitimize a cross-wired Core observation.
+  if (evidence.mempool?.txid !== evidence.txid ||
+      evidence.mempool?.wtxid !== evidence.wtxid) {
+    errors.push(`${prefix} mempool transaction identity is inconsistent.`);
+  }
+  if (bound === true && (
+    evidence.mempool?.feeSats !== evidence.extractedFeeSats ||
+    evidence.mempool?.vsize !== evidence.virtualBytes ||
+    !Array.isArray(evidence.mempool?.effectiveIncludes) ||
+    evidence.mempool.effectiveIncludes.length !== 1 ||
+    evidence.mempool.effectiveIncludes[0] !== evidence.wtxid
+  )) {
+    errors.push(`${prefix} mempool fee, size or effective-includes do not bind the transaction.`);
+  }
+  if (allowed === false && (
+    bound !== false || evidence.mempool?.feeSats !== null ||
+    evidence.mempool?.vsize !== null ||
+    evidence.mempool?.effectiveIncludes?.length !== 0
+  )) {
+    errors.push(`${prefix} rejected mempool result carries successful diagnostics.`);
+  }
   const proven = source === 'bitcoin-core-rpc' && allowed === true && bound === true;
   if (evidence.bitcoinCoreCrossCheckProven !== proven) {
     errors.push(`${prefix} has forged Bitcoin Core cross-check provenance.`);
