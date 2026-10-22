@@ -54,12 +54,15 @@ function checkFresh(timestamp, clock, label) {
 }
 
 export async function observeApothemFinalityProvenance({
-  transactionHash, fetchImpl = globalThis.fetch, nowSeconds = Math.floor(Date.now() / 1000)
+  transactionHash, fetchImpl = globalThis.fetch, nowSeconds = Math.floor(Date.now() / 1000),
+  requestTimeoutMs = 15000
 } = {}) {
   const txHash = hash(transactionHash, 'transactionHash');
   if (typeof fetchImpl !== 'function') throw new TypeError('A fetch transport is required');
   if (!Number.isSafeInteger(nowSeconds) || nowSeconds <= 0)
     throw new TypeError('nowSeconds must be a positive safe integer');
+  if (!Number.isSafeInteger(requestTimeoutMs) || requestTimeoutMs < 1 || requestTimeoutMs > 2147483647)
+    throw new TypeError('requestTimeoutMs must be an integer from 1 to 2147483647 milliseconds');
   if (APOTHEM_ENDPOINTS.length !== 2 || new Set(APOTHEM_ENDPOINTS).size !== 2)
     throw new Error('Two distinct fixed Apothem RPC URLs are required');
   const network = getNetwork('xdc:apothem');
@@ -71,29 +74,47 @@ export async function observeApothemFinalityProvenance({
     if (!APOTHEM_ENDPOINTS.includes(endpoint) || !ALLOWED.has(method))
       throw new Error('RPC method or endpoint is not allowlisted');
     const id = ++nextId;
-    let response;
+    const controller = new AbortController();
+    let timer;
+    // Bound fetch and JSON consumption even if an injected transport ignores abort.
+    const deadline = new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        const error = new Error('Apothem finality request timed out at ' + endpoint + ' for ' + method);
+        error.code = 'APOTHEM_RPC_TIMEOUT';
+        reject(error);
+        controller.abort();
+      }, requestTimeoutMs);
+    });
+    const exchange = (async () => {
+      let response;
+      try {
+        response = await fetchImpl(endpoint, {
+          method: 'POST',
+          headers: { accept: 'application/json', 'content-type': 'application/json' },
+          body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+          // Reject redirects: an allowlisted source URL alone cannot pin the actual receiver.
+          redirect: 'error',
+          credentials: 'omit',
+          signal: controller.signal
+        });
+      } catch (error) {
+        throw new Error('Apothem read-only transport unavailable: ' + String(error?.message ?? error));
+      }
+      if (typeof response?.url === 'string' && new URL(response.url).href !== new URL(endpoint).href)
+        throw new Error('Apothem finality RPC response redirected outside pinned endpoint');
+      if (response?.ok !== true) throw new Error('Apothem provider HTTP failure: ' + String(response?.status ?? 'unknown'));
+      let body;
+      try { body = await response.json(); } catch { throw new Error('Apothem provider returned invalid JSON'); }
+      if (!body || typeof body !== 'object' || Array.isArray(body) || body.jsonrpc !== '2.0' ||
+          body.id !== id || Object.hasOwn(body,'error') || !Object.hasOwn(body,'result'))
+        throw new Error('Apothem provider response identity or result malformed');
+      return body.result;
+    })();
     try {
-      response = await fetchImpl(endpoint, {
-        method: 'POST',
-        headers: { accept: 'application/json', 'content-type': 'application/json' },
-        body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-        // Reject redirects: an allowlisted source URL alone cannot pin the actual receiver.
-        redirect: 'error',
-        credentials: 'omit',
-        signal: AbortSignal.timeout(15000)
-      });
-    } catch (error) {
-      throw new Error('Apothem read-only transport unavailable: ' + String(error?.message ?? error));
+      return await Promise.race([exchange, deadline]);
+    } finally {
+      clearTimeout(timer);
     }
-    if (typeof response?.url === 'string' && new URL(response.url).href !== new URL(endpoint).href)
-      throw new Error('Apothem finality RPC response redirected outside pinned endpoint');
-    if (response?.ok !== true) throw new Error('Apothem provider HTTP failure: ' + String(response?.status ?? 'unknown'));
-    let body;
-    try { body = await response.json(); } catch { throw new Error('Apothem provider returned invalid JSON'); }
-    if (!body || typeof body !== 'object' || Array.isArray(body) || body.jsonrpc !== '2.0' ||
-        body.id !== id || Object.hasOwn(body,'error') || !Object.hasOwn(body,'result'))
-      throw new Error('Apothem provider response identity or result malformed');
-    return body.result;
   }
   function both(method, params = []) {
     return Promise.all(APOTHEM_ENDPOINTS.map(endpoint => rpc(endpoint, method, params)));
@@ -197,7 +218,7 @@ export async function observeApothemFinalityProvenance({
  */
 export async function observeAndBindApothemFinality({
   transactionHash, proof, kind, fetchImpl = globalThis.fetch,
-  nowSeconds = Math.floor(Date.now() / 1000)
+  nowSeconds = Math.floor(Date.now() / 1000), requestTimeoutMs = 15000
 } = {}) {
   if (typeof transactionHash !== 'string' || !/^0x[0-9a-f]{64}$/i.test(transactionHash) ||
       proof?.transactionRef?.toLowerCase() !== transactionHash.toLowerCase() ||
@@ -205,7 +226,7 @@ export async function observeAndBindApothemFinality({
       !['native-recovery','erc20-recovery'].includes(kind)) {
     throw new Error('XDC observation and recovery proof transaction/kind must match');
   }
-  const observation = await observeApothemFinalityProvenance({transactionHash,fetchImpl,nowSeconds});
+  const observation = await observeApothemFinalityProvenance({transactionHash,fetchImpl,nowSeconds,requestTimeoutMs});
   const evidencePackage = createXdcProvenanceBoundFinality({observation,proof,kind});
   return Object.freeze({observation,evidencePackage});
 }

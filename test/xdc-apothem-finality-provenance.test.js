@@ -289,3 +289,108 @@ test('XDC read-only observer enforces same-height finalized block identity and t
   assert.equal(report.rpcAuthenticated,undefined);
   assert.equal(report.readyForLiveProofPromotion,false);
 });
+
+function timeoutBindingProof() {
+  const binding = {kind:'native-recovery',sha256:'a'.repeat(64),contextSha256:'b'.repeat(64),
+    deploymentVerificationSha256:'c'.repeat(64)};
+  return {success:true,networkRef:'xdc:apothem',chainId:'xdc',transactionRef:TX,
+    bindingSha256:binding.sha256,binding};
+}
+
+test('XDC finality entry points validate deadlines before contacting providers',async()=>{
+  for (const entry of [observeApothemFinalityProvenance, observeAndBindApothemFinality]) {
+    for (const requestTimeoutMs of [null,0,-1,1.5,NaN,Infinity,true,'10',[],2147483648]) {
+      const mock = provider();
+      await assert.rejects(entry({
+        transactionHash:TX,proof:timeoutBindingProof(),kind:'native-recovery',
+        fetchImpl:mock.fetchImpl,nowSeconds:NOW,requestTimeoutMs
+      }),/requestTimeoutMs/);
+      assert.equal(mock.calls.length,0);
+    }
+  }
+});
+
+for (const phase of ['fetch','body']) {
+  test(`XDC finality bounds stalled receipt ${phase} without cooperative abort`,{timeout:2000},async()=>{
+    const mock = provider();
+    let signal;
+    await assert.rejects(observeApothemFinalityProvenance({
+      transactionHash:TX,nowSeconds:NOW,requestTimeoutMs:10,
+      fetchImpl:async(url,options)=>{
+        const result = await mock.fetchImpl(url,options);
+        if (url===APOTHEM_ENDPOINTS[1] && JSON.parse(options.body).method==='eth_getTransactionReceipt') {
+          signal = options.signal;
+          if (phase==='fetch') return new Promise(()=>{});
+          return {ok:true,json:()=>new Promise(()=>{})};
+        }
+        return result;
+      }
+    }),{code:'APOTHEM_RPC_TIMEOUT'});
+    assert.equal(signal.aborted,true);
+    assert.equal(mock.calls.length,6);
+    assert.ok(mock.calls.every(call=>call.input.method!=='eth_getBlockByNumber'));
+  });
+}
+
+test('XDC finality refuses evidence when final identity response body stalls',{timeout:2000},async()=>{
+  const mock = provider();
+  let identityReads = 0;
+  let signal;
+  await assert.rejects(observeApothemFinalityProvenance({
+    transactionHash:TX,nowSeconds:NOW,requestTimeoutMs:10,
+    fetchImpl:async(url,options)=>{
+      const result = await mock.fetchImpl(url,options);
+      if (url===APOTHEM_ENDPOINTS[1] && JSON.parse(options.body).method==='eth_chainId' && ++identityReads===2) {
+        signal = options.signal;
+        return {ok:true,json:()=>new Promise(()=>{})};
+      }
+      return result;
+    }
+  }),{code:'APOTHEM_RPC_TIMEOUT'});
+  assert.equal(signal.aborted,true);
+  assert.equal(mock.calls.length,16);
+});
+
+test('XDC finality binding forwards deadline and never packages a timed-out observation',{timeout:2000},async()=>{
+  const mock = provider();
+  let signal;
+  await assert.rejects(observeAndBindApothemFinality({
+    transactionHash:TX,proof:timeoutBindingProof(),kind:'native-recovery',
+    nowSeconds:NOW,requestTimeoutMs:10,
+    fetchImpl:async(url,options)=>{
+      const result = await mock.fetchImpl(url,options);
+      if (url===APOTHEM_ENDPOINTS[0]) {
+        signal = options.signal;
+        return {ok:true,json:()=>new Promise(()=>{})};
+      }
+      return result;
+    }
+  }),{code:'APOTHEM_RPC_TIMEOUT'});
+  assert.equal(signal.aborted,true);
+  assert.equal(mock.calls.length,2);
+});
+
+for (const fails of [false,true]) {
+  test(`XDC finality clears default deadlines after ${fails?'failure':'successful binding'}`,async t=>{
+    t.mock.timers.enable({apis:['setTimeout']});
+    const mock = provider();
+    const signals = [];
+    const result = observeAndBindApothemFinality({
+      transactionHash:TX,proof:timeoutBindingProof(),kind:'native-recovery',nowSeconds:NOW,
+      fetchImpl:async(url,options)=>{
+        signals.push(options.signal);
+        if (fails) return {ok:true,json:async()=>{throw Error('Malformed JSON fixture');}};
+        return mock.fetchImpl(url,options);
+      }
+    });
+    if (fails) await assert.rejects(result,/invalid JSON/);
+    else {
+      const {observation,evidencePackage} = await result;
+      assert.equal(observation.chainIdRechecked,true);
+      assert.equal(evidencePackage.readyForLiveProofPromotion,false);
+    }
+    t.mock.timers.tick(15001);
+    assert.equal(signals.length,fails?2:16);
+    assert.ok(signals.every(signal=>!signal.aborted));
+  });
+}
