@@ -249,8 +249,11 @@ export async function runBitcoinSignetObservationProof({
 }) {
   for (const method of ['readTransaction','readChainTip','readTxOut']) requireMethod(driver, method);
   const normalizedObservationSource = normalizeObservationSource(observationSource);
-  if (normalizedObservationSource === 'bitcoin-core-rpc' && driver?.provenance !== 'bitcoin-core-rpc') {
-    throw new Error('Live Bitcoin Signet observation requires a driver with bitcoin-core-rpc provenance.');
+  if (normalizedObservationSource === 'bitcoin-core-rpc') {
+    if (driver?.provenance !== 'bitcoin-core-rpc') {
+      throw new Error('Live Bitcoin Signet observation requires a driver with bitcoin-core-rpc provenance.');
+    }
+    requireMethod(driver, 'readBlockHashAtHeight');
   }
   const requestedTxid = txid(finalTransactionEvidence?.txid, 'finalTransactionEvidence.txid');
   const transaction = await driver.readTransaction({ transactionId:requestedTxid, networkRef:'bitcoin:signet' });
@@ -258,6 +261,16 @@ export async function runBitcoinSignetObservationProof({
     throw new Error('Bitcoin Signet driver returned a different transaction.');
   }
   const chainTip = await driver.readChainTip({ networkRef:'bitcoin:signet' });
+  // getrawtransaction's block hash may belong to a stale fork. A separate
+  // height-to-hash lookup binds live observations to the active Signet chain.
+  if (normalizedObservationSource === 'bitcoin-core-rpc') {
+    const activeBlockHash = await driver.readBlockHashAtHeight({
+      blockHeight:transaction.blockHeight, networkRef:'bitcoin:signet'
+    });
+    if (txid(activeBlockHash, 'activeBlockHash') !== txid(transaction.blockHash, 'transaction.blockHash')) {
+      throw new Error('Bitcoin Signet transaction block is not on the active chain at its claimed height.');
+    }
+  }
   const candidateOutputs = Array.isArray(finalizerEvidence?.outputs) ? finalizerEvidence.outputs : [];
   const rescueIndexes = candidateOutputs
     .map((output, index) => ({ output, index }))

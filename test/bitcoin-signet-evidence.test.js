@@ -224,7 +224,7 @@ test('Bitcoin Signet provenance separates fixture, imported and live RPC observa
   );
 
   const live = await runBitcoinSignetObservationProof({
-    driver:{ ...driver, provenance:'bitcoin-core-rpc' },
+    driver:{ ...driver, provenance:'bitcoin-core-rpc', async readBlockHashAtHeight() { return transaction.blockHash; } },
     finalizerEvidence:finalizer,
     finalTransactionEvidence:finalTransaction,
     observationSource:'bitcoin-core-rpc'
@@ -440,4 +440,36 @@ test('Bitcoin Signet requires identical tip and inclusion hashes for one-confirm
     finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction,
     ...altered, minimumConfirmations:1
   }), /chain tip hash does not match the transaction block/);
+});
+
+test('live Bitcoin Signet observation requires an independent active-chain hash lookup', async () => {
+  const {finalizer,finalTransaction}=finalizerArtifacts();
+  const {transaction,chainTip,rescueUtxo}=observations(finalizer);
+  const driver={
+    provenance:'bitcoin-core-rpc',
+    async readTransaction(){return transaction;},
+    async readChainTip(){return chainTip;},
+    async readTxOut(){return rescueUtxo;}
+  };
+  await assert.rejects(()=>runBitcoinSignetObservationProof({
+    driver,finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,
+    observationSource:'bitcoin-core-rpc'
+  }),/readBlockHashAtHeight/);
+  let rescued=false;
+  await assert.rejects(()=>runBitcoinSignetObservationProof({
+    driver:{...driver,async readBlockHashAtHeight({blockHeight,networkRef}){
+      assert.equal(blockHeight,'300000');
+      assert.equal(networkRef,'bitcoin:signet');
+      return 'aa'.repeat(32);
+    },async readTxOut(){rescued=true;return rescueUtxo;}},
+    finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,
+    observationSource:'bitcoin-core-rpc'
+  }),/not on the active chain/);
+  assert.equal(rescued,false,'unanchored transaction must fail before reading rescue output');
+  const result=await runBitcoinSignetObservationProof({
+    driver:{...driver,async readBlockHashAtHeight(){return transaction.blockHash;}},
+    finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,
+    observationSource:'bitcoin-core-rpc'
+  });
+  assert.equal(result.evidence.publicSignetObservationProven,true);
 });
