@@ -78,6 +78,32 @@ test('eligibility polling waits between observations and then succeeds', async (
   assert.deepEqual(sleeps, [17]);
 });
 
+test('eligibility polling rejects changed sequence provenance across observations', async () => {
+  const account = { account_id:G(1), sequence:'1001', sequence_time:'1760000000', sequence_ledger:599 };
+  const ledgerObservations = [
+    { sequence:600, closed_at:'2025-10-09T10:13:19Z' },
+    { sequence:601, closed_at:'2025-10-09T10:13:20Z' }
+  ];
+  for (const [field, replacement] of [
+    ['sequence_time', '1759999999'],
+    ['sequence_ledger', 600]
+  ]) {
+    const nextAccount = { ...account, [field]:replacement };
+    const routes = [account, nextAccount].flatMap((state, i) => [
+      { url:`https://horizon-testnet.stellar.org/accounts/${G(1)}`, data:state },
+      { url:'https://horizon-testnet.stellar.org/ledgers?order=desc&limit=1',
+        data:{ _embedded:{ records:[ledgerObservations[i]] } } }
+    ]);
+    const transport = createStellarTestnetHorizonHttpTransport({
+      fetchImpl:routedFetch(routes, []), sleep:async () => {}, maxEligibilityAttempts:2
+    });
+    await assert.rejects(transport.waitUntilEligible({
+      sourceAccount:G(1), minAccountSequenceAge:'4800',
+      currentSequence:'1001', recoverySequence:'5000'
+    }), /account sequence metadata changed/, field);
+  }
+});
+
 test('eligibility polling fails closed on account sequence drift and malformed latest-ledger responses', async () => {
   const drift = createStellarTestnetHorizonHttpTransport({ fetchImpl:routedFetch([
     { url:`https://horizon-testnet.stellar.org/accounts/${G(1)}`, data:{ account_id:G(1), sequence:'1002', sequence_time:'1760000000', sequence_ledger:599 } },

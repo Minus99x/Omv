@@ -176,6 +176,8 @@ export function createStellarTestnetHorizonHttpTransport({
 
       let previousLedgerSequence = null;
       let previousLedgerClosedSeconds = null;
+      let previousAccountSequenceTime = null;
+      let previousAccountSequenceLedger = null;
       for (let attempt = 1; attempt <= attempts; attempt += 1) {
         const [accountState, latestLedger] = await Promise.all([
           transport.loadAccount(account),
@@ -196,6 +198,15 @@ export function createStellarTestnetHorizonHttpTransport({
         if (BigInt(latestLedgerSequence) < BigInt(sequenceLedger)) {
           throw new Error('Horizon latest-ledger response predates the account sequence observation.');
         }
+        // An unchanged account sequence must have unchanged sequence provenance.
+        // Mixed Horizon snapshots must not authorize recovery eligibility.
+        if (previousAccountSequenceTime !== null &&
+            (BigInt(sequenceTime) !== previousAccountSequenceTime ||
+             BigInt(sequenceLedger) !== previousAccountSequenceLedger)) {
+          throw new Error('Horizon account sequence metadata changed during eligibility polling.');
+        }
+        previousAccountSequenceTime = BigInt(sequenceTime);
+        previousAccountSequenceLedger = BigInt(sequenceLedger);
         const eligibleAtSeconds = BigInt(sequenceTime) + BigInt(minimumAge);
         const ledgerClosedSeconds = BigInt(Math.floor(Date.parse(closedAt) / 1000));
         const ledgerNumber = BigInt(latestLedgerSequence);
