@@ -29,7 +29,11 @@ function txid(value, label) {
 }
 
 function integer(value, label, { positive = false } = {}) {
-  const text = typeof value === 'bigint' ? value.toString() : String(value ?? '');
+  if (!['string', 'number', 'bigint'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isSafeInteger(value))) {
+    throw new TypeError(`${label} must be a non-negative integer primitive.`);
+  }
+  const text = typeof value === 'string' ? value : value.toString();
   if (!/^\d+$/.test(text)) throw new TypeError(`${label} must be a non-negative integer.`);
   if (positive && BigInt(text) === 0n) throw new TypeError(`${label} must be greater than zero.`);
   return text;
@@ -85,7 +89,9 @@ export function createBitcoinSignetObservationEvidence({
   if (finalTransactionEvidence.rescueScriptPubKey !== finalizerEvidence.rescueScriptPubKey || finalTransactionEvidence.rescueAmountSats !== finalizerEvidence.rescueAmountSats) {
     throw new Error('Bitcoin final transaction rescue output does not match finalizer evidence.');
   }
-  if (!Number.isInteger(minimumConfirmations) || minimumConfirmations < 1) throw new TypeError('minimumConfirmations must be positive.');
+  if (!Number.isSafeInteger(minimumConfirmations) || minimumConfirmations < 1) {
+    throw new TypeError('minimumConfirmations must be a positive safe integer.');
+  }
   const normalizedObservationSource = normalizeObservationSource(observationSource);
 
   const transactionId = txid(transaction?.transactionId, 'transaction.transactionId');
@@ -111,7 +117,9 @@ export function createBitcoinSignetObservationEvidence({
   if (txid(rescueUtxo?.txid, 'rescueUtxo.txid') !== transactionId) {
     throw new Error('Bitcoin rescue UTXO is bound to another transaction.');
   }
-  if (!Number.isInteger(rescueUtxo?.vout) || rescueUtxo.vout < 0) throw new TypeError('rescueUtxo.vout must be a non-negative integer.');
+  if (!Number.isSafeInteger(rescueUtxo?.vout) || rescueUtxo.vout < 0 || rescueUtxo.vout > 0xffffffff) {
+    throw new TypeError('rescueUtxo.vout must be a non-negative uint32 integer.');
+  }
   const amountSats = integer(rescueUtxo?.amountSats, 'rescueUtxo.amountSats');
   const scriptPubKey = textValue(rescueUtxo?.scriptPubKey, 'rescueUtxo.scriptPubKey').toLowerCase();
   if (!/^[0-9a-f]+$/.test(scriptPubKey) || scriptPubKey.length % 2) throw new TypeError('rescueUtxo.scriptPubKey must be even-length hex.');

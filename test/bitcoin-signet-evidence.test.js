@@ -267,3 +267,66 @@ test('tampered Bitcoin Signet observation evidence fails closed', () => {
     evidence, finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, transaction, chainTip, rescueUtxo
   }).ok, false);
 });
+
+
+test('Bitcoin Signet integer observations reject coercible containers and unsafe numbers', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  let coercions = 0;
+  const trap = { toString() { coercions++; return '6'; } };
+  const invalid = [[6], ['6'], trap, new Number(6), true, false, null, undefined,
+    Number.MAX_SAFE_INTEGER + 1, 1.25, -1, '6.5'];
+  for (const [section, field] of [
+    ['transaction', 'confirmations'],
+    ['transaction', 'blockHeight'],
+    ['chainTip', 'blockHeight'],
+    ['rescueUtxo', 'amountSats']
+  ]) {
+    for (const value of invalid) {
+      const evidenceInputs = observations(finalizer);
+      evidenceInputs[section][field] = value;
+      assert.throws(
+        () => createBitcoinSignetObservationEvidence({
+          finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, ...evidenceInputs
+        }),
+        /non-negative integer/,
+        `${section}.${field}: ${typeof value}`
+      );
+    }
+  }
+  assert.equal(coercions, 0, 'Untrusted integer coercion hooks must not execute');
+});
+
+test('Bitcoin Signet integer boundaries preserve exact primitive values and enforce safe vout/depth', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const options = observations(finalizer, {
+    transaction:{ confirmations:6, blockHeight:300000n },
+    chainTip:{ blockHeight:300005n },
+    rescueUtxo:{ amountSats:99000n }
+  });
+  const evidence = createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction,
+    ...options, minimumConfirmations:6
+  });
+  assert.equal(evidence.transaction.confirmations, '6');
+  assert.equal(evidence.transaction.blockHeight, '300000');
+  assert.equal(evidence.rescueUtxo.amountSats, '99000');
+
+  for (const minimumConfirmations of [0, 1.5, Number.MAX_SAFE_INTEGER + 1, '6', true]) {
+    assert.throws(
+      () => createBitcoinSignetObservationEvidence({
+        finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction,
+        ...observations(finalizer), minimumConfirmations
+      }),
+      /positive safe integer/
+    );
+  }
+  for (const vout of [Number.MAX_SAFE_INTEGER + 1, 0x100000000, -1, 1.5, '0', true]) {
+    assert.throws(
+      () => createBitcoinSignetObservationEvidence({
+        finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction,
+        ...observations(finalizer, { rescueUtxo:{ vout } })
+      }),
+      /non-negative uint32 integer/
+    );
+  }
+});
