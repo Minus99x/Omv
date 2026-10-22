@@ -181,3 +181,51 @@ test('PSBT required locktime cannot bypass recovery entry points through bytes o
     }
   }
 });
+
+for (const [type, label] of [[0x07, 'scriptSig'], [0x08, 'scriptWitness']]) {
+  test('PSBT rejects existing final ' + label + ' including empty and malformed values', () => {
+    for (const value of [Buffer.alloc(0), Buffer.from('00', 'hex'), Buffer.from('010151', 'hex'), Buffer.from('ff', 'hex')]) {
+      const maps = mapsOf(fixture());
+      maps[1].push({ key: Buffer.from([type]), value });
+      maps[1].sort((a, b) => Buffer.compare(a.key, b.key));
+      assert.throws(() => decodePsbtV2(wire(maps)), /input 0 final script fields are unsupported/);
+    }
+  });
+
+  test('PSBT rejects final ' + label + ' with forbidden key data', () => {
+    const maps = mapsOf(fixture());
+    maps[1].push({ key: Buffer.from([type, 0x42]), value: Buffer.alloc(0) });
+    assert.throws(() => decodePsbtV2(wire(maps)), /final script fields are unsupported/);
+  });
+
+  test('PSBT final ' + label + ' cannot bypass recovery entry points', () => {
+    const clean = fixture();
+    const maps = mapsOf(clean);
+    maps[1].push({ key: Buffer.from([type]), value: Buffer.from('00', 'hex') });
+    const encoded = wire(maps);
+    const forged = { ...decodePsbtV2(clean), base64: encoded.toString('base64') };
+    for (const psbt of [encoded, encoded.toString('base64'), forged]) {
+      for (const invoke of [
+        () => createBitcoinWitnessV0Sighash({ psbt, inputIndex: 0 }),
+        () => verifyPsbtV2RecoverySignature({ psbt, inputIndex: 0 }),
+        () => verifyPsbtV2RecoveryThreshold({ psbt, inputIndex: 0 }),
+        () => finalizePsbtV2RecoveryTransaction({ psbt })
+      ]) assert.throws(invoke, /final script fields are unsupported/);
+    }
+  });
+}
+
+test('PSBT rejects combined final script fields on a later input', () => {
+  const maps = mapsOf(fixture());
+  maps[0].find(entry => entry.key[0] === 0x04).value = Buffer.from([2]);
+  const second = maps[1].map(entry => ({
+    key: Buffer.from(entry.key), value: Buffer.from(entry.value)
+  }));
+  second.find(entry => entry.key[0] === 0x0e).value = Buffer.alloc(32, 0xcd);
+  second.push(
+    { key: Buffer.from([0x07]), value: Buffer.alloc(0) },
+    { key: Buffer.from([0x08]), value: Buffer.from('010151', 'hex') }
+  );
+  maps.splice(2, 0, second);
+  assert.throws(() => decodePsbtV2(wire(maps)), /input 1 final script fields are unsupported/);
+});

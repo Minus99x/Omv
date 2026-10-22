@@ -266,6 +266,12 @@ export function decodePsbtV2(encoded) {
     if (parsed.entries.some(entry => entry.key[0] === 0x11 || entry.key[0] === 0x12)) {
       throw new Error(`PSBT input ${i} required locktime fields are unsupported by OmegaVault recovery.`);
     }
+    // Recovery requires partial signatures and constructs its own final witness.
+    // Reject pre-finalized inputs rather than silently discarding their scripts,
+    // including empty fields and malformed keys carrying extra key data.
+    if (parsed.entries.some(entry => entry.key[0] === 0x07 || entry.key[0] === 0x08)) {
+      throw new Error(`PSBT input ${i} final script fields are unsupported by OmegaVault recovery.`);
+    }
     const txidBytes = single(parsed.entries, 0x0e, { required: true });
     const vout = single(parsed.entries, 0x0f, { required: true });
     if (txidBytes.length !== 32 || vout.length !== 4) throw new Error(`PSBT input ${i} has malformed outpoint fields.`);
