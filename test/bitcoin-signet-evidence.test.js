@@ -9,6 +9,7 @@ import { createBitcoinFinalTransactionEvidence } from '../src/chains/bitcoin/tra
 import {
   createBitcoinSignetObservationEvidence,
   verifyBitcoinSignetObservationArtifact,
+  verifyBitcoinSignetObservationFreshness,
   runBitcoinSignetObservationProof,
   verifyBitcoinSignetObservationEvidence
 } from '../src/chains/bitcoin/signet-evidence.js';
@@ -235,7 +236,7 @@ test('Bitcoin Signet provenance separates fixture, imported and live RPC observa
     observationSource:'bitcoin-core-rpc'
   });
   assert.equal(live.evidence.observationSource, 'bitcoin-core-rpc');
-  assert.equal(live.evidence.publicSignetObservationProven, true);
+  assert.equal(live.evidence.publicSignetObservationProven, false);
   assert.equal(live.evidence.chainPromotionAuthority, false);
   assert.equal(live.evidence.immutableRescueOnChain, false);
 });
@@ -479,7 +480,7 @@ test('live Bitcoin Signet observation requires an independent active-chain hash 
     finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,
     observationSource:'bitcoin-core-rpc'
   });
-  assert.equal(result.evidence.publicSignetObservationProven,true);
+  assert.equal(result.evidence.publicSignetObservationProven, false);
 });
 
 test('Bitcoin Signet saved proof artifact independently recomputes internal identities and authority flags', () => {
@@ -544,5 +545,53 @@ test('live Signet runner refuses mixed-tip, depth-drift and in-flight chain reor
     }
   }),/timestamp regressed/);
   const ok=await attempt(base);
-  assert.equal(ok.evidence.publicSignetObservationProven,true);
+  assert.equal(ok.evidence.publicSignetObservationProven, false);
+});
+
+
+test('Bitcoin Core provenance label alone cannot manufacture independently proven public inclusion', () => {
+  const {finalizer,finalTransaction}=finalizerArtifacts();
+  const data=observations(finalizer);
+  const forged=createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,
+    ...data,observationSource:'bitcoin-core-rpc'
+  });
+  assert.equal(forged.observationSource,'bitcoin-core-rpc');
+  assert.equal(forged.publicSignetObservationProven,false);
+  assert.match(forged.authorityBoundary,/not independently authenticated inclusion/i);
+  assert.equal(verifyBitcoinSignetObservationArtifact({
+    evidence:forged,finalizerEvidence:finalizer,
+    finalTransactionEvidence:finalTransaction
+  }).ok,true);
+  const attacker=structuredClone(forged);
+  attacker.publicSignetObservationProven=true;
+  const {sha256,...core}=attacker;
+  attacker.sha256=createHash('sha256').update(JSON.stringify(stable(core))).digest('hex');
+  assert.equal(verifyBitcoinSignetObservationArtifact({
+    evidence:attacker,finalizerEvidence:finalizer,
+    finalTransactionEvidence:finalTransaction
+  }).ok,false,'rewriting the digest cannot forge a public chain proof');
+});
+
+test('Bitcoin Signet freshness guard rejects stale, future and digest-tampered observations',()=>{
+  const {finalizer,finalTransaction}=finalizerArtifacts();
+  const observation=createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,
+    ...observations(finalizer)
+  });
+  const check=(now,maxAgeMs=120000,evidence=observation)=>
+    verifyBitcoinSignetObservationFreshness({evidence,now,maxAgeMs});
+  assert.deepEqual(check('2026-10-04T00:01:15Z'),{ok:true,errors:[]});
+  assert.equal(check('2026-10-04T00:02:05Z').ok,false);
+  assert.match(check('2026-10-04T00:02:05Z').errors[0],/maximum age/);
+  assert.match(check('2026-10-04T00:00:30Z').errors[0],/future/);
+  assert.equal(check('2026-10-04T00:01:15Z',-1).ok,false);
+  const altered=structuredClone(observation);
+  altered.transaction.observedAt='2026-10-04T00:01:14Z';
+  assert.match(check('2026-10-04T00:01:15Z',120000,altered).errors[0],/self-digest/);
+  const upgraded=structuredClone(observation);
+  upgraded.publicSignetObservationProven=true;
+  const {sha256,...core}=upgraded;
+  upgraded.sha256=createHash('sha256').update(JSON.stringify(stable(core))).digest('hex');
+  assert.match(check('2026-10-04T00:01:15Z',120000,upgraded).errors[0],/authority claim/);
 });

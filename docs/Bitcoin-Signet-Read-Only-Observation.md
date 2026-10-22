@@ -66,3 +66,26 @@ Even after authentic public Signet evidence, the known reduced-semantics
 Bitcoin recovery design does **not** implement immutable-rescue enforcement
 as a Bitcoin covenant. Production promotion remains prohibited until
 separately reviewed and authorized.
+
+## Provenance and evidence freshness
+
+The `observationSource` field describes a **claimed collection method**.
+A JSON file with a self-recomputed SHA-256 can be fabricated without
+contacting Bitcoin Core. Consequently `publicSignetObservationProven`
+remains `false`, even for files produced by the read-only command. A
+third-party auditor must corroborate the observation using their own
+trusted synchronized Signet node before concluding that public inclusion
+was independently established.
+
+Saved evidence can also become stale or refer to a now-spent rescue UTXO.
+To enforce an optional maximum age during offline review, run:
+
+```bash
+node scripts/verify-bitcoin-signet-artifact.js --evidence proof.json --finalizer finalizer.json --final-transaction final-transaction.json --max-age-seconds 3600
+```
+
+This check rejects future-dated and old observations. It does not turn
+self-reported RPC provenance into independent attestation, and passing
+freshness cannot prove that the UTXO remains unspent **at the moment of
+review**. Refresh observations from Bitcoin Core when current UTXO state
+matters.

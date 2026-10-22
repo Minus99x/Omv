@@ -69,6 +69,12 @@ test('offline verifier validates real created artifact and rejects receipt mutat
       assert.notEqual(result.status,0);
       assert.match(result.stderr,/BITCOIN_SIGNET_ARTIFACT_INVALID/);
     }
+    const stale=execute(['--max-age-seconds','0']);
+    assert.notEqual(stale.status,0);
+    assert.match(stale.stderr,/maximum age|future/);
+    assert.equal(execute(['--max-age-seconds','1.5']).status!==0,true);
+    assert.equal(execute(['--max-age-seconds','-1']).status!==0,true);
+    assert.equal(execute(['--max-age-seconds','9007199254741']).status!==0,true);
     for(const option of ['--wallet','--private-key','--seed','--broadcast']){
       assert.notEqual(execute([option,'forbidden']).status,0);
     }

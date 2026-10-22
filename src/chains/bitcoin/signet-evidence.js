@@ -200,10 +200,14 @@ export function createBitcoinSignetObservationEvidence({
       unspent:true
     }),
     signetObservationComplete:true,
-    publicSignetObservationProven:normalizedObservationSource === 'bitcoin-core-rpc',
+    // A caller-controlled provenance label and self-hash cannot independently
+    // authenticate Bitcoin Core or prove public-chain inclusion. The read-only
+    // runner records what it observed, but a reviewer must recheck a trusted
+    // node before describing it as independently proven.
+    publicSignetObservationProven:false,
     immutableRescueOnChain:false,
     chainPromotionAuthority:false,
-    authorityBoundary:'This bundle records read-only Bitcoin Signet inclusion/confirmation and rescue-output observations with explicit fixture/imported/live-RPC provenance. Only bitcoin-core-rpc provenance may establish public Signet observation; no source authorizes broadcasts, wallets, mainnet activity, or promotion past the known immutable-rescue semantic limitation.'
+    authorityBoundary:'This bundle records read-only Bitcoin Signet inclusion/confirmation and rescue-output observations with explicit fixture/imported/live-RPC provenance. RPC source labels report observation method, not independently authenticated inclusion. Reviewers must corroborate observations using a trusted Bitcoin Core node; no source authorizes broadcasts, wallets, mainnet activity, or promotion past the known immutable-rescue semantic limitation.'
   });
   return Object.freeze({ ...core, sha256:digest(core) });
 }
@@ -341,4 +345,48 @@ export function verifyBitcoinSignetObservationArtifact({
     minimumConfirmations:minimum,
     observationSource:evidence.observationSource
   });
+}
+
+
+/**
+ * Evaluate the freshness of a saved, self-consistent Signet observation.
+ * This never authenticates who produced the observation or upgrades authority.
+ * Use verifyBitcoinSignetObservationArtifact() separately to bind the upstream
+ * finalizer and final-transaction receipts.
+ */
+export function verifyBitcoinSignetObservationFreshness({
+  evidence, now, maxAgeMs
+}) {
+  const errors = [];
+  try {
+    if (!evidence || evidence.schema !== 'omegavault.bitcoin.signet-observation-evidence.v2') {
+      throw new TypeError('Unsupported Bitcoin Signet observation artifact.');
+    }
+    const { sha256: evidenceSha256, ...core } = evidence;
+    if (sha256Hex(evidenceSha256, 'evidence.sha256') !== digest(core)) {
+      throw new Error('Bitcoin Signet observation self-digest is invalid.');
+    }
+    if (evidence.networkRef !== 'bitcoin:signet' ||
+        evidence.publicSignetObservationProven !== false ||
+        evidence.immutableRescueOnChain !== false ||
+        evidence.chainPromotionAuthority !== false) {
+      throw new Error('Bitcoin Signet observation has an unsupported network or authority claim.');
+    }
+    if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0) {
+      throw new TypeError('maxAgeMs must be a non-negative safe integer.');
+    }
+    const nowMs = Date.parse(iso(now, 'now'));
+    const transactionMs = Date.parse(iso(evidence.transaction?.observedAt, 'transaction.observedAt'));
+    const tipMs = Date.parse(iso(evidence.chainTip?.observedAt, 'chainTip.observedAt'));
+    if (transactionMs > tipMs) throw new Error('Bitcoin Signet transaction observation follows the chain-tip observation.');
+    if (transactionMs > nowMs || tipMs > nowMs) {
+      throw new Error('Bitcoin Signet evidence contains an observation from the future.');
+    }
+    if (nowMs - transactionMs > maxAgeMs || nowMs - tipMs > maxAgeMs) {
+      throw new Error('Bitcoin Signet evidence has exceeded the required maximum age.');
+    }
+  } catch(error) {
+    errors.push(String(error?.message || error));
+  }
+  return Object.freeze({ok:errors.length === 0,errors:Object.freeze(errors)});
 }

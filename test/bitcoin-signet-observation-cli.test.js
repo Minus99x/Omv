@@ -70,7 +70,7 @@ test('operator Signet read-only observation CLI produces anchored proof with fiv
     assert.match(run.stdout,/BITCOIN_SIGNET_READONLY_OBSERVATION_OK/);
     const evidence=JSON.parse(readFileSync(f.output,'utf8'));
     assert.equal(evidence.observationSource,'bitcoin-core-rpc');
-    assert.equal(evidence.publicSignetObservationProven,true);
+    assert.equal(evidence.publicSignetObservationProven,false);
     assert.equal(evidence.chainPromotionAuthority,false);
     assert.equal(evidence.immutableRescueOnChain,false);
     const calls=readFileSync(f.callsPath,'utf8').trim().split('\n').map(JSON.parse);
