@@ -330,3 +330,46 @@ test('Bitcoin Signet integer boundaries preserve exact primitive values and enfo
     );
   }
 });
+
+
+test('Bitcoin Signet observation timestamps reject impossible calendar dates and ambiguous formats', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const invalid = [
+    '2026-02-30T00:00:00Z', '2026-04-31T00:00:00Z',
+    '2026-13-01T00:00:00Z', '2026-10-04T24:00:00Z',
+    '2026-10-04T00:00:60Z', '2026-10-04T00:00:00+24:00',
+    '2026-10-04T00:00:00+00:60', 'October 4, 2026',
+    '2026-10-04T00:00:00'
+  ];
+  for (const [section, field] of [
+    ['transaction', 'observedAt'], ['chainTip', 'observedAt']
+  ]) {
+    for (const value of invalid) {
+      const args = observations(finalizer);
+      args[section][field] = value;
+      assert.throws(
+        () => createBitcoinSignetObservationEvidence({
+          finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, ...args
+        }),
+        /valid ISO-8601 timestamp/,
+        `${section}.${field}: ${value}`
+      );
+    }
+  }
+});
+
+test('Bitcoin Signet observation timestamps retain valid UTC, fractional and offset clock evidence', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const valid = observations(finalizer, {
+    transaction:{ observedAt:'2026-10-04T05:30:00.123456+05:30' },
+    chainTip:{ observedAt:'2026-10-04T05:31:00.123456+05:30' }
+  });
+  const evidence = createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, ...valid
+  });
+  assert.equal(evidence.transaction.observedAt, valid.transaction.observedAt);
+  assert.equal(evidence.chainTip.observedAt, valid.chainTip.observedAt);
+  assert.equal(verifyBitcoinSignetObservationEvidence({
+    evidence, finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, ...valid
+  }).ok, true);
+});
