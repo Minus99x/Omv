@@ -18,6 +18,14 @@ const priv = n => Buffer.from(n.toString(16).padStart(64, '0'), 'hex');
 const pub = key => Buffer.from(secp256k1.getPublicKey(key, true)).toString('hex');
 const owner = priv(1), a = priv(2), b = priv(3);
 const rescueScriptPubKey = `0014${'11'.repeat(20)}`;
+// Canonical JSON hashing helper used to model an attacker rewriting self-digests.
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
+  }
+  return value;
+}
 const descriptor = createBitcoinRecoveryDescriptor({
   ownerKey:pub(owner), contactKeys:[pub(a), pub(b)], threshold:2, csvBlocks:144, network:'signet'
 });
