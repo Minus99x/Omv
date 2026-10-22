@@ -8,6 +8,7 @@ import { createBitcoinFinalizerEvidence } from '../src/chains/bitcoin/finalizer-
 import { createBitcoinFinalTransactionEvidence } from '../src/chains/bitcoin/transaction-finalizer.js';
 import {
   createBitcoinSignetObservationEvidence,
+  verifyBitcoinSignetObservationArtifact,
   runBitcoinSignetObservationProof,
   verifyBitcoinSignetObservationEvidence
 } from '../src/chains/bitcoin/signet-evidence.js';
@@ -224,7 +225,11 @@ test('Bitcoin Signet provenance separates fixture, imported and live RPC observa
   );
 
   const live = await runBitcoinSignetObservationProof({
-    driver:{ ...driver, provenance:'bitcoin-core-rpc', async readBlockHashAtHeight() { return transaction.blockHash; } },
+    driver:{
+      ...driver, provenance:'bitcoin-core-rpc',
+      async readBlockHashAtHeight() { return transaction.blockHash; },
+      async readTxOut() { return {...rescueUtxo, bestBlockHash:chainTip.blockHash, confirmations:transaction.confirmations}; }
+    },
     finalizerEvidence:finalizer,
     finalTransactionEvidence:finalTransaction,
     observationSource:'bitcoin-core-rpc'
@@ -467,9 +472,77 @@ test('live Bitcoin Signet observation requires an independent active-chain hash 
   }),/not on the active chain/);
   assert.equal(rescued,false,'unanchored transaction must fail before reading rescue output');
   const result=await runBitcoinSignetObservationProof({
-    driver:{...driver,async readBlockHashAtHeight(){return transaction.blockHash;}},
+    driver:{
+      ...driver,async readBlockHashAtHeight(){return transaction.blockHash;},
+      async readTxOut(){return {...rescueUtxo,bestBlockHash:chainTip.blockHash,confirmations:transaction.confirmations};}
+    },
     finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,
     observationSource:'bitcoin-core-rpc'
   });
   assert.equal(result.evidence.publicSignetObservationProven,true);
+});
+
+test('Bitcoin Signet saved proof artifact independently recomputes internal identities and authority flags', () => {
+  const {finalizer,finalTransaction}=finalizerArtifacts();
+  const input=observations(finalizer);
+  const artifact=createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,...input
+  });
+  assert.equal(verifyBitcoinSignetObservationArtifact({
+    evidence:artifact,finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction
+  }).ok,true);
+  for(const mutate of [
+    v=>{v.publicSignetObservationProven=true;},
+    v=>{v.chainPromotionAuthority=true;},
+    v=>{v.rescueUtxo.amountSats='1';},
+    v=>{v.chainTip.blockHeight='300006';},
+    v=>{v.transaction.blockHash='00'.repeat(32);},
+    v=>{v.sha256='00'.repeat(32);}
+  ]) {
+    const forged=structuredClone(artifact);mutate(forged);
+    assert.equal(verifyBitcoinSignetObservationArtifact({
+      evidence:forged,finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction
+    }).ok,false);
+  }
+  assert.equal(verifyBitcoinSignetObservationArtifact({
+    evidence:null,finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction
+  }).ok,false);
+});
+
+test('live Signet runner refuses mixed-tip, depth-drift and in-flight chain reorganization', async () => {
+  const {finalizer,finalTransaction}=finalizerArtifacts();
+  const {transaction,chainTip,rescueUtxo}=observations(finalizer);
+  const base={
+    provenance:'bitcoin-core-rpc',
+    async readTransaction(){return transaction;},
+    async readBlockHashAtHeight(){return transaction.blockHash;},
+    async readChainTip(){return chainTip;},
+    async readTxOut(){return {...rescueUtxo,bestBlockHash:chainTip.blockHash,confirmations:transaction.confirmations};}
+  };
+  async function attempt(driver){
+    return runBitcoinSignetObservationProof({
+      driver,finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,
+      observationSource:'bitcoin-core-rpc'
+    });
+  }
+  await assert.rejects(()=>attempt({
+    ...base,async readTxOut(){return {...rescueUtxo,bestBlockHash:'aa'.repeat(32),confirmations:'6'};}
+  }),/UTXO best block differs/);
+  await assert.rejects(()=>attempt({
+    ...base,async readTxOut(){return {...rescueUtxo,bestBlockHash:chainTip.blockHash,confirmations:'5'};}
+  }),/UTXO confirmation depth differs/);
+  let reads=0;
+  await assert.rejects(()=>attempt({
+    ...base,async readChainTip(){
+      return ++reads===1?chainTip:{...chainTip,blockHash:'bb'.repeat(32)};
+    }
+  }),/tip changed during read-only proof/);
+  reads=0;
+  await assert.rejects(()=>attempt({
+    ...base,async readChainTip(){
+      return ++reads===1?chainTip:{...chainTip,observedAt:'2026-10-03T23:59:59Z'};
+    }
+  }),/timestamp regressed/);
+  const ok=await attempt(base);
+  assert.equal(ok.evidence.publicSignetObservationProven,true);
 });

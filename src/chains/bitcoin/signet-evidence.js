@@ -278,6 +278,31 @@ export async function runBitcoinSignetObservationProof({
   if (rescueIndexes.length !== 1) throw new Error('Finalizer evidence does not identify exactly one rescue output.');
   const { index } = rescueIndexes[0];
   const rescueUtxo = await driver.readTxOut({ transactionId:requestedTxid, vout:index, networkRef:'bitcoin:signet' });
+  if (normalizedObservationSource === 'bitcoin-core-rpc') {
+    // gettxout proves a UTXO only relative to its reported best block.
+    // Reject races/reorgs instead of mixing observations from different tips.
+    if (txid(rescueUtxo?.bestBlockHash, 'rescueUtxo.bestBlockHash') !==
+        txid(chainTip.blockHash, 'chainTip.blockHash')) {
+      throw new Error('Bitcoin Signet UTXO best block differs from the observed chain tip.');
+    }
+    const expectedDepth = BigInt(integer(chainTip.blockHeight, 'chainTip.blockHeight')) -
+      BigInt(integer(transaction.blockHeight, 'transaction.blockHeight')) + 1n;
+    if (integer(rescueUtxo?.confirmations, 'rescueUtxo.confirmations') !==
+        expectedDepth.toString()) {
+      throw new Error('Bitcoin Signet UTXO confirmation depth differs from the observed chain.');
+    }
+    const postReadTip = await driver.readChainTip({ networkRef:'bitcoin:signet' });
+    if (txid(postReadTip?.blockHash, 'postReadTip.blockHash') !==
+        txid(chainTip.blockHash, 'chainTip.blockHash') ||
+        integer(postReadTip?.blockHeight, 'postReadTip.blockHeight') !==
+        integer(chainTip.blockHeight, 'chainTip.blockHeight')) {
+      throw new Error('Bitcoin Signet tip changed during read-only proof collection.');
+    }
+    if (Date.parse(iso(postReadTip?.observedAt, 'postReadTip.observedAt')) <
+        Date.parse(iso(chainTip?.observedAt, 'chainTip.observedAt'))) {
+      throw new Error('Bitcoin Signet post-read chain-tip timestamp regressed.');
+    }
+  }
   const evidence = createBitcoinSignetObservationEvidence({
     finalizerEvidence,
     finalTransactionEvidence,
@@ -292,5 +317,28 @@ export async function runBitcoinSignetObservationProof({
     success:true,
     evidence,
     authorityBoundary:'This runner is read-only. It observes a caller-supplied Signet transaction ID and cannot construct, sign, finalize, or broadcast Bitcoin transactions.'
+  });
+}
+
+/**
+ * Independently re-derive an already saved observation receipt. This checks
+ * internal identities, economics, hash integrity and authority boundaries;
+ * caller-supplied provenance is NOT independently authenticated without a
+ * fresh read-only Bitcoin Core observation.
+ */
+export function verifyBitcoinSignetObservationArtifact({
+  evidence, finalizerEvidence, finalTransactionEvidence
+}) {
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)) {
+    return Object.freeze({ ok:false, errors:Object.freeze(['Bitcoin Signet observation artifact is required.']) });
+  }
+  const minimum = Number(evidence.transaction?.minimumConfirmations);
+  return verifyBitcoinSignetObservationEvidence({
+    evidence, finalizerEvidence, finalTransactionEvidence,
+    transaction:evidence.transaction ? { ...evidence.transaction, networkRef:'bitcoin:signet' } : null,
+    chainTip:evidence.chainTip ? { ...evidence.chainTip, networkRef:'bitcoin:signet' } : null,
+    rescueUtxo:evidence.rescueUtxo,
+    minimumConfirmations:minimum,
+    observationSource:evidence.observationSource
   });
 }

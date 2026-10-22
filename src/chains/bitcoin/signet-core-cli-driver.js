@@ -115,6 +115,9 @@ export function createBitcoinSignetObservationCoreCliDriver({
       }
       height(header?.height, 'getblockheader.height');
       confirmations(header?.confirmations, 'getblockheader.confirmations');
+      if (header.confirmations !== depth) {
+        throw new Error('Bitcoin Core transaction/header confirmation depth changed during observation.');
+      }
       return Object.freeze({
         transactionId:wanted, networkRef:'bitcoin:signet',
         confirmations:depth, blockHash, blockHeight:header.height, observedAt:clock(now)
@@ -156,7 +159,9 @@ export function createBitcoinSignetObservationCoreCliDriver({
       }
       return Object.freeze({
         txid:wanted, vout:n, amountSats:sats(result.value),
-        scriptPubKey:script.toLowerCase(), unspent:true
+        scriptPubKey:script.toLowerCase(),
+        bestBlockHash:hash(result.bestblock, 'gettxout.bestblock'),
+        confirmations:result.confirmations, unspent:true
       });
     }
   });

@@ -36,6 +36,8 @@ test('Signet observation Core CLI reads only five fixed methods and binds chain 
   assert.equal(tip.blockHeight,300005);
   assert.equal(atHeight,BLOCK);
   assert.equal(utxo.amountSats,'99000');
+  assert.equal(utxo.bestBlockHash,TIP);
+  assert.equal(utxo.confirmations,6);
   assert.equal(utxo.unspent,true);
   assert.deepEqual(calls.map(v=>v.args[1]),[
     'getrawtransaction','getblockheader','getblockchaininfo','getblockhash','gettxout'
@@ -82,4 +84,30 @@ test('Signet Core observation does not leak executable stderr or parse invalid J
   });
   const malformed=createBitcoinSignetObservationCoreCliDriver({execute:async()=>({stdout:'not JSON'})});
   await assert.rejects(()=>malformed.readChainTip({networkRef:'bitcoin:signet'}),/malformed JSON/);
+});
+
+test('Bitcoin Core requires stable matching header and transaction confirmation depth', async () => {
+  const {driver}=fixture({
+    getblockheader:{hash:BLOCK,height:300000,confirmations:5}
+  });
+  await assert.rejects(
+    ()=>driver.readTransaction({transactionId:TXID,networkRef:'bitcoin:signet'}),
+    /confirmation depth changed/
+  );
+});
+
+test('Bitcoin Core UTXO rejects malformed confirmation and bestblock responses', async () => {
+  for (const change of [
+    { confirmations:0, bestblock:TIP },
+    { confirmations:'6', bestblock:TIP },
+    { confirmations:6, bestblock:'wrong' }
+  ]) {
+    const {driver}=fixture({gettxout:{
+      ...change,value:'0.00099000',scriptPubKey:{hex:'0014'+'11'.repeat(20)}
+    }});
+    await assert.rejects(
+      ()=>driver.readTxOut({transactionId:TXID,vout:0,networkRef:'bitcoin:signet'}),
+      /positive uint32|32-byte hex/
+    );
+  }
 });

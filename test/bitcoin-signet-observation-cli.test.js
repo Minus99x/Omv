@@ -75,9 +75,15 @@ test('operator Signet read-only observation CLI produces anchored proof with fiv
     assert.equal(evidence.immutableRescueOnChain,false);
     const calls=readFileSync(f.callsPath,'utf8').trim().split('\n').map(JSON.parse);
     assert.deepEqual(calls.map(x=>x[1]),[
-      'getrawtransaction','getblockheader','getblockchaininfo','getblockhash','gettxout'
+      'getrawtransaction','getblockheader','getblockchaininfo','getblockhash','gettxout','getblockchaininfo'
     ]);
     assert.ok(calls.every(x=>x[0]==='-signet'));
+    const verification=spawnSync(process.execPath,[
+      'scripts/verify-bitcoin-signet-artifact.js','--evidence',f.output,
+      '--finalizer',f.argv[2],'--final-transaction',f.argv[4]
+    ],{encoding:'utf8',env:f.env});
+    assert.equal(verification.status,0,verification.stderr);
+    assert.match(verification.stdout,/BITCOIN_SIGNET_ARTIFACT_VALID/);
     const repeated=spawnSync(process.execPath,f.argv,{encoding:'utf8',env:f.env});
     assert.notEqual(repeated.status,0);
     assert.equal(JSON.parse(readFileSync(f.output,'utf8')).sha256,evidence.sha256);
@@ -104,5 +110,23 @@ test('operator Signet proof CLI refuses spoofed chain history, invalid fees and 
       assert.match(run.stderr,/unsafe Bitcoin Signet proof option/);
     }
     assert.equal(existsSync(f.output),false);
+  }finally{rmSync(f.dir,{recursive:true,force:true});}
+});
+
+test('operator Signet read-only CLI rejects UTXO-tip mismatch, depth drift and malformed Core values without artifact',()=>{
+  const f=setup();try{
+    for (const edit of [
+      a=>{a.gettxout.bestblock='22'.repeat(32);},
+      a=>{a.gettxout.confirmations=5;},
+      a=>{a.getblockheader.confirmations=5;},
+      a=>{a.gettxout.value='0.000990001';},
+      a=>{a.getblockchaininfo.chain='main';}
+    ]) {
+      const changed=structuredClone(f.answers);edit(changed);
+      writeFileSync(f.answersPath,JSON.stringify(changed));
+      const result=spawnSync(process.execPath,f.argv,{encoding:'utf8',env:f.env});
+      assert.notEqual(result.status,0,JSON.stringify(changed));
+      assert.equal(existsSync(f.output),false);
+    }
   }finally{rmSync(f.dir,{recursive:true,force:true});}
 });
