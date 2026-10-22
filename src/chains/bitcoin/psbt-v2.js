@@ -48,6 +48,11 @@ function u64le(value) {
 }
 
 export function encodeCompactSize(value) {
+  if (!['string', 'number', 'bigint'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isSafeInteger(value)) ||
+      (typeof value === 'string' && !/^\d+$/.test(value))) {
+    throw new TypeError('CompactSize value must be a decimal integer string, safe integer number, or bigint.');
+  }
   const number = BigInt(value);
   if (number < 0n || number > 0xffffffffffffffffn) throw new TypeError('CompactSize value is outside uint64.');
   if (number < 0xfdn) return Buffer.from([Number(number)]);
