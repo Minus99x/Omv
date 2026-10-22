@@ -162,3 +162,87 @@ test('Bitcoin recovery finalizer fails closed on wrong rescue, fee, sequence, si
   });
   assert.throws(() => finalizePsbtV2RecoveryTransaction({ psbt: outsider, descriptor, rescueScriptPubKey: `0014${'11'.repeat(20)}`, expectedFeeSats: '1000' }), /unauthorized partial signer/);
 });
+
+function signedMoneyFixture() {
+  const intent=unsignedIntent();
+  const {digest}=createBitcoinWitnessV0Sighash({psbt:encodePsbtV2(intent),inputIndex:0});
+  intent.inputs[0].partialSignatures=[contactPrivateKeyA,contactPrivateKeyB].map(key=>({
+    publicKey:publicKey(key),
+    signature:Buffer.from(secp256k1.sign(digest,key,{prehash:false,lowS:true,format:'der'})).toString('hex')+'01'
+  }));
+  return intent;
+}
+
+for (const field of ['input','output','fee']) {
+  test(`Bitcoin PSBT monetary ${field} rejects coercible containers`,()=>{
+    const intent=signedMoneyFixture();
+    const amount=field==='input'?'100000':field==='output'?'99000':'1000';
+    for (const invalid of [[amount],new String(amount),Object(BigInt(amount))]) {
+      if (field==='fee') {
+        assert.throws(()=>finalizePsbtV2RecoveryTransaction({
+          psbt:encodePsbtV2(intent),descriptor,rescueScriptPubKey:intent.outputs[0].scriptPubKey,
+          expectedFeeSats:invalid
+        }),/must be a non-negative integer/);
+      } else {
+        const changed=structuredClone(intent);
+        changed[field==='input'?'inputs':'outputs'][0].amountSats=invalid;
+        assert.throws(()=>encodePsbtV2(changed),/must be a non-negative integer/);
+      }
+    }
+  });
+
+  test(`Bitcoin PSBT monetary ${field} rejects objects without invoking conversion hooks`,()=>{
+    const intent=signedMoneyFixture();
+    let conversions=0;
+    const invalid={
+      [Symbol.toPrimitive](){conversions++;return field==='input'?'100000':field==='output'?'99000':'1000';}
+    };
+    if (field==='fee') {
+      assert.throws(()=>finalizePsbtV2RecoveryTransaction({
+        psbt:encodePsbtV2(intent),descriptor,rescueScriptPubKey:intent.outputs[0].scriptPubKey,
+        expectedFeeSats:invalid
+      }),/must be a non-negative integer/);
+    } else {
+      intent[field==='input'?'inputs':'outputs'][0].amountSats=invalid;
+      assert.throws(()=>encodePsbtV2(intent),/must be a non-negative integer/);
+    }
+    assert.equal(conversions,0);
+  });
+}
+
+test('Bitcoin PSBT money preserves equivalent string number and bigint finalization',()=>{
+  const intent=signedMoneyFixture();
+  const expected=finalizePsbtV2RecoveryTransaction({
+    psbt:encodePsbtV2(intent),descriptor,rescueScriptPubKey:intent.outputs[0].scriptPubKey,expectedFeeSats:'1000'
+  });
+  for (const convert of [String,Number,BigInt]) {
+    const equivalent=structuredClone(intent);
+    equivalent.inputs[0].amountSats=convert('100000');
+    equivalent.outputs[0].amountSats=convert('99000');
+    const actual=finalizePsbtV2RecoveryTransaction({
+      psbt:encodePsbtV2(equivalent),descriptor,rescueScriptPubKey:intent.outputs[0].scriptPubKey,
+      expectedFeeSats:convert('1000')
+    });
+    assert.equal(actual.rawTransactionHex,expected.rawTransactionHex);
+    assert.equal(actual.feeSats,'1000');
+  }
+});
+
+test('Bitcoin PSBT monetary validation retains zero and MAX_MONEY boundaries',()=>{
+  const maximum=2100000000000000n;
+  for (const convert of [String,Number,BigInt]) {
+    const intent=unsignedIntent();
+    intent.inputs[0].amountSats=convert(maximum);
+    intent.outputs[0].amountSats=convert(0);
+    const decoded=decodePsbtV2(encodePsbtV2(intent));
+    assert.equal(decoded.inputs[0].amountSats,maximum.toString());
+    assert.equal(decoded.outputs[0].amountSats,'0');
+    intent.inputs[0].amountSats=convert(maximum+1n);
+    assert.throws(()=>encodePsbtV2(intent),/MAX_MONEY/);
+  }
+  for (const invalid of [true,false,null,undefined,1.5,NaN,Infinity,Number.MAX_SAFE_INTEGER+1,'1e3','-1']) {
+    const intent=unsignedIntent();
+    intent.inputs[0].amountSats=invalid;
+    assert.throws(()=>encodePsbtV2(intent),/non-negative integer|MAX_MONEY/);
+  }
+});

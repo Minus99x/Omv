@@ -17,7 +17,9 @@ function assertHex(value, label, { allowEmpty = false } = {}) {
 }
 
 function assertMoney(value, label) {
-  if (!/^\d+$/.test(String(value))) throw new TypeError(`${label} must be a non-negative integer.`);
+  if (!['string', 'number', 'bigint'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isSafeInteger(value)) ||
+      !/^\d+$/.test(String(value))) throw new TypeError(`${label} must be a non-negative integer.`);
   const amount = BigInt(value);
   if (amount > MAX_MONEY) throw new TypeError(`${label} exceeds Bitcoin MAX_MONEY.`);
   return amount;
