@@ -69,6 +69,9 @@ test('offline verifier validates real created artifact and rejects receipt mutat
       assert.notEqual(result.status,0);
       assert.match(result.stderr,/BITCOIN_SIGNET_ARTIFACT_INVALID/);
     }
+    // The preceding loop intentionally corrupts this file; start the
+    // freshness check from a valid, self-consistent receipt.
+    writeFileSync(paths.evidence,JSON.stringify(data.evidence));
     const stale=execute(['--max-age-seconds','0']);
     assert.notEqual(stale.status,0);
     assert.match(stale.stderr,/maximum age|future/);
