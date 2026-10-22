@@ -145,6 +145,16 @@ export function createBitcoinSignetObservationEvidence({
   if (!Number.isSafeInteger(rescueUtxo?.vout) || rescueUtxo.vout < 0 || rescueUtxo.vout > 0xffffffff) {
     throw new TypeError('rescueUtxo.vout must be a non-negative uint32 integer.');
   }
+  const rescueOutputIndexes = Array.isArray(finalizerEvidence.outputs)
+    ? finalizerEvidence.outputs.flatMap((output, index) =>
+      output?.scriptPubKey === finalizerEvidence.rescueScriptPubKey ? [index] : [])
+    : [];
+  if (rescueOutputIndexes.length !== 1) {
+    throw new Error('Bitcoin finalizer evidence must identify exactly one rescue output.');
+  }
+  if (rescueUtxo.vout !== rescueOutputIndexes[0]) {
+    throw new Error('Observed Bitcoin rescue UTXO index does not match the bound finalizer rescue output.');
+  }
   const amountSats = integer(rescueUtxo?.amountSats, 'rescueUtxo.amountSats');
   const scriptPubKey = textValue(rescueUtxo?.scriptPubKey, 'rescueUtxo.scriptPubKey').toLowerCase();
   if (!/^[0-9a-f]+$/.test(scriptPubKey) || scriptPubKey.length % 2) throw new TypeError('rescueUtxo.scriptPubKey must be even-length hex.');

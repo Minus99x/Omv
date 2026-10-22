@@ -373,3 +373,25 @@ test('Bitcoin Signet observation timestamps retain valid UTC, fractional and off
     evidence, finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, ...valid
   }).ok, true);
 });
+
+
+test('Bitcoin Signet rescue observation binds exact finalizer vout', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const valid = observations(finalizer);
+  const proof = createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction, ...valid
+  });
+  assert.equal(proof.rescueUtxo.vout, 0);
+  const wrongOutpoint = observations(finalizer, { rescueUtxo:{ vout:1 } });
+  assert.throws(
+    () => createBitcoinSignetObservationEvidence({
+      finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction,
+      ...wrongOutpoint
+    }),
+    /rescue UTXO index does not match/
+  );
+  assert.equal(verifyBitcoinSignetObservationEvidence({
+    evidence:proof, finalizerEvidence:finalizer, finalTransactionEvidence:finalTransaction,
+    ...wrongOutpoint
+  }).ok, false);
+});
