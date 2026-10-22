@@ -349,3 +349,50 @@ test('Horizon validates primitive polling settings while preserving bounded atte
     assert.deepEqual(sleeps, [2147483647]);
   }
 });
+
+test('eligibility polling fails closed on ledger rollback or conflicting cross-poll close times', async () => {
+  const account = {
+    account_id: G(1), sequence: '1001', sequence_time: '1760000000', sequence_ledger: 599
+  };
+  const cases = [
+    {
+      name: 'ledger sequence rollback',
+      first: { sequence: 600, closed_at: '2025-10-09T10:13:18Z' },
+      second: { sequence: 599, closed_at: '2025-10-09T10:13:19Z' }
+    },
+    {
+      name: 'ledger close timestamp rollback',
+      first: { sequence: 600, closed_at: '2025-10-09T10:13:19Z' },
+      second: { sequence: 601, closed_at: '2025-10-09T10:13:18Z' }
+    },
+    {
+      name: 'same ledger with a different close timestamp',
+      first: { sequence: 600, closed_at: '2025-10-09T10:13:18Z' },
+      second: { sequence: 600, closed_at: '2025-10-09T10:13:19Z' }
+    }
+  ];
+  for (const { name, first, second } of cases) {
+    const calls = [];
+    const routes = [first, second].flatMap(ledger => [
+      {
+        url: `https://horizon-testnet.stellar.org/accounts/${G(1)}`,
+        data: account
+      },
+      {
+        url: 'https://horizon-testnet.stellar.org/ledgers?order=desc&limit=1',
+        data: { _embedded: { records: [ledger] } }
+      }
+    ]);
+    const transport = createStellarTestnetHorizonHttpTransport({
+      fetchImpl: routedFetch(routes, calls),
+      sleep: async () => {},
+      maxEligibilityAttempts: 2
+    });
+    await assert.rejects(
+      transport.waitUntilEligible(eligibilityArguments()),
+      /latest-ledger observations regressed or conflicted/,
+      name
+    );
+    assert.equal(calls.length, 4, name);
+  }
+});
