@@ -16,7 +16,7 @@ const ownerAddress = Cardano.BaseAddress.new(
   Cardano.Credential.from_keyhash(ownerPublicKey.hash())
 ).to_address();
 
-function unsignedTransactionHex() {
+function unsignedTransactionHex({ networkId = 0, requiredSignerHashes = [ownerKeyHash] } = {}) {
   const input = Cardano.TransactionInput.new(
     Cardano.TransactionHash.from_hex('11'.repeat(32)),
     0
@@ -33,15 +33,15 @@ function unsignedTransactionHex() {
     outputs,
     Cardano.BigNum.from_str('200000')
   );
-  body.set_network_id(Cardano.NetworkId.testnet());
+  body.set_network_id(networkId === 0 ? Cardano.NetworkId.testnet() : Cardano.NetworkId.mainnet());
   const signers = Cardano.Ed25519KeyHashes.new();
-  signers.add(ownerPublicKey.hash());
+  for (const hash of requiredSignerHashes) signers.add(Cardano.Ed25519KeyHash.from_hex(hash));
   body.set_required_signers(signers);
   return Cardano.Transaction.new(body, Cardano.TransactionWitnessSet.new()).to_hex();
 }
 
-function walletWitnessSetHex(privateKey = ownerPrivateKey) {
-  const tx = Cardano.Transaction.from_hex(unsignedTransactionHex());
+function walletWitnessSetHex(privateKey = ownerPrivateKey, transactionCborHex = unsignedTransactionHex()) {
+  const tx = Cardano.Transaction.from_hex(transactionCborHex);
   const bodyHash = Cardano.TransactionHash.from_bytes(blake2b(tx.body().to_bytes(), { dkLen: 32 }));
   const vkeys = Cardano.Vkeywitnesses.new();
   vkeys.add(Cardano.make_vkey_witness(bodyHash, privateKey));
@@ -135,6 +135,51 @@ test('CIP-30 owner witness merge rejects the wrong signer', () => {
       expectedOwnerPaymentKeyHash: ownerKeyHash
     }),
     /does not match/
+  );
+});
+
+test('CIP-30 owner witness merge rejects a non-Preprod transaction even with a valid owner witness', () => {
+  const nonPreprodTransaction = unsignedTransactionHex({ networkId: 1 });
+  assert.throws(
+    () => mergeCardanoCip30OwnerWitness({
+      unsignedTransactionCborHex: nonPreprodTransaction,
+      walletWitnessSetCborHex: walletWitnessSetHex(ownerPrivateKey, nonPreprodTransaction),
+      expectedOwnerPaymentKeyHash: ownerKeyHash
+    }),
+    /must target Cardano Preprod\/testnet network id 0/
+  );
+});
+
+test('CIP-30 owner witness merge rejects extra required signers even with a valid owner witness', () => {
+  const extraSigner = Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => 10)).to_public().hash().to_hex();
+  const transactionWithExtraSigner = unsignedTransactionHex({
+    requiredSignerHashes: [ownerKeyHash, extraSigner]
+  });
+  assert.throws(
+    () => mergeCardanoCip30OwnerWitness({
+      unsignedTransactionCborHex: transactionWithExtraSigner,
+      walletWitnessSetCborHex: walletWitnessSetHex(ownerPrivateKey, transactionWithExtraSigner),
+      expectedOwnerPaymentKeyHash: ownerKeyHash
+    }),
+    /require exactly the owner payment key/
+  );
+});
+
+test('CIP-30 owner witness merge rejects non-canonical transaction CBOR', () => {
+  const canonicalTransaction = unsignedTransactionHex();
+  const transactionBytes = Buffer.from(canonicalTransaction, 'hex');
+  assert.equal(transactionBytes[0], 0x84, 'fixture uses a four-element transaction array');
+  const nonCanonicalTransaction = Buffer.concat([
+    Buffer.from([0x98, 0x04]),
+    transactionBytes.subarray(1)
+  ]).toString('hex');
+  assert.throws(
+    () => mergeCardanoCip30OwnerWitness({
+      unsignedTransactionCborHex: nonCanonicalTransaction,
+      walletWitnessSetCborHex: walletWitnessSetHex(ownerPrivateKey, canonicalTransaction),
+      expectedOwnerPaymentKeyHash: ownerKeyHash
+    }),
+    /must round-trip canonically/
   );
 });
 

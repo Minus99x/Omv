@@ -83,8 +83,19 @@ export function mergeCardanoCip30OwnerWitness({
   const walletWitnessBytes = bytesFromHex(walletWitnessSetCborHex, 'walletWitnessSetCborHex');
 
   const unsignedTx = Cardano.Transaction.from_bytes(unsignedBytes);
+  if (unsignedTx.to_hex() !== String(unsignedTransactionCborHex).toLowerCase()) {
+    throw new Error('Frozen initialize transaction CBOR must round-trip canonically without byte substitution.');
+  }
   if (unsignedTx.is_valid() !== true) {
     throw new Error('Frozen initialize transaction must carry a true transaction validity flag before wallet witness merge.');
+  }
+  const body = unsignedTx.body();
+  if (body.network_id()?.kind() !== Cardano.NetworkId.testnet().kind()) {
+    throw new Error('Frozen initialize transaction must target Cardano Preprod/testnet network id 0.');
+  }
+  const requiredSigners = body.required_signers();
+  if (!requiredSigners || requiredSigners.len() !== 1 || requiredSigners.get(0).to_hex() !== expected) {
+    throw new Error('Frozen initialize transaction must require exactly the owner payment key as its signer.');
   }
   const walletWitnessSet = Cardano.TransactionWitnessSet.from_bytes(walletWitnessBytes);
   const canonicalWalletWitnessHex = Buffer.from(walletWitnessSet.to_bytes()).toString('hex');
@@ -108,7 +119,7 @@ export function mergeCardanoCip30OwnerWitness({
     throw new Error('CIP-30 wallet witness public key does not match the frozen owner payment key.');
   }
 
-  const bodyHashBytes = blake2b(unsignedTx.body().to_bytes(), { dkLen: 32 });
+  const bodyHashBytes = blake2b(body.to_bytes(), { dkLen: 32 });
   if (!publicKey.verify(bodyHashBytes, witness.signature())) {
     throw new Error('CIP-30 wallet witness signature is invalid for the frozen transaction body.');
   }
@@ -121,11 +132,11 @@ export function mergeCardanoCip30OwnerWitness({
   mergedWitnessSet.set_vkeys(walletVkeys);
 
   const signedTx = Cardano.Transaction.new(
-    unsignedTx.body(),
+    body,
     mergedWitnessSet,
     unsignedTx.auxiliary_data()
   );
-  if (signedTx.body().to_hex() !== unsignedTx.body().to_hex()) {
+  if (signedTx.body().to_hex() !== body.to_hex()) {
     throw new Error('CIP-30 witness merge changed the frozen transaction body.');
   }
   if (signedTx.is_valid() !== unsignedTx.is_valid()) {
