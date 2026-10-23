@@ -132,6 +132,7 @@ export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccou
 }
 
 function matchingBalanceLine(accountResponse, asset) {
+  if (!asset || !['native', 'credit_alphanum'].includes(asset.type)) throw new TypeError('Unsupported Stellar balance asset type.');
   if (!Array.isArray(accountResponse?.balances)) throw new TypeError('Horizon account balances are required.');
   let matches;
   if (asset?.type === 'native') {

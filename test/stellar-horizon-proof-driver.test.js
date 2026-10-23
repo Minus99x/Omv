@@ -597,3 +597,9 @@ test('Horizon balance extraction enforces the int64 stroop boundary', () => {
  for(const balance of ['922337203685.4775808','9999999999999999999999999.0000000'])assert.throws(()=>read(balance),/int64/);
 });
 
+
+
+test('Horizon balances reject unknown asset kinds even when code and issuer match', () => {
+ for(const type of [undefined,'unknown','liquidity_pool_shares','credit_alphanum4'])assert.throws(()=>extractHorizonBalanceUnits({accountResponse:accountResponse(),asset:{type,code:'USDC',issuer:G(6)}}),/asset type/);
+});
+
