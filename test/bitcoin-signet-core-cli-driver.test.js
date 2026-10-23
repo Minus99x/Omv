@@ -65,6 +65,26 @@ test('Signet Core observation rejects stale-chain, mismatched-header and spent-o
   await assert.rejects(()=>fixture({gettxout:null}).driver.readTxOut({transactionId:TXID,vout:0,networkRef:'bitcoin:signet'}),/spent or not/);
 });
 
+test('Signet Core requires an explicit false initialblockdownload flag before trusting tip evidence', async () => {
+  // Bitcoin Core reports synchronization through a boolean. An omitted or
+  // coercible flag must not make an incomplete or spoofed response appear ready.
+  for (const state of [undefined, null, true, 0, 1, 'false', 'true']) {
+    const info = {chain:'signet',blocks:300005,bestblockhash:TIP};
+    if (state !== undefined) info.initialblockdownload = state;
+    const {driver,calls} = fixture({getblockchaininfo:info});
+    await assert.rejects(
+      () => driver.readChainTip({networkRef:'bitcoin:signet'}),
+      /not a synchronized Signet node/,
+      'unexpected acceptance of initialblockdownload='+String(state)
+    );
+    assert.deepEqual(calls.map(call=>call.args[1]), ['getblockchaininfo']);
+  }
+  const {driver}=fixture({getblockchaininfo:{
+    chain:'signet',blocks:300005,bestblockhash:TIP,initialblockdownload:false
+  }});
+  assert.equal((await driver.readChainTip({networkRef:'bitcoin:signet'})).blockHash,TIP);
+});
+
 test('Signet Core UTXO amount conversion rejects fractional sats, malformed decimals and spoofing', async () => {
   for(const amount of [0.000990001,'0.000990001',NaN,-1,0, '1e-8',{},'21000001']) {
     await assert.rejects(()=>fixture({gettxout:{bestblock:TIP,confirmations:6,value:amount,scriptPubKey:{hex:'51'}}}).driver.readTxOut({transactionId:TXID,vout:0,networkRef:'bitcoin:signet'}),/satoshi|decimal|money|finite|value/i);
