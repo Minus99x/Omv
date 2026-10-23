@@ -621,3 +621,12 @@ test('Horizon balance lookup refuses invalid matching issuers', () => {
  }
 });
 
+
+
+test('Horizon balance evidence rejects contradictory asset type and code length', () => {
+ for(const [code,asset_type] of [['USDC','credit_alphanum12'],['LONGTOKEN','credit_alphanum4']]) {
+  const raw=accountResponse({balances:[{asset_type,asset_code:code,asset_issuer:G(6),balance:'1.0000000'}]});
+  assert.throws(()=>extractHorizonBalanceUnits({accountResponse:raw,asset:{type:'credit_alphanum',code,issuer:G(6)}}),/asset type.*code length/);
+ }
+});
+

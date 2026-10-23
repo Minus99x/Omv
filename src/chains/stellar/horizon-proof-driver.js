@@ -146,6 +146,7 @@ function matchingBalanceLine(accountResponse, asset) {
       line?.asset_issuer === asset?.issuer
     );
   }
+  if (asset.type === 'credit_alphanum' && matches.some(line => line.asset_type !== (asset.code.length <= 4 ? 'credit_alphanum4' : 'credit_alphanum12'))) throw new Error('Horizon asset type contradicts its code length.');
   if (matches.length > 1) throw new Error('Horizon account response contains duplicate balance entries for the requested asset.');
   return matches[0] ?? null;
 }
