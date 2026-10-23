@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import {
   CARDANO_APPLIED_FIXTURE,
   buildCardanoEvaluationAdditionalUtxoSet,
@@ -8,6 +9,27 @@ import {
   createCardanoVaultDatumData,
   deriveCardanoEnterpriseScriptAddress
 } from '../src/chains/cardano/transaction-body.js';
+
+function assertFixtureAdaBalance(action, feeLovelace) {
+  const fixture = buildCardanoTransactionBodyFixture(action, { feeLovelace });
+  const utxos = buildCardanoEvaluationAdditionalUtxoSet(action, { feeLovelace });
+  const body = Cardano.TransactionBody.from_bytes(Buffer.from(fixture.cborHex, 'hex'));
+  let inputLovelace = 0n;
+  let outputLovelace = 0n;
+
+  for (let index = 0; index < body.inputs().len(); index += 1) {
+    const input = body.inputs().get(index);
+    const txId = input.transaction_id().to_hex();
+    const utxo = utxos.find(entry => entry.transaction.id === txId && entry.index === input.index());
+    assert.ok(utxo, `missing evaluation UTxO for ${txId}#${input.index()}`);
+    inputLovelace += BigInt(utxo.value.ada.lovelace);
+  }
+
+  for (let index = 0; index < body.outputs().len(); index += 1) {
+    outputLovelace += BigInt(body.outputs().get(index).amount().coin().to_str());
+  }
+  assert.equal(inputLovelace, outputLovelace + BigInt(body.fee().to_str()));
+}
 
 test('Cardano applied fixture derives the exact Aiken Preprod enterprise script address', () => {
   assert.equal(
@@ -100,4 +122,24 @@ test('live evaluation slot cannot leak into the offline fixture transaction path
     () => buildCardanoTransactionBodyFixture('execute', { evaluationSlot: 200000000 }),
     /only valid for a public Preprod evaluation context/
   );
+});
+
+test('Cardano transaction fixtures balance ADA inputs, outputs, and fees', () => {
+  for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
+    assertFixtureAdaBalance(action, '200000');
+    assertFixtureAdaBalance(action, '750000');
+  }
+});
+
+test('Cardano fixture fee inputs reject malformed and unsafe quantities', () => {
+  for (const feeLovelace of ['0', '-1', '1.5', String(Number.MAX_SAFE_INTEGER)]) {
+    assert.throws(
+      () => buildCardanoEvaluationAdditionalUtxoSet('initialize', { feeLovelace }),
+      /feeLovelace/
+    );
+    assert.throws(
+      () => buildCardanoTransactionBodyFixture('initialize', { feeLovelace }),
+      /feeLovelace/
+    );
+  }
 });

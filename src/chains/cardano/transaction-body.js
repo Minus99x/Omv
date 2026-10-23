@@ -218,8 +218,26 @@ function ogmiosUtxo({ transactionId, index, address, lovelace, includeBeacon = f
   return Object.freeze(utxo);
 }
 
-export function buildCardanoEvaluationAdditionalUtxoSet(action, { evaluationSlot = null } = {}) {
+function normalizeFixtureFeeLovelace(value) {
+  const text = String(value);
+  if (!/^\d+$/.test(text) || BigInt(text) < 1n) throw new TypeError('feeLovelace must be positive.');
+  const feeLovelace = BigInt(text);
+  const feePayerInputLovelace = 3000000n + feeLovelace;
+  if (feePayerInputLovelace > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new TypeError('feeLovelace exceeds the safe UTxO accounting range.');
+  }
+  return Object.freeze({
+    feeLovelace: feeLovelace.toString(),
+    feePayerInputLovelace: Number(feePayerInputLovelace)
+  });
+}
+
+export function buildCardanoEvaluationAdditionalUtxoSet(action, {
+  evaluationSlot = null,
+  feeLovelace = '200000'
+} = {}) {
   if (!['initialize', 'heartbeat', 'approve', 'execute'].includes(action)) throw new TypeError('action must be initialize, heartbeat, approve, or execute.');
+  const fee = normalizeFixtureFeeLovelace(feeLovelace);
   const ownerAddress = enterpriseKeyAddress(fixtureKeys.owner).to_bech32();
   const entries = [];
 
@@ -245,7 +263,7 @@ export function buildCardanoEvaluationAdditionalUtxoSet(action, { evaluationSlot
     transactionId: 'ef'.repeat(32),
     index: 1,
     address: ownerAddress,
-    lovelace: 3000000
+    lovelace: fee.feePayerInputLovelace
   }));
   entries.push(ogmiosUtxo({
     transactionId: '12'.repeat(32),
@@ -267,6 +285,7 @@ export function buildCardanoTransactionBodyFixture(action, {
   if (!evaluationContext && evaluationSlot !== null && evaluationSlot !== undefined) {
     throw new TypeError('evaluationSlot is only valid for a public Preprod evaluation context.');
   }
+  const fee = normalizeFixtureFeeLovelace(feeLovelace);
   const timing = evaluationContext ? fixtureTiming(action, evaluationSlot) : null;
 
   const inputs = Cardano.TransactionInputs.new();
@@ -298,9 +317,8 @@ export function buildCardanoTransactionBodyFixture(action, {
   }
   outputs.add(Cardano.TransactionOutput.new(feePayerAddress, valueWithBeacon('3000000', false)));
 
-  if (!/^\d+$/.test(String(feeLovelace)) || BigInt(feeLovelace) < 1n) throw new TypeError('feeLovelace must be positive.');
   if (!/^[0-9a-f]{64}$/i.test(scriptDataHashHex)) throw new TypeError('scriptDataHashHex must be 32 bytes.');
-  const body = Cardano.TransactionBody.new_tx_body(inputs, outputs, Cardano.BigNum.from_str(String(feeLovelace)));
+  const body = Cardano.TransactionBody.new_tx_body(inputs, outputs, Cardano.BigNum.from_str(fee.feeLovelace));
   body.set_network_id(Cardano.NetworkId.testnet());
   body.set_validity_start_interval_bignum(Cardano.BigNum.from_str(String(evaluationContext ? timing.lowerSlot : (action === 'heartbeat' ? 1100 : 1060))));
   body.set_ttl(Cardano.BigNum.from_str(String(evaluationContext ? timing.upperSlot : 1200)));
