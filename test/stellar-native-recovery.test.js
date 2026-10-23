@@ -576,3 +576,15 @@ test('Stellar preauthorized recovery rejects numerically rounded inactivity peri
   }
   assert.equal(createRecoveryEnvelopePlan({...args,inactivitySeconds:60}).preconditions.minAccountSequenceAge,'60');
 });
+
+test('Stellar fee bump rejects forged object wrappers for inner envelope hashes', () => {
+  const hash='ab'.repeat(32);
+  for(const innerEnvelopeHash of [[hash],new String(hash),{toString:()=>hash},false]) {
+    assert.throws(()=>createFeeBumpSponsorPlan({
+      feeAccount:G(7),innerEnvelopeHash,maxFeeStroops:'1000'
+    }),/32-byte hex transaction hash/);
+  }
+  assert.equal(createFeeBumpSponsorPlan({
+    feeAccount:G(7),innerEnvelopeHash:hash.toUpperCase(),maxFeeStroops:'1000'
+  }).innerEnvelopeHash,hash);
+});

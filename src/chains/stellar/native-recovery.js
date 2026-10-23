@@ -323,7 +323,7 @@ export function assessRecoverySubmissionResult({ includedInLedger, successful, r
 
 export function createFeeBumpSponsorPlan({ feeAccount, innerEnvelopeHash, maxFeeStroops }) {
   assertAccount(feeAccount, 'feeAccount');
-  if (!/^[a-f0-9]{64}$/i.test(innerEnvelopeHash ?? '')) throw new TypeError('innerEnvelopeHash must be a 32-byte hex transaction hash.');
+  if (typeof innerEnvelopeHash !== 'string' || !/^[a-f0-9]{64}$/i.test(innerEnvelopeHash)) throw new TypeError('innerEnvelopeHash must be a 32-byte hex transaction hash.');
   const maxFee = asSequence(maxFeeStroops, 'maxFeeStroops');
   if (maxFee <= 0n) throw new TypeError('maxFeeStroops must be positive.');
   return Object.freeze({
