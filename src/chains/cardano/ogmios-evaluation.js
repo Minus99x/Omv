@@ -30,6 +30,9 @@ export function createCardanoOgmiosEvaluationRequest({ transactionCborHex, addit
   if (typeof transactionCborHex !== 'string' || !HEX.test(transactionCborHex)) throw new TypeError('transactionCborHex must be non-empty base16 CBOR.');
   if (typeof id !== 'string' || id.length < 1) throw new TypeError('A JSON-RPC request id is required.');
   const transaction = Cardano.Transaction.from_hex(transactionCborHex);
+  if (transaction.to_hex() !== transactionCborHex.toLowerCase()) {
+    throw new Error('Evaluation transaction CBOR must round-trip canonically without byte substitution.');
+  }
   const expectedValidators = redeemerPointers(transaction);
   const params = { transaction: { cbor: transactionCborHex.toLowerCase() } };
   if (additionalUtxoSet !== undefined) {

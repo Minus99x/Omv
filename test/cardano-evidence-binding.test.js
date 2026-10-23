@@ -1,12 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
+import { blake2b } from '@noble/hashes/blake2.js';
 import {
   canonicalCardanoEvidenceJson,
   createCardanoEvaluationEvidenceBundle,
+  createCardanoSynchronizedEvaluationBundle,
   hashCardanoEvidence
 } from '../src/chains/cardano/evidence-binding.js';
+import { buildCardanoTransactionBodyFixture } from '../src/chains/cardano/transaction-body.js';
 
-const bodyHash = 'ab'.repeat(32);
+const bodyFixture = buildCardanoTransactionBodyFixture('initialize');
+const transaction = Cardano.Transaction.new(
+  Cardano.TransactionBody.from_hex(bodyFixture.cborHex),
+  Cardano.TransactionWitnessSet.new()
+);
+const transactionCborHex = transaction.to_hex();
+const bodyHash = Buffer.from(blake2b(transaction.body().to_bytes(), { dkLen: 32 })).toString('hex');
 const tip = 'tip-316-deadbeef';
 
 function fixture(overrides = {}) {
@@ -32,12 +42,34 @@ function fixture(overrides = {}) {
   return {
     network: 'preprod',
     transactionBodyHash: bodyHash,
-    transactionCborHex: '84'.repeat(16),
+    transactionCborHex,
     synchronizedState,
     utxoSnapshot: { tipHash: tip, utxos: [{ txId: '11'.repeat(32), index: 0, lovelace: '12000000' }] },
     protocolParameters: { epoch: 316, minFeeA: 44n, maxTxSize: 16384 },
     evaluation,
     phaseOneValidation,
+    ...overrides
+  };
+}
+
+function synchronizedFixture(overrides = {}) {
+  return {
+    network: 'preprod',
+    transactionBodyHash: bodyHash,
+    transactionCborHex,
+    synchronizedState: {
+      acquiredTipHash: tip,
+      protocolParametersTipHash: tip,
+      evaluationTipHash: tip,
+      transactionBodyHash: bodyHash,
+      evaluationTransactionBodyHash: bodyHash
+    },
+    protocolParameters: { epoch: 316 },
+    evaluation: { transactionBodyHash: bodyHash },
+    evaluationRequest: {
+      method: 'evaluateTransaction',
+      params: { transaction: { cbor: transactionCborHex }, additionalUtxo: [{}] }
+    },
     ...overrides
   };
 }
@@ -59,6 +91,41 @@ test('Cardano evidence bundle binds one transaction and one synchronized node ti
   assert.equal(result.phaseOneValidated, true);
   assert.equal(result.synchronized, true);
   assert.equal(result.promotionReadyEvidenceBinding, true);
+});
+
+test('Cardano evidence bundles verify the declared body hash against canonical transaction CBOR', () => {
+  assert.throws(
+    () => createCardanoEvaluationEvidenceBundle({
+      ...fixture(),
+      transactionBodyHash: 'cd'.repeat(32)
+    }),
+    /does not match the body encoded/
+  );
+  assert.throws(
+    () => createCardanoEvaluationEvidenceBundle({
+      ...fixture(),
+      transactionCborHex: '84'.repeat(16)
+    }),
+    /valid Cardano transaction/
+  );
+  assert.throws(
+    () => createCardanoSynchronizedEvaluationBundle({
+      ...synchronizedFixture(),
+      transactionBodyHash: 'cd'.repeat(32)
+    }),
+    /does not match the body encoded/
+  );
+  assert.throws(
+    () => createCardanoSynchronizedEvaluationBundle({
+      ...synchronizedFixture(),
+      transactionCborHex: '84'.repeat(16),
+      evaluationRequest: {
+        method: 'evaluateTransaction',
+        params: { transaction: { cbor: '84'.repeat(16) }, additionalUtxo: [{}] }
+      }
+    }),
+    /valid Cardano transaction/
+  );
 });
 
 test('Cardano evidence bundle rejects cross-tip evidence', () => {

@@ -1,4 +1,6 @@
+import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { createHash } from 'node:crypto';
+import { blake2b } from '@noble/hashes/blake2.js';
 
 const HEX_32 = /^[0-9a-f]{64}$/i;
 const HEX = /^(?:[0-9a-f]{2})+$/i;
@@ -51,6 +53,22 @@ function phaseOnePassed(validation) {
     validation?.witnessesSatisfied === true;
 }
 
+function assertTransactionBodyHashMatchesCbor(transactionCborHex, expectedBodyHash) {
+  let transaction;
+  try {
+    transaction = Cardano.Transaction.from_hex(transactionCborHex);
+  } catch (error) {
+    throw new Error('transactionCborHex must encode a valid Cardano transaction.', { cause: error });
+  }
+  if (transaction.to_hex() !== transactionCborHex.toLowerCase()) {
+    throw new Error('transactionCborHex must round-trip canonically without byte substitution.');
+  }
+  const actualBodyHash = Buffer.from(blake2b(transaction.body().to_bytes(), { dkLen: 32 })).toString('hex');
+  if (actualBodyHash !== expectedBodyHash) {
+    throw new Error('transactionBodyHash does not match the body encoded in transactionCborHex.');
+  }
+}
+
 export function createCardanoEvaluationEvidenceBundle({
   network = 'preprod',
   transactionBodyHash,
@@ -64,6 +82,7 @@ export function createCardanoEvaluationEvidenceBundle({
   if (network !== 'preprod') throw new Error('Only Cardano Preprod evidence may be promoted by this gate.');
   const bodyHash = assertHex32(transactionBodyHash, 'transactionBodyHash');
   if (typeof transactionCborHex !== 'string' || !HEX.test(transactionCborHex)) throw new TypeError('transactionCborHex must be non-empty base16 CBOR.');
+  assertTransactionBodyHashMatchesCbor(transactionCborHex, bodyHash);
   if (!utxoSnapshot || !protocolParameters || !evaluation || !phaseOneValidation) throw new TypeError('UTxO, protocol-parameter, evaluation and phase-1 evidence are all required.');
   if (!phaseOnePassed(phaseOneValidation)) throw new Error('Complete phase-1 validation must pass before Cardano evaluation evidence can be bound.');
 
@@ -127,6 +146,7 @@ export function createCardanoSynchronizedEvaluationBundle({
   if (network !== 'preprod') throw new Error('Only Cardano Preprod evidence may be accepted by this gate.');
   const bodyHash = assertHex32(transactionBodyHash, 'transactionBodyHash');
   if (typeof transactionCborHex !== 'string' || !HEX.test(transactionCborHex)) throw new TypeError('transactionCborHex must be non-empty base16 CBOR.');
+  assertTransactionBodyHashMatchesCbor(transactionCborHex, bodyHash);
   if (!protocolParameters || !evaluation || !evaluationRequest) throw new TypeError('Protocol-parameter, evaluation-request and evaluation-response evidence are required.');
 
   const tipFields = [

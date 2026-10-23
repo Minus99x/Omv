@@ -29,6 +29,20 @@ test('Cardano Ogmios request binds zero-budget CBOR, body hash and exact redeeme
   assert.equal(result.requiresSeparatePhaseOneValidation, true);
 });
 
+test('Cardano Ogmios request rejects non-canonical CBOR before binding a body hash', () => {
+  const fixture = buildCardanoOgmiosEvaluationFixture({ action: 'execute', parameters, recoveryCompiledCode, beaconCompiledCode });
+  const transactionBytes = Buffer.from(fixture.transactionCborHex, 'hex');
+  assert.equal(transactionBytes[0], 0x84, 'fixture uses a four-element transaction array');
+  const nonCanonicalTransaction = Buffer.concat([
+    Buffer.from([0x98, 0x04]),
+    transactionBytes.subarray(1)
+  ]).toString('hex');
+  assert.throws(
+    () => createCardanoOgmiosEvaluationRequest({ transactionCborHex: nonCanonicalTransaction }),
+    /must round-trip canonically/
+  );
+});
+
 test('Cardano Ogmios v7 request uses additionalUtxo with the flat UTxO schema', () => {
   const fixture = buildCardanoOgmiosEvaluationFixture({ action: 'execute', parameters, recoveryCompiledCode, beaconCompiledCode });
   const supplemental = [{
