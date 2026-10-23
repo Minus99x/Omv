@@ -1,10 +1,11 @@
-name: OmegaVault Hourly AI Engineering Launcher
+name: OmegaVault Frequent AI Engineering Launcher
 
-# The default branch is scheduler-only. All AI work and Git writes target
+# Default branch hosts only the trigger. All AI work and Git writes target
 # dev/0.6.60-reconcile-overnight-bitcoin. No production code is modified.
 on:
   schedule:
-    - cron: '27 * * * *'
+    # Three unattended engineering runs per hour, at :07, :27, :47 Arizona.
+    - cron: '7,27,47 * * * *'
     # One-time scheduled proof, October 23 2026 at 04:56 UTC (Oct 22 21:56 AZ).
     # Remove the probe cron after obtaining the scheduled execution receipt.
     - cron: '56 4 23 10 *'
@@ -18,7 +19,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: omegavault-hourly-main-cron
+  group: omegavault-main-cron-single-worker
   cancel-in-progress: false
 
 jobs:
