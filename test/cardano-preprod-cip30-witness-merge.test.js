@@ -78,6 +78,21 @@ test('CIP-30 owner context requires Preprod and the frozen owner payment key', (
   );
 });
 
+
+test('CIP-30 owner context rejects coerced or missing network identifiers', () => {
+  const addressHex = Buffer.from(ownerAddress.to_bytes()).toString('hex');
+  for (const networkId of ['0', '', ' 0 ', null, undefined, false, [], [0], 0n, new Number(0)]) {
+    assert.throws(
+      () => verifyCardanoCip30OwnerContext({
+        networkId,
+        addressHexes: [addressHex],
+        expectedOwnerPaymentKeyHash: ownerKeyHash
+      }),
+      /numeric value 0/
+    );
+  }
+});
+
 test('CIP-30 owner witness merge preserves the frozen body and verifies the owner signature', () => {
   const unsignedTransactionCborHex = unsignedTransactionHex();
   const result = mergeCardanoCip30OwnerWitness({
@@ -95,6 +110,20 @@ test('CIP-30 owner witness merge preserves the frozen body and verifies the owne
   assert.equal(result.walletWitnessSignatureVerified, true);
   assert.equal(result.submissionPerformed, false);
   assert.equal(result.submissionAuthorized, false);
+});
+
+
+test('CIP-30 owner witness merge rejects an invalid frozen transaction even with a well-formed wallet witness', () => {
+  const invalidTx = Cardano.Transaction.from_hex(unsignedTransactionHex());
+  invalidTx.set_is_valid(false);
+  assert.throws(
+    () => mergeCardanoCip30OwnerWitness({
+      unsignedTransactionCborHex: invalidTx.to_hex(),
+      walletWitnessSetCborHex: walletWitnessSetHex(),
+      expectedOwnerPaymentKeyHash: ownerKeyHash
+    }),
+    /must carry a true transaction validity flag/
+  );
 });
 
 test('CIP-30 owner witness merge rejects the wrong signer', () => {
