@@ -36,3 +36,53 @@ test('Cardano Ogmios evaluation fixture zeroes every redeemer budget and omits k
   assert.equal(result.keyWitnessCount, 0);
   assert.equal(result.feeIncludesKeyWitnesses, false);
 });
+
+test('Cardano evaluated redeemer budgets are bounded before CSL witness construction', () => {
+  const buildWithBudget = budgetOverrides => buildCardanoWitnessSetFixture({
+    action: 'execute',
+    parameters,
+    recoveryCompiledCode: recoveryCode,
+    beaconCompiledCode: beaconCode,
+    budgetOverrides
+  });
+
+  assert.throws(
+    () => buildWithBudget({
+      'mint:0': { memory: (parameters.maxTxExUnits.memory + 1n).toString(), steps: '1' },
+      'spend:0': { memory: '1', steps: '1' }
+    }),
+    /mint:0\.memory exceeds current maxTxExUnits/
+  );
+  assert.throws(
+    () => buildWithBudget({
+      'mint:0': { memory: '1', steps: '1' },
+      'spend:0': { memory: '1', steps: '9'.repeat(1001) }
+    }),
+    /integer precision exceeds the supported limit/
+  );
+  const overLimitPerRedeemer = parameters.maxTxExUnits.memory / 2n + 1n;
+  assert.throws(
+    () => buildWithBudget({
+      'mint:0': { memory: overLimitPerRedeemer.toString(), steps: '1' },
+      'spend:0': { memory: overLimitPerRedeemer.toString(), steps: '1' }
+    }),
+    /Execution units exceed current maxTxExUnits/
+  );
+});
+
+test('Cardano evaluated redeemer budgets within protocol limits construct a sized transaction', () => {
+  const result = buildCardanoWitnessSetFixture({
+    action: 'execute',
+    parameters,
+    recoveryCompiledCode: recoveryCode,
+    beaconCompiledCode: beaconCode,
+    budgetOverrides: {
+      'mint:0': { memory: '1', steps: '1' },
+      'spend:0': { memory: '1', steps: '1' }
+    }
+  });
+  assert.equal(result.executionUnitsFromLiveEvaluation, true);
+  assert.equal(result.memory, '2');
+  assert.equal(result.steps, '2');
+  assert.equal(result.roundTripExact, true);
+});

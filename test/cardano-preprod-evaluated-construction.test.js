@@ -144,3 +144,13 @@ test('Cardano post-evaluation construction fails closed when a required evaluate
     /Missing evaluated validator budgets/
   );
 });
+
+test('Cardano post-evaluation construction bounds hostile budget precision before parsing', () => {
+  const input = fixture();
+  const hostile = structuredClone(input.evaluationEvidence);
+  hostile.evaluation.budgets[0].budget.memory = '9'.repeat(1001);
+  assert.throws(
+    () => create({ ...input, evaluationEvidence: hostile }),
+    /integer precision exceeds the supported limit/
+  );
+});

@@ -29,15 +29,21 @@ function redeemer(tag, data, memory, steps) {
   return Cardano.Redeemer.new(tag, Cardano.BigNum.zero(), data, exUnits(memory, steps));
 }
 
-function positiveBudgetValue(value, label) {
+function positiveBudgetValue(value, label, maximum) {
   const normalized = String(value);
-  if (!/^\d+$/.test(normalized) || BigInt(normalized) < 1n) {
+  if (!/^\d+$/.test(normalized)) {
     throw new TypeError(`${label} must be a positive integer.`);
   }
-  return normalized;
+  if (normalized.length > 1000) {
+    throw new RangeError(`${label} integer precision exceeds the supported limit.`);
+  }
+  const units = BigInt(normalized);
+  if (units < 1n) throw new TypeError(`${label} must be a positive integer.`);
+  if (units > maximum) throw new RangeError(`${label} exceeds current maxTxExUnits.`);
+  return units.toString();
 }
 
-function resolvedBudget(budgetOverrides, pointer, fallbackMemory, fallbackSteps) {
+function resolvedBudget(budgetOverrides, pointer, fallbackMemory, fallbackSteps, maxTxExUnits) {
   if (budgetOverrides == null) {
     return Object.freeze({ memory: String(fallbackMemory), steps: String(fallbackSteps) });
   }
@@ -49,9 +55,18 @@ function resolvedBudget(budgetOverrides, pointer, fallbackMemory, fallbackSteps)
     throw new Error(`Missing live evaluation budget for ${pointer}.`);
   }
   return Object.freeze({
-    memory: positiveBudgetValue(entry.memory, `${pointer}.memory`),
-    steps: positiveBudgetValue(entry.steps, `${pointer}.steps`)
+    memory: positiveBudgetValue(entry.memory, `${pointer}.memory`, maxTxExUnits.memory),
+    steps: positiveBudgetValue(entry.steps, `${pointer}.steps`, maxTxExUnits.steps)
   });
+}
+
+function addExecutionBudget(currentMemory, currentSteps, budget, maxTxExUnits) {
+  const memory = currentMemory + BigInt(budget.memory);
+  const steps = currentSteps + BigInt(budget.steps);
+  if (memory > maxTxExUnits.memory || steps > maxTxExUnits.steps) {
+    throw new RangeError('Execution units exceed current maxTxExUnits.');
+  }
+  return Object.freeze({ memory, steps });
 }
 
 function deterministicSigningKeys(action) {
@@ -98,33 +113,35 @@ export function buildCardanoWitnessSetFixture({
   if (action === 'initialize' || action === 'execute') {
     const mintBudget = evaluationMode
       ? Object.freeze({ memory: '0', steps: '0' })
-      : resolvedBudget(budgetOverrides, 'mint:0', 91970, 27959404);
+      : resolvedBudget(budgetOverrides, 'mint:0', 91970, 27959404, parameters.maxTxExUnits);
+    if (!evaluationMode) {
+      const total = addExecutionBudget(memory, steps, mintBudget, parameters.maxTxExUnits);
+      memory = total.memory;
+      steps = total.steps;
+    }
     redeemers.add(redeemer(Cardano.RedeemerTag.new_mint(), plutusConstr(0), mintBudget.memory, mintBudget.steps));
     const beaconScript = Cardano.PlutusScript.new_v3(Uint8Array.from(Buffer.from(beaconCompiledCode, 'hex')));
     if (beaconScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.beaconPolicyId) {
       throw new Error(`Cardano beacon witness script hash mismatch: witness=${beaconScript.hash().to_hex()} expected=${CARDANO_APPLIED_FIXTURE.beaconPolicyId}.`);
     }
     scripts.add(beaconScript);
-    if (!evaluationMode) {
-      memory += BigInt(mintBudget.memory);
-      steps += BigInt(mintBudget.steps);
-    }
   }
   if (action !== 'initialize') {
     const fallback = action === 'heartbeat' ? [494618, 158755371] : action === 'approve' ? [566905, 179701350] : [423054, 133367503];
     const spendBudget = evaluationMode
       ? Object.freeze({ memory: '0', steps: '0' })
-      : resolvedBudget(budgetOverrides, 'spend:0', fallback[0], fallback[1]);
+      : resolvedBudget(budgetOverrides, 'spend:0', fallback[0], fallback[1], parameters.maxTxExUnits);
+    if (!evaluationMode) {
+      const total = addExecutionBudget(memory, steps, spendBudget, parameters.maxTxExUnits);
+      memory = total.memory;
+      steps = total.steps;
+    }
     redeemers.add(redeemer(Cardano.RedeemerTag.new_spend(), actionData(action), spendBudget.memory, spendBudget.steps));
     const recoveryScript = Cardano.PlutusScript.new_v3(Uint8Array.from(Buffer.from(recoveryCompiledCode, 'hex')));
     if (recoveryScript.hash().to_hex() !== CARDANO_APPLIED_FIXTURE.recoveryValidatorHash) {
       throw new Error(`Cardano recovery witness script hash mismatch: witness=${recoveryScript.hash().to_hex()} expected=${CARDANO_APPLIED_FIXTURE.recoveryValidatorHash}.`);
     }
     scripts.add(recoveryScript);
-    if (!evaluationMode) {
-      memory += BigInt(spendBudget.memory);
-      steps += BigInt(spendBudget.steps);
-    }
   }
 
   const models = createCardanoPlutusV3CostModels(parameters.plutusV3CostModel);

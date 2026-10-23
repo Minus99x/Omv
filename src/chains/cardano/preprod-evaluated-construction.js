@@ -5,6 +5,7 @@ import { hashCardanoEvidence } from './evidence-binding.js';
 import { buildCardanoPreprodEvaluatedUnsignedFixture } from './witness-set.js';
 
 const UINT = /^\d+$/;
+const MAX_UINT_DIGITS = 1000;
 
 function plainObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
@@ -15,7 +16,11 @@ function plainObject(value, label) {
 
 function positiveIntegerString(value, label) {
   const normalized = String(value);
-  if (!UINT.test(normalized) || BigInt(normalized) < 1n) throw new TypeError(`${label} must be a positive integer.`);
+  if (!UINT.test(normalized)) throw new TypeError(`${label} must be a positive integer.`);
+  if (normalized.length > MAX_UINT_DIGITS) {
+    throw new RangeError(`${label} integer precision exceeds the supported limit.`);
+  }
+  if (BigInt(normalized) < 1n) throw new TypeError(`${label} must be a positive integer.`);
   return normalized;
 }
 
