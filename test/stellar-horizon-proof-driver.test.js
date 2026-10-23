@@ -654,3 +654,10 @@ test('Horizon proof rejects impossible ledger numbers across inclusion and snaps
  assert.equal(normalizeHorizonFinality(args).ledger,'4294967295');
 });
 
+
+
+test('Horizon sequence timestamps respect the uint64 TimePoint range', () => {
+ assert.equal(normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence_time:'18446744073709551615'})}).sequenceTime,'18446744073709551615');
+ assert.throws(()=>normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence_time:'18446744073709551616'})}),/uint64/);
+});
+

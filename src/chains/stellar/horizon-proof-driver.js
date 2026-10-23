@@ -50,6 +50,7 @@ function integerString(value, label, { positive = false } = {}) {
   }
   const text = String(value ?? '');
   if (!/^\d+$/.test(text)) throw new TypeError(`${label} must be a non-negative integer string.`);
+  if (BigInt(text) > 0xffffffffffffffffn) throw new RangeError(`${label} exceeds uint64.`);
   if (positive && BigInt(text) > 0xffffffffn) throw new RangeError(`${label} exceeds uint32.`);
   if (positive && BigInt(text) === 0n) throw new TypeError(`${label} must be greater than zero.`);
   return text;
