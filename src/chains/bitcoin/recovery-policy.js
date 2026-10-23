@@ -118,8 +118,25 @@ export function createBitcoinPsbtV2RecoveryPlan({ inputs, outputs, requiredConta
 
 export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
   if (!plan || plan.format !== 'PSBTv2') throw new TypeError('PSBTv2 recovery plan is required.');
+  if (!plan.unsignedIntent || plan.intentDigest !== digest(plan.unsignedIntent) ||
+      plan.unsignedIntent.version !== 2 ||
+      plan.unsignedIntent.inputsModifiable !== false ||
+      plan.unsignedIntent.outputsModifiable !== false ||
+      plan.unsignedIntent.sighashPolicy !== 'SIGHASH_ALL') {
+    throw new TypeError('Bitcoin recovery plan unsigned intent or digest is invalid or was modified.');
+  }
+  if (!Array.isArray(plan.requiredContactKeys) || plan.requiredContactKeys.length < 1 ||
+      !Number.isInteger(plan.threshold) || plan.threshold < 1 ||
+      plan.threshold > plan.requiredContactKeys.length) {
+    throw new TypeError('Bitcoin recovery signer threshold is invalid or unreachable.');
+  }
+  const expectedKeys = plan.requiredContactKeys.map((key, index) => assertKey(key, `plan.requiredContactKeys[${index}]`));
+  if (new Set(expectedKeys).size !== expectedKeys.length ||
+      expectedKeys.some((key, index) => key !== plan.requiredContactKeys[index])) {
+    throw new TypeError('Bitcoin recovery signer set must contain distinct canonical contact keys.');
+  }
   if (!Array.isArray(signatures)) throw new TypeError('signatures must be an array.');
-  const allowed = new Set(plan.requiredContactKeys);
+  const allowed = new Set(expectedKeys);
   const seen = new Set();
   for (const [index, signature] of signatures.entries()) {
     const key = assertKey(signature?.publicKey, `signatures[${index}].publicKey`);

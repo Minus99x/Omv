@@ -231,3 +231,27 @@ test('Bitcoin fee-bump planning rejects coercible flags and preserves explicit p
   assert.match(plan.rules[0], /invalidate existing signatures/);
   assert.match(plan.rules[2], /controlled child output/);
 });
+
+test('Bitcoin recovery signature coordinator rejects tampered intents and impossible signer quorums', () => {
+  const plan=createBitcoinPsbtV2RecoveryPlan({
+    inputs:[{txid,vout:0,amountSats:'100000'}],
+    outputs:[{amountSats:'99000',scriptPubKey:'0014'+'11'.repeat(20)}],
+    requiredContactKeys:[a,b],threshold:2,feeSats:'1000'
+  });
+  const sig=[{ publicKey:a,signature:'aabb',intentDigest:plan.intentDigest }];
+  const unsignedIntent={...plan.unsignedIntent,feeSats:'500'};
+  assert.throws(()=>coordinateBitcoinRecoverySignatures({
+    plan:{...plan,unsignedIntent},signatures:sig
+  }),/unsigned intent or digest/);
+  for(const threshold of [0,-1,3,'1',NaN]) {
+    assert.throws(()=>coordinateBitcoinRecoverySignatures({
+      plan:{...plan,threshold},signatures:sig
+    }),/signer threshold/);
+  }
+  for(const contactKeys of [[a,a], [a,a.toUpperCase()], [], [a,'bad']]) {
+    assert.throws(()=>coordinateBitcoinRecoverySignatures({
+      plan:{...plan,requiredContactKeys:contactKeys},signatures:sig
+    }),/canonical contact keys|signer threshold|public key/);
+  }
+  assert.equal(coordinateBitcoinRecoverySignatures({plan,signatures:sig}).thresholdReached,false);
+});
