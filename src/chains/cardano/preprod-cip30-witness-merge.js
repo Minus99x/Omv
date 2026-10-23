@@ -50,7 +50,7 @@ export function verifyCardanoCip30OwnerContext({
   addressHexes,
   expectedOwnerPaymentKeyHash
 }) {
-  if (Number(networkId) !== 0) throw new Error('Connected Lace wallet is not on Cardano Preprod/testnet network id 0.');
+  if (networkId !== 0) throw new Error('Connected Lace wallet is not on Cardano Preprod/testnet network id 0. Network id must be the numeric value 0, not a coerced substitute.');
   if (!Array.isArray(addressHexes) || addressHexes.length < 1) {
     throw new Error('Connected Lace wallet did not expose any wallet addresses for owner verification.');
   }
@@ -83,6 +83,9 @@ export function mergeCardanoCip30OwnerWitness({
   const walletWitnessBytes = bytesFromHex(walletWitnessSetCborHex, 'walletWitnessSetCborHex');
 
   const unsignedTx = Cardano.Transaction.from_bytes(unsignedBytes);
+  if (unsignedTx.is_valid() !== true) {
+    throw new Error('Frozen initialize transaction must carry a true transaction validity flag before wallet witness merge.');
+  }
   const walletWitnessSet = Cardano.TransactionWitnessSet.from_bytes(walletWitnessBytes);
   const canonicalWalletWitnessHex = Buffer.from(walletWitnessSet.to_bytes()).toString('hex');
   if (canonicalWalletWitnessHex !== String(walletWitnessSetCborHex).toLowerCase()) {
