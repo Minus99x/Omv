@@ -46,7 +46,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          copilot -p "You are performing one autonomous engineering iteration for OmegaVault. Work exclusively in this checked-out repository and only on dev/0.6.60-reconcile-overnight-bitcoin. Inspect latest git commits, the remote work queue, current implementation, and offline tests. Choose a high-value unfinished security or correctness objective across Cardano, Bitcoin, Stellar, or XDC that can be completed and independently tested in this session. Implement the full cohesive fix, with adversarial and positive regression tests and a meaningful reviewable diff. Address a second directly related defect if time and verification permit; avoid cosmetic churn and documentation-only busywork. Prioritize actual code and its safety tests. Do not redo completed objectives. Focus first on Cardano witness and transaction-body safety unless it is already completely covered. Inspect docs/OMEGAVAULT_0.6.60_REMOTE_WORK_QUEUE.md and the existing vetted upstream reuse catalog before starting. Prefer suitable audited open-source primitives (including Safe where applicable and license-compatible) over rebuilding established primitives. Record license/provenance where reuse is appropriate; never uncritically transplant unaudited implementations. You may edit only src/chains/, test/, and docs/; never edit workflows, package files, configuration, deployment code, generated artifacts or secrets. Do not sign, submit or broadcast any transaction, deploy anything, handle keys/funds, call external networks, promote a chain, change branch, commit, push, or ask the operator questions. Prefer no changes over an unverified or speculative alteration. Do not claim success without test evidence. Use the supplied test dependencies. Report what was changed and which tests you executed." -s --no-ask-user --allow-tool='read,write,shell(npm:*),shell(node:*),shell(git diff:*),shell(git status:*),shell(git log:*)'
+          copilot -p "You are performing one autonomous engineering iteration for OmegaVault. Work exclusively in this checked-out repository and only on dev/0.6.60-reconcile-overnight-bitcoin. Inspect latest git commits, the remote work queue, current implementation, and offline tests. Choose a high-value unfinished security or correctness objective across Cardano, Bitcoin, Stellar, or XDC that can be completed and independently tested in this session. Implement the full cohesive fix, with adversarial and positive regression tests and a meaningful reviewable diff. Address a second directly related defect if time and verification permit; avoid cosmetic churn and documentation-only busywork. Prioritize actual code and its safety tests. Do not redo completed objectives. Focus first on Cardano witness and transaction-body safety unless it is already completely covered. Inspect docs/OMEGAVAULT_0.6.60_REMOTE_WORK_QUEUE.md and the existing vetted upstream reuse catalog before starting. Prefer suitable audited open-source primitives (including Safe where applicable and license-compatible) over rebuilding established primitives. Record license/provenance where reuse is appropriate; never uncritically transplant unaudited implementations. Read docs for context, but never modify diagnostic records, instructions, or any docs file. You may edit only src/chains/ and test/; never edit workflows, package files, configuration, deployment code, generated artifacts or secrets. Do not sign, submit or broadcast any transaction, deploy anything, handle keys/funds, call external networks, promote a chain, change branch, commit, push, or ask the operator questions. Prefer no changes over an unverified or speculative alteration. Do not claim success without test evidence. Use the supplied test dependencies. Report what was changed and which tests you executed." -s --no-ask-user --allow-tool='read,write,shell(npm:*),shell(node:*),shell(git diff:*),shell(git status:*),shell(git log:*)'
 
       - name: Audit candidate changes and prepare patch
         id: patch
@@ -56,13 +56,13 @@ jobs:
           git status --porcelain --untracked-files=all
           while IFS= read -r name; do
             case "$name" in
-              src/chains/*|test/*|docs/*) ;;
+              src/chains/*|test/*) ;;
               *) echo "::error::Disallowed modified path: $name"; exit 1 ;;
             esac
           done < <(git status --porcelain --untracked-files=all | cut -c4-)
-          git add -N -- src/chains test docs
+          git add -N -- src/chains test
           git diff --check
-          git diff --binary -- src/chains test docs > candidate.patch
+          git diff --binary -- src/chains test > candidate.patch
           if [ -s candidate.patch ]; then
             echo "has_patch=true" >> "$GITHUB_OUTPUT"
             echo "Candidate patch produced; validation occurs in the isolated integration job."
@@ -107,20 +107,28 @@ jobs:
         run: |
           set -euo pipefail
           test -s candidate.patch
-          while IFS= read -r name; do
-            case "$name" in
-              src/chains/*|test/*|docs/*) ;;
-              *) echo "::error::Patch attempts disallowed path: $name"; exit 1 ;;
-            esac
-          done < <(git apply --name-only candidate.patch)
-          # Reject documentation-only patches: unattended runs must deliver code or tests.
-          if ! git apply --name-only candidate.patch | grep -Eq '^(src/chains/|test/)'; then
-            echo "::error::Patch contains no implementation or test changes"
-            exit 1
-          fi
-          git apply --check candidate.patch
-          git apply candidate.patch
-          git diff --check
+          # Apply to the disposable checkout/index, then inspect Git's actual delta.
+          # Do not run candidate code until all paths and modes have passed.
+          git apply --check --index candidate.patch
+          git apply --index candidate.patch
+          python3 - <<'PYGUARD'
+          import subprocess
+          records = subprocess.check_output([
+              'git', 'diff', '--cached', '--raw', '--no-renames', '-z'
+          ]).split(b'\0')
+          count = 0
+          for index in range(0, len(records) - 1, 2):
+              header, path = records[index:index + 2]
+              old_mode, new_mode = header.split()[:2]
+              if not path.startswith((b'src/chains/', b'test/')):
+                  raise SystemExit('Disallowed candidate path: ' + repr(path))
+              if old_mode[1:] not in (b'000000', b'100644', b'100755') or new_mode not in (b'000000', b'100644', b'100755'):
+                  raise SystemExit('Disallowed candidate file mode: ' + repr(path))
+              count += 1
+          if not count:
+              raise SystemExit('No implementation or test changes')
+          PYGUARD
+          git diff --cached --check
           npm ci
           npm test
           npm run check
@@ -128,15 +136,30 @@ jobs:
       - name: Commit verified engineering change without changing main
         env:
           GH_TOKEN: ${{ github.token }}
+          ORIGIN_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ORIGIN_RUN_ATTEMPT: ${{ github.run_attempt }}
+          ORIGIN_ACTOR: ${{ github.actor }}
+          ORIGIN_ACTOR_ID: ${{ github.actor_id }}
+          ORIGIN_TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          ORIGIN_EVENT: ${{ github.event_name }}
+          ORIGIN_CONTROL_SHA: ${{ github.sha }}
         shell: bash
         run: |
           set -euo pipefail
           test "$(git branch --show-current)" = "dev/0.6.60-reconcile-overnight-bitcoin"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- src/chains test docs
+          git add -- src/chains test
           git diff --cached --quiet && { echo "No substantive changes."; exit 0; }
-          git commit -m "fix(eng): verified unattended offline engineering improvement"
+          git commit -m "fix(eng): verified unattended offline engineering improvement" \
+            -m "Origin-Run: $ORIGIN_RUN_URL
+          Origin-Run-Attempt: $ORIGIN_RUN_ATTEMPT
+          Origin-Actor: $ORIGIN_ACTOR
+          Origin-Actor-ID: $ORIGIN_ACTOR_ID
+          Origin-Triggering-Actor: $ORIGIN_TRIGGERING_ACTOR
+          Origin-Event: $ORIGIN_EVENT
+          Origin-Control-SHA: $ORIGIN_CONTROL_SHA
+          Origin-Chat: not-applicable-github-actions"
           gh auth setup-git
           git push origin HEAD:refs/heads/dev/0.6.60-reconcile-overnight-bitcoin
           echo "Verified engineering commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
