@@ -157,6 +157,9 @@ export function assessXrplDelegatedRecoveryAuthority({
   const granularPaymentPermission=normalized.some(value=>GRANULAR_PAYMENT_PERMISSIONS.has(value));
 
   const risks=[];
+  if(!paymentPermission && !escrowCreatePermission && !escrowFinishPermission) {
+    risks.push('These delegated permissions contain no recovery-capable Payment or Escrow operation; they cannot implement OmegaVault rescue.');
+  }
   if(paymentPermission) {
     risks.push('Delegated Payment authority is transaction-type scoped and is not restricted by XRPL Permission Delegation to one rescue destination, amount, or currency.');
   }

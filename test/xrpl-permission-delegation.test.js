@@ -169,3 +169,21 @@ test('XRPL OmegaVault delegation planning rejects PaymentBurn and current non-de
     );
   }
 });
+
+test('XRPL delegated non-recovery permissions cannot claim exact OmegaVault rescue', () => {
+  const provenElsewhere = {
+    delegateUsesOwnSignerQuorum: true,
+    immutableRescueBoundByLedger: true,
+    amountBoundByLedger: true,
+    currencyBoundByLedger: true,
+    resettableInactivityBoundByLedger: true
+  };
+  for (const permissionValues of [['TrustSet'], ['OfferCreate'], ['EscrowCancel']]) {
+    const assessment = assessXrplDelegatedRecoveryAuthority({ permissionValues, ...provenElsewhere });
+    assert.equal(assessment.exactOmegaVaultDelegatedRecovery, false);
+    assert.ok(assessment.risks.some(risk => /no recovery-capable Payment or Escrow/i.test(risk)));
+  }
+  const payment = assessXrplDelegatedRecoveryAuthority({ permissionValues: ['Payment'], ...provenElsewhere });
+  assert.equal(payment.exactOmegaVaultDelegatedRecovery, false);
+  assert.ok(payment.risks.some(risk => /destination, amount, or currency/i.test(risk)));
+});
