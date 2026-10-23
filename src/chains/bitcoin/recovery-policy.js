@@ -163,7 +163,7 @@ export function assessBitcoinImmutableRescue({ covenantActive = false, recoveryP
 }
 
 export function validateBitcoinCsvRecoveryInput({ txVersion = 2, sequence, csvBlocks }) {
-  if (!Number.isInteger(txVersion) || txVersion < 0 || txVersion > 0xffffffff) throw new TypeError('txVersion must be a uint32.');
+  if (!Number.isInteger(txVersion) || txVersion < 0 || txVersion > 0x7fffffff) throw new TypeError('txVersion must be a non-negative signed int32 Bitcoin version.');
   if (!Number.isInteger(sequence) || sequence < 0 || sequence > 0xffffffff) throw new TypeError('sequence must be a uint32.');
   if (!Number.isInteger(csvBlocks) || csvBlocks < 1 || csvBlocks > 0xffff) throw new TypeError('csvBlocks must be 1-65535.');
   const disableFlag = (sequence & 0x80000000) !== 0;

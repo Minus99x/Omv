@@ -255,3 +255,15 @@ test('Bitcoin recovery signature coordinator rejects tampered intents and imposs
   }
   assert.equal(coordinateBitcoinRecoverySignatures({plan,signatures:sig}).thresholdReached,false);
 });
+
+test('Bitcoin CSV rejects positive-looking negative signed Bitcoin versions', () => {
+  // A uint32 above INT32_MAX would serialize as a negative signed version.
+  for(const txVersion of [0x80000000, 0xffffffff, Number.MAX_SAFE_INTEGER, -1]) {
+    assert.throws(()=>validateBitcoinCsvRecoveryInput({
+      txVersion, sequence:144, csvBlocks:144
+    }),/signed int32 Bitcoin version/);
+  }
+  assert.equal(validateBitcoinCsvRecoveryInput({
+    txVersion:0x7fffffff, sequence:144, csvBlocks:144
+  }).ok,true);
+});
