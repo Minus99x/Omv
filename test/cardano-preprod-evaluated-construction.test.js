@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { normalizeCardanoProtocolParameterSnapshot } from '../src/chains/cardano/protocol-parameters.js';
+import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { buildCardanoEvaluationAdditionalUtxoSet } from '../src/chains/cardano/transaction-body.js';
 import { buildCardanoPublicPreprodOgmiosEvaluationFixture } from '../src/chains/cardano/witness-set.js';
 import {
@@ -129,6 +130,30 @@ test('Cardano post-evaluation construction fails closed on cross-wired action ev
       evaluationEvidence: crossWired
     }),
     /cross-wired/
+  );
+});
+
+test('Cardano post-evaluation construction rejects altered budgets even when the outer evidence digest is recomputed', () => {
+  const input = fixture();
+  const tampered = structuredClone(input.evaluationEvidence);
+  tampered.evaluation.budgets[0].budget.memory = String(BigInt(tampered.evaluation.budgets[0].budget.memory) + 1n);
+
+  assert.throws(
+    () => create({
+      ...input,
+      evaluationEvidence: tampered
+    }),
+    /evidence self-digest mismatch/
+  );
+
+  const { evidenceSha256, ...core } = tampered;
+  tampered.evidenceSha256 = hashCardanoEvidence(core);
+  assert.throws(
+    () => create({
+      ...input,
+      evaluationEvidence: tampered
+    }),
+    /bundle does not bind the supplied evaluation budgets/
   );
 });
 

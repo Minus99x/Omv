@@ -56,6 +56,48 @@ function withoutDigest(value) {
   return Object.fromEntries(Object.entries(value).filter(([key]) => key !== 'constructionSha256'));
 }
 
+function verifyEvaluationEvidenceBinding(plan, evidence) {
+  const planCore = Object.fromEntries(Object.entries(plan).filter(([key]) => key !== 'planSha256'));
+  if (hashCardanoEvidence(planCore) !== plan.planSha256) {
+    throw new Error('Cardano evaluated construction capture plan self-digest mismatch.');
+  }
+
+  const evidenceCore = Object.fromEntries(Object.entries(evidence).filter(([key]) => key !== 'evidenceSha256'));
+  if (hashCardanoEvidence(evidenceCore) !== evidence.evidenceSha256) {
+    throw new Error('Cardano synchronized evaluation evidence self-digest mismatch.');
+  }
+
+  const bundle = plainObject(evidence.evidenceBundle, 'evaluationEvidence.evidenceBundle');
+  const bundleCore = Object.fromEntries(Object.entries(bundle).filter(([key]) =>
+    !['bundleSha256', 'synchronized', 'promotionReadyEvidenceBinding'].includes(key)
+  ));
+  if (hashCardanoEvidence(bundleCore) !== bundle.bundleSha256) {
+    throw new Error('Cardano synchronized evaluation bundle self-digest mismatch.');
+  }
+  if (bundle.schema !== 'omegavault.cardano.synchronized-evaluation-evidence.v2' ||
+      bundle.network !== 'preprod' ||
+      bundle.synchronized !== true ||
+      bundle.promotionReadyEvidenceBinding !== false) {
+    throw new Error('Cardano synchronized evaluation bundle has an unexpected authority boundary.');
+  }
+  if (bundle.components?.evaluationSha256 !== hashCardanoEvidence(evidence.evaluation)) {
+    throw new Error('Cardano synchronized evaluation bundle does not bind the supplied evaluation budgets.');
+  }
+  if (bundle.components?.evaluationRequestSha256 !== hashCardanoEvidence(plan.evaluationRequest) ||
+      bundle.components?.supplementalUtxoSha256 !== plan.evaluationContext?.supplementalUtxoSha256) {
+    throw new Error('Cardano synchronized evaluation bundle does not bind the capture plan request and supplemental UTxOs.');
+  }
+  if (bundle.transaction?.bodyHash !== plan.transactionBodyHash ||
+      bundle.transaction?.cborSha256 !== plan.transactionCborSha256 ||
+      evidence.evaluation?.transactionBodyHash !== plan.transactionBodyHash ||
+      evidence.evaluation?.tipHash !== evidence.acquiredTip?.hash ||
+      evidence.evaluation?.tipBeforeHash !== evidence.acquiredTip?.hash ||
+      evidence.evaluation?.tipAfterHash !== evidence.acquiredTip?.hash ||
+      bundle.tipHash !== evidence.acquiredTip?.hash) {
+    throw new Error('Cardano synchronized evaluation evidence is not bound to the capture plan transaction and acquired tip.');
+  }
+}
+
 export function createCardanoPreprodEvaluatedUnsignedConstruction({
   capturePlan,
   evaluationEvidence,
@@ -90,6 +132,7 @@ export function createCardanoPreprodEvaluatedUnsignedConstruction({
   }
 
   const budgetOverrides = budgetOverridesFromEvidence(evidence.evaluation, plan.expectedValidators);
+  verifyEvaluationEvidenceBinding(plan, evidence);
   const evaluationSlot = evaluationSlotFromCandidate(plan.transactionCborHex);
   const candidate = buildCardanoPreprodEvaluatedUnsignedFixture({
     action: plan.action,
