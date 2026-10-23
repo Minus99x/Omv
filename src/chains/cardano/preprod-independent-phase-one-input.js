@@ -213,6 +213,24 @@ export function createCardanoPreprodIndependentPhaseOneInput({
   // interval directly with the fresh UTxO/validity commitments. Matching
   // document digests alone cannot prove those describe the signed body.
   const signedBody = signedTransaction.body();
+  const unsupportedBodyFields = [
+    ['reference inputs', signedBody.reference_inputs()],
+    ['certificates', signedBody.certs()],
+    ['withdrawals', signedBody.withdrawals()],
+    ['update', signedBody.update()],
+    ['voting procedures', signedBody.voting_procedures()],
+    ['voting proposals', signedBody.voting_proposals()],
+    ['current treasury value', signedBody.current_treasury_value()],
+    ['donation', signedBody.donation()],
+    ['auxiliary data hash', signedBody.auxiliary_data_hash()]
+  ];
+  const unsupportedBodyField = unsupportedBodyFields.find(([, value]) => value != null);
+  if (unsupportedBodyField) {
+    throw new Error(`Signed initialize transaction contains unsupported ${unsupportedBodyField[0]}.`);
+  }
+  if (signedTransaction.auxiliary_data() != null) {
+    throw new Error('Signed initialize transaction contains unsupported auxiliary data.');
+  }
   const signedInputs = signedBody.inputs();
   const signedCollateral = signedBody.collateral();
   const inputMatches = (input, expected) =>

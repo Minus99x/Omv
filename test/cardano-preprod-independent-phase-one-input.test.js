@@ -15,6 +15,8 @@ function serializedFixtureTransaction({
   totalCollateralLovelace='500000',
   changeAddressOverride=null,
   collateralReturnAddressOverride=null,
+  includeReferenceInput=false,
+  donationLovelace=null,
   includeChange=true,
   includeCollateralReturn=true
 }={}) {
@@ -44,6 +46,14 @@ function serializedFixtureTransaction({
   const body=Cardano.TransactionBody.new_tx_body(
     inputs,outputs,Cardano.BigNum.from_str(feeLovelace)
   );
+  if (includeReferenceInput) {
+    const referenceInputs=Cardano.TransactionInputs.new();
+    referenceInputs.add(Cardano.TransactionInput.new(Cardano.TransactionHash.from_hex(h('3')),0));
+    body.set_reference_inputs(referenceInputs);
+  }
+  if (donationLovelace != null) {
+    body.set_donation(Cardano.BigNum.from_str(donationLovelace));
+  }
   body.set_collateral(collateral);
   body.set_total_collateral(Cardano.BigNum.from_str(totalCollateralLovelace));
   if (includeCollateralReturn) {
@@ -369,6 +379,18 @@ test('signed initialize conserves seed and collateral ADA with real signed outpu
  const result=create(fixture());
  assert.equal(result.signedTransaction.bytes,signed.length/2);
  assert.equal(result.transactionSubmissionAuthorized,false);
+});
+
+test('independent handoff rejects unbound signed reference inputs',()=>{
+ const x=fixture();
+ rebindSignedFixture(x,serializedFixtureTransaction({includeReferenceInput:true}));
+ assert.throws(()=>create(x),/unsupported reference inputs/);
+});
+
+test('independent handoff rejects unsupported signed body effects',()=>{
+ const x=fixture();
+ rebindSignedFixture(x,serializedFixtureTransaction({donationLovelace:'1'}));
+ assert.throws(()=>create(x),/unsupported donation/);
 });
 
 test('signed initialize rejects a changed wallet output even with fully rebound signed evidence',()=>{
