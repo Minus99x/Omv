@@ -151,3 +151,18 @@ test('XDC finality creation and verification reject noncanonical UTC observation
     source.proof,{networkId:source.networkId,kind:'native-recovery'}
   ),true);
 });
+
+test('XDC matcher rejects internally inconsistent proof binding even with unchanged finality evidence', () => {
+  const source=args();
+  const evidence=createEvmBlockFinalityEvidence(source);
+  for(const forgedProof of [
+    {...source.proof,binding:{...source.proof.binding,sha256:'d'.repeat(64)}},
+    {...source.proof,binding:{...source.proof.binding,contextSha256:'bad'}},
+    {...source.proof,binding:{...source.proof.binding,deploymentVerificationSha256:null}},
+    {...source.proof,bindingSha256:null}
+  ]) {
+    assert.equal(evmFinalityMatchesProof(evidence,forgedProof,{
+      networkId:source.networkId,kind:'native-recovery'
+    }),false);
+  }
+});

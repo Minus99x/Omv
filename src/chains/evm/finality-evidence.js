@@ -173,6 +173,13 @@ export function evmFinalityMatchesProof(evidence, proof, { networkId, kind }) {
   const network = getNetwork(networkId);
   if (!network || !evidence || !proof || proof?.success !== true) return false;
   if (proof?.binding?.kind !== kind) return false;
+  if (typeof proof.bindingSha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/i.test(proof.bindingSha256) ||
+      proof.binding?.sha256 !== proof.bindingSha256 ||
+      typeof proof.binding.contextSha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/i.test(proof.binding.contextSha256) ||
+      typeof proof.binding.deploymentVerificationSha256 !== 'string' ||
+      !/^[0-9a-f]{64}$/i.test(proof.binding.deploymentVerificationSha256)) return false;
   if (evidence.schema !== 'omegavault.evm-finality-evidence.v2' || evidence.status !== 'finalized') return false;
   if (evidence.networkRef !== network.id || evidence.chainId !== network.chainId) return false;
   if (evidence.chainIdHex !== String(network.chainIdHex).toLowerCase()) return false;
