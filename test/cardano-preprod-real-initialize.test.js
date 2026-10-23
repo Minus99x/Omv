@@ -118,6 +118,21 @@ test('Cardano real initialize evaluation candidate is balanced, unsigned and led
   assert.equal(tx.body().required_signers().len(), 1);
 });
 
+test('Cardano real initialize rejects a rescue destination that collapses into the owner role', () => {
+  const appliedIdentity = identity();
+  const utxoBindingEvidence = binding(appliedIdentity);
+  assert.throws(
+    () => buildCardanoPreprodRealInitializeCandidate({
+      appliedValidatorIdentity: appliedIdentity,
+      utxoBindingEvidence,
+      parameters,
+      recoveryConfig: { ...recoveryConfig, rescueKeyHash: '11'.repeat(28) },
+      evaluationMode: true
+    }),
+    /owner cannot also be the rescue destination/
+  );
+});
+
 test('Cardano real initialize live-budget candidate applies evaluated budget while remaining unsigned and non-submit-authorized', () => {
   const appliedIdentity = identity();
   const utxoBindingEvidence = binding(appliedIdentity);

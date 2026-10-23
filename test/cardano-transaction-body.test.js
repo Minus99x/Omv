@@ -56,6 +56,31 @@ test('Cardano datum encoder emits constructor CBOR and rejects unconfigured appr
   }), /not a configured contact/);
 });
 
+test('Cardano datum encoder keeps owner, rescue, and trusted-contact roles distinct', () => {
+  const base = {
+    ownerKeyHash: '11'.repeat(28),
+    rescueKeyHash: '66'.repeat(28),
+    contactKeyHashes: ['22'.repeat(28), '33'.repeat(28)],
+    threshold: 2,
+    inactivityMs: 60000,
+    lastHeartbeatMs: 1000000
+  };
+
+  assert.ok(createCardanoVaultDatumData(base).to_hex().startsWith('d879'));
+  assert.throws(
+    () => createCardanoVaultDatumData({ ...base, rescueKeyHash: '11'.repeat(28).toUpperCase() }),
+    /owner cannot also be the rescue destination/
+  );
+  assert.throws(
+    () => createCardanoVaultDatumData({ ...base, contactKeyHashes: ['11'.repeat(28), '33'.repeat(28)] }),
+    /owner cannot also be a trusted contact/
+  );
+  assert.throws(
+    () => createCardanoVaultDatumData({ ...base, contactKeyHashes: ['66'.repeat(28), '33'.repeat(28)] }),
+    /rescue destination cannot also be a trusted contact/
+  );
+});
+
 for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
   test(`Cardano ${action} transaction body round-trips exact canonical CBOR`, () => {
     const fixture = buildCardanoTransactionBodyFixture(action);

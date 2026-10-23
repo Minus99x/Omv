@@ -124,17 +124,21 @@ export function createCardanoVaultDatumData({
   approvalKeyHashes = []
 }) {
   const owner = assertHex(ownerKeyHash, HEX_28, 'ownerKeyHash');
+  const rescue = assertHex(rescueKeyHash, HEX_28, 'rescueKeyHash');
   const contacts = contactKeyHashes.map((value, index) => assertHex(value, HEX_28, `contactKeyHashes[${index}]`));
   const approvals = approvalKeyHashes.map((value, index) => assertHex(value, HEX_28, `approvalKeyHashes[${index}]`));
   if (!Number.isInteger(threshold) || threshold < 1 || threshold > contacts.length) throw new TypeError('threshold must be reachable.');
   if (!Number.isSafeInteger(inactivityMs) || inactivityMs < 1) throw new TypeError('inactivityMs must be positive.');
   if (!Number.isSafeInteger(lastHeartbeatMs) || lastHeartbeatMs < 0) throw new TypeError('lastHeartbeatMs must be non-negative.');
   if (new Set(contacts).size !== contacts.length || new Set(approvals).size !== approvals.length) throw new TypeError('contacts and approvals must be unique.');
+  if (owner === rescue) throw new TypeError('owner cannot also be the rescue destination.');
+  if (contacts.includes(owner)) throw new TypeError('owner cannot also be a trusted contact.');
+  if (contacts.includes(rescue)) throw new TypeError('rescue destination cannot also be a trusted contact.');
   if (approvals.some(value => !contacts.includes(value))) throw new TypeError('approval is not a configured contact.');
 
   return plutusConstr(0, [
     plutusBytes(owner),
-    addressDatumFromKeyHash(rescueKeyHash),
+    addressDatumFromKeyHash(rescue),
     plutusList(contacts.map(plutusBytes)),
     plutusInteger(threshold),
     plutusInteger(inactivityMs),
