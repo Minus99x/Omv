@@ -128,3 +128,26 @@ test('finality verifier rejects evidence bound to another recovery proof or reco
     networkId: a.networkId, kind: 'erc20-recovery'
   }), false);
 });
+
+test('XDC finality creation and verification reject noncanonical UTC observation timestamps', () => {
+  const source=args();
+  const evidence=createEvmBlockFinalityEvidence(source);
+  for(const observedAt of [
+    '2026-02-30T18:00:00Z',
+    '2026-10-14T18:00:00+00:00',
+    '2026-10-14',
+    '2026-10-14T18:00:00',
+    '2026-10-14T18:00:00.1234Z',
+    '2026-13-14T18:00:00Z'
+  ]) {
+    assert.throws(()=>createEvmBlockFinalityEvidence({...source,observedAt}),/canonical UTC timestamp/);
+    const forged=rehash(evidence,{observedAt});
+    assert.equal(evmFinalityMatchesProof(forged,source.proof,{
+      networkId:source.networkId,kind:'native-recovery'
+    }),false,observedAt);
+  }
+  assert.equal(evmFinalityMatchesProof(
+    createEvmBlockFinalityEvidence({...source,observedAt:'2026-10-14T18:00:00.123Z'}),
+    source.proof,{networkId:source.networkId,kind:'native-recovery'}
+  ),true);
+});

@@ -43,6 +43,14 @@ function quantity(value, label) {
   throw new TypeError(`${label} must be an integer-like EVM quantity.`);
 }
 
+function canonicalUtcObservation(value) {
+  if (typeof value !== 'string' ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) &&
+    new Date(timestamp).toISOString().slice(0, 19) === value.slice(0, 19);
+}
+
 function receiptSucceeded(status) {
   // Never invoke untrusted object coercion while deciding whether a receipt succeeded.
   return status === true || status === 1 || status === 1n || status === '1' ||
@@ -80,7 +88,7 @@ export function createEvmBlockFinalityEvidence({
   if (typeof observedChainIdHex !== 'string' ||
       observedChainIdHex.toLowerCase() !== String(network.chainIdHex).toLowerCase())
     throw new Error('Observed EVM chain ID does not match the selected network.');
-  if (typeof observedAt !== 'string' || !Number.isFinite(Date.parse(observedAt))) throw new TypeError('observedAt must be an ISO-compatible timestamp.');
+  if (!canonicalUtcObservation(observedAt)) throw new TypeError('observedAt must be a canonical UTC timestamp.');
 
   const transactionRef = validateProofBinding(proof, network);
   if (!receiptSucceeded(receipt?.status)) throw new Error('Transaction receipt does not report success.');
@@ -199,6 +207,7 @@ export function evmFinalityMatchesProof(evidence, proof, { networkId, kind }) {
   if (evidence.proofBindingSha256 !== proof.bindingSha256) return false;
   if (evidence.proofContextSha256 !== proof.binding?.contextSha256) return false;
   if (evidence.deploymentVerificationSha256 !== proof.binding?.deploymentVerificationSha256) return false;
+  if (!canonicalUtcObservation(evidence.observedAt)) return false;
   if (typeof evidence.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(evidence.sha256)) return false;
   const { sha256, ...unsigned } = evidence;
   return digest(unsigned) === sha256;
