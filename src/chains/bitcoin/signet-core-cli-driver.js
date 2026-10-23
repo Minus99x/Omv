@@ -126,7 +126,7 @@ export function createBitcoinSignetObservationCoreCliDriver({
     async readChainTip({networkRef}) {
       network(networkRef);
       const info = await query('getblockchaininfo');
-      if (info?.chain !== 'signet' || info?.initialblockdownload === true) {
+      if (info?.chain !== 'signet' || info?.initialblockdownload !== false) {
         throw new Error('Bitcoin Core is not a synchronized Signet node.');
       }
       return Object.freeze({
