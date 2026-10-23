@@ -20,6 +20,7 @@ This checklist separates work that can be completed remotely in the repository f
 - [x] Normalize live Cardano CLI Ogmios endpoints to WebSocket transport so an `https://` environment endpoint cannot silently fall back to incompatible HTTP RPC behavior.
 - [x] Run a repository-side audit of the next signed/current-ledger phase-one gate and document the exact covered/uncovered authority boundary.
 - [x] Harden unsigned/wallet-witness validation so the Cardano transaction validity flag must remain true.
+- [x] Verify real-initialize UTxO binding evidence integrity and require seed/collateral return addresses to match the bound owner payment key.
 - [x] Review current Cardano operator documentation for stale wording after the signing/reconnect changes; retain the explicitly versioned 0.6.11/0.6.12 historical documents unchanged as historical evidence.
 - [x] Prepare the exact post-signing operator handoff/checklist so the workstation steps remain one-command-at-a-time.
 

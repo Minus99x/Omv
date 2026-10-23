@@ -45,6 +45,27 @@ function keyHash(value, label) {
   return normalized;
 }
 
+function paymentKeyHashFromAddress(address, label) {
+  let decoded;
+  try {
+    decoded = Cardano.Address.from_bech32(address);
+  } catch {
+    throw new Error(`${label} is not a valid Cardano bech32 address.`);
+  }
+  if (decoded.network_id() !== CARDANO_PREPROD_NETWORK_ID) {
+    throw new Error(`${label} is not a Cardano Preprod wallet address.`);
+  }
+  const candidates = [
+    Cardano.BaseAddress.from_address(decoded),
+    Cardano.EnterpriseAddress.from_address(decoded),
+    Cardano.PointerAddress.from_address(decoded)
+  ].filter(Boolean);
+  if (candidates.length !== 1) throw new Error(`${label} must be a Shelley-style wallet address.`);
+  const hash = candidates[0].payment_cred().to_keyhash();
+  if (!hash) throw new Error(`${label} must be controlled by a payment verification key.`);
+  return hash.to_hex();
+}
+
 function referenceInput(reference) {
   return Cardano.TransactionInput.new(
     Cardano.TransactionHash.from_hex(reference.transaction.id),
@@ -163,10 +184,18 @@ function validateBinding(binding, identity) {
   if (value.validatorIdentitySha256 !== identity.identitySha256) {
     throw new Error('Real UTxO binding evidence is bound to a different applied validator identity.');
   }
-  if (!HEX_28.test(String(value.walletPaymentKeyHash ?? ''))) throw new Error('Real UTxO binding evidence is missing the wallet payment key hash.');
+  if (!HEX_28.test(String(value.walletPaymentKeyHash ?? '')) ||
+      !/^[0-9a-f]{64}$/i.test(String(value.evidenceSha256 ?? '')) ||
+      hashCardanoEvidence(withoutDigest(value, 'evidenceSha256')) !== value.evidenceSha256) {
+    throw new Error('Real UTxO binding evidence digest or wallet payment key hash is invalid.');
+  }
   for (const role of ['seed', 'collateral']) {
     if (!value.roles?.[role]?.reference || !value.roles?.[role]?.address) throw new Error(`Real UTxO binding evidence is missing ${role}.`);
     positiveBigInt(value.roles[role].lovelace, `${role}.lovelace`);
+    const addressKeyHash = paymentKeyHashFromAddress(value.roles[role].address, `${role} UTxO address`);
+    if (addressKeyHash !== value.walletPaymentKeyHash) {
+      throw new Error(`${role} UTxO address does not match the bound wallet payment key.`);
+    }
   }
   if (value.roles.seed.reference.transaction.id !== identity.seedReference.transaction.id ||
       value.roles.seed.reference.index !== identity.seedReference.index) {

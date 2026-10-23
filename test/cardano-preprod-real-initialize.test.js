@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
+import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import {
   CARDANO_PREPROD_NETWORK_ID
 } from '../src/chains/cardano/transaction-body.js';
@@ -274,4 +275,41 @@ test('Cardano real initialize candidate fails closed on validator/binding identi
     }),
     /different applied validator identity/
   );
+});
+
+test('Cardano real initialize candidate rejects tampered binding evidence and wallet-address substitution', () => {
+  const appliedIdentity = identity();
+  const originalBinding = binding(appliedIdentity);
+  const attackerAddress = walletAddress('22'.repeat(28));
+  const candidateOptions = {
+    appliedValidatorIdentity: appliedIdentity,
+    parameters,
+    recoveryConfig,
+    evaluationMode: true
+  };
+
+  const staleDigest = structuredClone(originalBinding);
+  staleDigest.roles.seed.address = attackerAddress;
+  assert.throws(
+    () => buildCardanoPreprodRealInitializeCandidate({
+      ...candidateOptions,
+      utxoBindingEvidence: staleDigest
+    }),
+    /evidence digest/
+  );
+
+  for (const role of ['seed', 'collateral']) {
+    const substituted = structuredClone(originalBinding);
+    substituted.roles[role].address = attackerAddress;
+    substituted.evidenceSha256 = hashCardanoEvidence(
+      Object.fromEntries(Object.entries(substituted).filter(([key]) => key !== 'evidenceSha256'))
+    );
+    assert.throws(
+      () => buildCardanoPreprodRealInitializeCandidate({
+        ...candidateOptions,
+        utxoBindingEvidence: substituted
+      }),
+      new RegExp(`${role} UTxO address does not match the bound wallet payment key`)
+    );
+  }
 });
