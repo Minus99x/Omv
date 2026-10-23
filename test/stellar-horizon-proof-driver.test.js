@@ -668,3 +668,37 @@ test('Horizon account sequence ledger cannot follow last modification', () => {
  assert.equal(normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence_ledger:500,last_modified_ledger:501})}).sequenceLedger,500);
 });
 
+
+test('Horizon account proof rejects invalid and non-G signer account identities', () => {
+  for (const account_id of ['not-a-stellar-account', T(0x22)]) {
+    assert.throws(
+      () => normalizeHorizonAccountSnapshot({ accountResponse: accountResponse({ account_id }) }),
+      /valid Stellar G-address/
+    );
+  }
+  assert.equal(normalizeHorizonAccountSnapshot({ accountResponse: accountResponse() }).account, G(1));
+});
+
+test('Horizon classic-asset recovery reads require full payment authorization rather than positive balance', () => {
+  const asset = { type:'credit_alphanum', code:'USDC', issuer:G(6) };
+  const read = line => extractHorizonBalanceUnits({
+    accountResponse:accountResponse({ balances:[line] }),
+    expectedAccount:G(1), asset
+  });
+  const authorized = { ...accountResponse().balances[1] };
+  assert.equal(read(authorized), '205000000');
+  for (const authority of [false, null, undefined, 'true', 1]) {
+    assert.throws(
+      () => read({ ...authorized, is_authorized:authority }),
+      /not authorized for outbound recovery payments/,
+      'Only boolean true means the issuer currently permits outgoing asset payments.'
+    );
+  }
+  assert.throws(
+    () => read({ ...authorized, is_authorized:false, is_authorized_to_maintain_liabilities:true }),
+    /not authorized for outbound recovery payments/
+  );
+  assert.equal(extractHorizonBalanceUnits({
+    accountResponse:accountResponse(), asset:{ type:'native' }, expectedAccount:G(1)
+  }), '1000000000');
+});
