@@ -588,3 +588,25 @@ test('Stellar fee bump rejects forged object wrappers for inner envelope hashes'
     feeAccount:G(7),innerEnvelopeHash:hash.toUpperCase(),maxFeeStroops:'1000'
   }).innerEnvelopeHash,hash);
 });
+
+test('Stellar recovery rejects conflicting native asset declarations and unsupported asset types', () => {
+  const args={
+    vaultAccount:G(1),rescueDestination:G(2),currentSequence:'1000',
+    inactivitySeconds:60,contacts:[G(3),G(4)],threshold:2,
+    amounts:{native:'1',[`USDC:${G(6)}`]:'2'}
+  };
+  for(const asset of [
+    {type:'native',code:'USDC'},
+    {type:'native',issuer:G(6)},
+    {type:'liquidity_pool_share',code:'USDC',issuer:G(6)},
+    {type:'unknown',code:'USDC',issuer:G(6)}
+  ]) {
+    assert.throws(()=>createRecoveryEnvelopePlan({...args,assets:[asset]}),/conflicting code or issuer|supported type/);
+  }
+  const native=createRecoveryEnvelopePlan({...args,assets:[{type:'native',code:'XLM'}]});
+  assert.equal(native.operations[0].asset.type,'native');
+  const credit=createRecoveryEnvelopePlan({
+    ...args,assets:[{type:'credit_alphanum',code:'USDC',issuer:G(6)}]
+  });
+  assert.equal(credit.operations[0].asset.code,'USDC');
+});

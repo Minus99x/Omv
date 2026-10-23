@@ -50,10 +50,18 @@ export function createHeartbeatPlan({ vaultAccount, currentSequence }) {
 }
 
 function normalizeAsset(asset) {
-  if (asset === 'native' || asset?.type === 'native') return Object.freeze({ type: 'native', code: 'XLM' });
+  if (asset === 'native') return Object.freeze({ type: 'native', code: 'XLM' });
+  if (asset?.type === 'native') {
+    if (!asset || typeof asset !== 'object' || Array.isArray(asset) ||
+        (asset.code != null && asset.code !== 'XLM') || asset.issuer != null) {
+      throw new TypeError('Stellar native asset may not carry a conflicting code or issuer.');
+    }
+    return Object.freeze({ type: 'native', code: 'XLM' });
+  }
   if (!asset || typeof asset !== 'object' || Array.isArray(asset) ||
+      (asset.type != null && asset.type !== 'credit_alphanum') ||
       typeof asset.code !== 'string' || typeof asset.issuer !== 'string') {
-    throw new TypeError('Classic Stellar asset code and issuer must be primitive strings.');
+    throw new TypeError('Classic Stellar asset requires a supported type and primitive code and issuer strings.');
   }
   const code = asset.code.trim();
   const issuer = asset.issuer.trim();
