@@ -12,8 +12,8 @@ function refKey(reference) {
 
 function normalizedTip(tip) {
   const hash = String(tip?.hash ?? '').toLowerCase();
-  const slot = Number(tip?.slot);
-  if (!HEX_32.test(hash) || !Number.isSafeInteger(slot) || slot < 0) {
+  const slot = tip?.slot;
+  if (!HEX_32.test(hash) || typeof slot !== 'number' || !Number.isSafeInteger(slot) || slot < 0) {
     throw new TypeError('A current stable Cardano Preprod tip hash/slot is required.');
   }
   return Object.freeze({ hash, slot });
@@ -116,9 +116,11 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
     throw new Error('Pre-submit gate requires a current live Cardano protocol snapshot schemaVersion 2.');
   }
   const snapshotTipHash = String(currentProtocolSnapshot?.tip?.blockHash ?? '').toLowerCase();
-  const snapshotTipSlot = Number(currentProtocolSnapshot?.tip?.slot);
+  const snapshotTipSlot = currentProtocolSnapshot?.tip?.slot;
   const snapshotSourceBlockHash = String(currentProtocolSnapshot?.parameters?.sourceBlockHash ?? '').toLowerCase();
-  if (snapshotTipHash !== tip.hash || snapshotTipSlot !== tip.slot || snapshotSourceBlockHash !== tip.hash) {
+  if (snapshotTipHash !== tip.hash || typeof snapshotTipSlot !== 'number' ||
+      !Number.isSafeInteger(snapshotTipSlot) || snapshotTipSlot !== tip.slot ||
+      snapshotSourceBlockHash !== tip.hash) {
     throw new Error('Current protocol snapshot tip does not match the current stable Preprod tip.');
   }
 

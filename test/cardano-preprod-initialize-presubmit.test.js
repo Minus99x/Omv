@@ -282,6 +282,30 @@ test('Cardano initialize pre-submit gate fails closed if the current protocol sn
   );
 });
 
+test('Cardano initialize pre-submit gate rejects coerced provider and snapshot slot values', () => {
+  for (const slot of [String(fixture().currentTip.slot), true, 0n, null]) {
+    const input = fixture();
+    input.currentTip.slot = slot;
+    assert.throws(
+      () => createCardanoPreprodInitializePreSubmitEvidence({
+        ...input,
+        recoveryConfig
+      }),
+      /current stable Cardano Preprod tip/
+    );
+  }
+
+  const input = fixture();
+  input.currentProtocolSnapshot.tip.slot = String(input.currentTip.slot);
+  assert.throws(
+    () => createCardanoPreprodInitializePreSubmitEvidence({
+      ...input,
+      recoveryConfig
+    }),
+    /protocol snapshot tip does not match the current stable Preprod tip/
+  );
+});
+
 test('Cardano initialize pre-submit gate fails closed if seed is spent or validity has expired', () => {
   const input = fixture();
   assert.throws(
