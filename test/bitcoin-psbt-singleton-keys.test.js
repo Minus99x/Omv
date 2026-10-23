@@ -122,6 +122,22 @@ test('PSBT singleton validation still permits unknown keyed extensions in every 
   );
 });
 
+test('PSBT recovery rejects ignored UTXO and redeem-script metadata but accepts the native P2WSH form', () => {
+  const encoded = fixture();
+  assert.equal(decodePsbtV2(encoded).inputs.length, 1);
+  for (const type of [0x00, 0x04]) {
+    for (const key of [Buffer.from([type]), Buffer.from([type, 0x42])]) {
+      const maps = mapsOf(encoded);
+      maps[1].push({ key, value: Buffer.from([0x01]) });
+      maps[1].sort((a, b) => Buffer.compare(a.key, b.key));
+      assert.throws(
+        () => decodePsbtV2(wire(maps)),
+        /unsupported non-witness UTXO or redeem-script metadata/
+      );
+    }
+  }
+});
+
 function requiredLocktimeEntry(type, value, extraKeyData = false) {
   const bytes = Buffer.alloc(4);
   bytes.writeUInt32LE(value);

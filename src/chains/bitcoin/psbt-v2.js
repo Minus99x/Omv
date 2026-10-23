@@ -272,6 +272,12 @@ export function decodePsbtV2(encoded) {
     if (parsed.entries.some(entry => entry.key[0] === 0x07 || entry.key[0] === 0x08)) {
       throw new Error(`PSBT input ${i} final script fields are unsupported by OmegaVault recovery.`);
     }
+    // This codec binds signing to a native P2WSH witness UTXO. A non-witness
+    // UTXO could contradict that amount/script, while a redeem script implies
+    // a different (P2SH-wrapped) spend path; neither may be silently ignored.
+    if (parsed.entries.some(entry => entry.key[0] === 0x00 || entry.key[0] === 0x04)) {
+      throw new Error(`PSBT input ${i} contains unsupported non-witness UTXO or redeem-script metadata.`);
+    }
     const txidBytes = single(parsed.entries, 0x0e, { required: true });
     const vout = single(parsed.entries, 0x0f, { required: true });
     if (txidBytes.length !== 32 || vout.length !== 4) throw new Error(`PSBT input ${i} has malformed outpoint fields.`);
@@ -556,4 +562,3 @@ export function finalizePsbtV2RecoveryTransaction({ psbt, descriptor, rescueScri
     })
   });
 }
-
