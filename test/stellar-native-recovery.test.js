@@ -479,7 +479,7 @@ test('Stellar recovery rejects coercible credit-asset identities before envelope
     {code:'USDC',issuer:{toString:()=>G(6)}},
     ['USDC',G(6)]
   ]) {
-    assert.throws(()=>createRecoveryEnvelopePlan({...args,assets:[asset]}),/primitive strings/);
+    assert.throws(()=>createRecoveryEnvelopePlan({...args,assets:[asset]}),/primitive code and issuer strings/);
   }
   assert.equal(createRecoveryEnvelopePlan({
     ...args,assets:['native']
