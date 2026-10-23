@@ -170,6 +170,7 @@ export function createStellarTestnetHorizonHttpTransport({
       const account = accountId(sourceAccount, 'sourceAccount');
       const expectedSequence = integerString(currentSequence, 'currentSequence');
       const recovery = integerString(recoverySequence, 'recoverySequence', { positive: true });
+      if (BigInt(expectedSequence) > 0x7fffffffffffffffn || BigInt(recovery) > 0x7fffffffffffffffn) throw new RangeError('Eligibility account sequences exceed int64.');
       const minimumAge = integerString(minAccountSequenceAge, 'minAccountSequenceAge');
       if (BigInt(expectedSequence) >= BigInt(recovery)) {
         throw new Error('currentSequence must remain below recoverySequence while waiting for eligibility.');

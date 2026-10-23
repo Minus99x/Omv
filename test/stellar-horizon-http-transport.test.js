@@ -430,3 +430,12 @@ test('Horizon transport rejects impossible ledger lookups without network calls'
  assert.equal(calls,0);await transport.loadLedger('4294967295');assert.equal(calls,1);
 });
 
+
+
+test('eligibility refuses impossible account sequences before polling', async () => {
+ let calls=0;const transport=createStellarTestnetHorizonHttpTransport({fetchImpl:async()=>{calls++;return jsonResponse({});}});
+ for(const args of [{currentSequence:'9223372036854775808',recoverySequence:'9223372036854775809'},{currentSequence:'1001',recoverySequence:'9223372036854775808'}])
+ await assert.rejects(transport.waitUntilEligible({sourceAccount:G(1),minAccountSequenceAge:'1',...args}),/int64/);
+ assert.equal(calls,0);
+});
+
