@@ -1,16 +1,15 @@
-name: OmegaVault Unattended Engineering
+name: OmegaVault Scheduler-Only Engineering
 
-# The workflow is authored on the authorized development branch.
-# GitHub schedule events only fire from the repository default branch.
-# Until a schedule bootstrap exists on the default branch, the push probe below
-# verifies execution but does not establish an hourly schedule.
+# Dedicated scheduler-only branch. No product code lives on this branch.
+# Cron only fires if GitHub designates THIS branch as repository default.
+# Push events are a one-time proof of execution, not evidence of cron delivery.
 on:
   schedule:
     - cron: '27 * * * *'
   workflow_dispatch:
   push:
     branches:
-      - dev/0.6.60-reconcile-overnight-bitcoin
+      - automation/omegavault-hourly
     paths:
       - .github/workflows/omegavault-hourly-engineering.yml
 
@@ -18,7 +17,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: omegavault-hourly-engineering-dev
+  group: omegavault-hourly-engineering-scheduler
   cancel-in-progress: false
 
 jobs:
@@ -53,7 +52,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          copilot -p "You are performing one autonomous engineering iteration for OmegaVault. Work exclusively in this checked-out repository and only on dev/0.6.60-reconcile-overnight-bitcoin. Read the current code and offline tests, choose ONE high-value unfinished security or correctness issue across Cardano, Bitcoin, Stellar, or XDC, then make a narrowly scoped, substantive implementation improvement and add adversarial regression tests. Focus first on Cardano witness and transaction-body safety unless it is already completely covered. You may edit only src/chains/, test/, and docs/; never edit workflows, package files, configuration, deployment code, generated artifacts or secrets. Do not sign, submit or broadcast any transaction, deploy anything, handle keys/funds, call external networks, promote a chain, change branch, commit, push, or ask the operator questions. Prefer no changes over an unverified or speculative alteration. Use the supplied test dependencies. Report what was changed and which tests you executed." -s --no-ask-user --allow-tool='read,write,shell(npm:*),shell(node:*),shell(git diff:*),shell(git status:*),shell(git log:*)'
+          copilot -p "You are performing one autonomous engineering iteration for OmegaVault. Work exclusively in this checked-out repository and only on dev/0.6.60-reconcile-overnight-bitcoin. Read the current code and offline tests, choose ONE high-value unfinished security or correctness issue across Cardano, Bitcoin, Stellar, or XDC, then make a narrowly scoped, substantive implementation improvement and add adversarial regression tests. Focus first on Cardano witness and transaction-body safety unless it is already completely covered. Inspect docs/OMEGAVAULT_0.6.60_REMOTE_WORK_QUEUE.md and the existing vetted upstream reuse catalog before starting. Prefer suitable audited open-source primitives (including Safe where applicable and license-compatible) over rebuilding established primitives. Record license/provenance where reuse is appropriate; never uncritically transplant unaudited implementations. You may edit only src/chains/, test/, and docs/; never edit workflows, package files, configuration, deployment code, generated artifacts or secrets. Do not sign, submit or broadcast any transaction, deploy anything, handle keys/funds, call external networks, promote a chain, change branch, commit, push, or ask the operator questions. Prefer no changes over an unverified or speculative alteration. Use the supplied test dependencies. Report what was changed and which tests you executed." -s --no-ask-user --allow-tool='read,write,shell(npm:*),shell(node:*),shell(git diff:*),shell(git status:*),shell(git log:*)'
 
       - name: Audit candidate changes and prepare patch
         id: patch

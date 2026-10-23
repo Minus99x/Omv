@@ -1,4 +1,0 @@
-import test from 'node:test'; import assert from 'node:assert/strict'; import fs from 'node:fs';
-const app=fs.readFileSync(new URL('../public/app.js',import.meta.url),'utf8'); const html=fs.readFileSync(new URL('../public/index.html',import.meta.url),'utf8'); const css=fs.readFileSync(new URL('../public/styles.css',import.meta.url),'utf8');
-test('browser loads validated evidence history alongside capability/provenance APIs',()=>{assert.match(app,/api\('\/api\/evidence-history'\)/); assert.match(app,/createEvidenceHistoryUiModel/); assert.match(app,/Timeline links show evidence-checkpoint order only, not source ancestry/);});
-test('history UI exposes search, chain filter, ordering and semantic status',()=>{assert.match(html,/id="evidenceHistorySearch"/); assert.match(html,/id="evidenceHistoryChain"/); assert.match(html,/id="evidenceHistorySort"/); assert.match(html,/id="evidenceHistoryStatus"[^>]*role="status"/); assert.match(css,/\.history-card/);});
