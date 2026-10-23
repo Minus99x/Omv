@@ -636,3 +636,10 @@ test('Horizon balance evidence requires a valid account even without expectedAcc
  for(const account_id of ['not-an-account',T(2)]) assert.throws(()=>extractHorizonBalanceUnits({accountResponse:accountResponse({account_id}),asset:{type:'native'}}),/G-address/);
 });
 
+
+
+test('Horizon account sequences cannot exceed the signed XDR range', () => {
+ assert.equal(normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence:'9223372036854775807'})}).sequence,'9223372036854775807');
+ for(const sequence of ['9223372036854775808',9223372036854775808n])assert.throws(()=>normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence})}),/int64/);
+});
+

@@ -89,6 +89,7 @@ export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccou
   const account = requiredText(accountResponse.account_id, 'accountResponse.account_id');
   if (expectedAccount != null && account !== expectedAccount) throw new Error('Horizon account response is for a different account.');
   const sequence = integerString(accountResponse.sequence, 'accountResponse.sequence');
+  if (BigInt(sequence) > 0x7fffffffffffffffn) throw new RangeError('Horizon account sequence exceeds int64.');
   const thresholds = accountResponse.thresholds;
   if (!thresholds || typeof thresholds !== 'object') throw new TypeError('Horizon account thresholds are required.');
   if (!Array.isArray(accountResponse.signers)) throw new TypeError('Horizon account signers are required.');
