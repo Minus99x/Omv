@@ -153,6 +153,7 @@ function matchingBalanceLine(accountResponse, asset) {
 
 export function extractHorizonBalanceUnits({ accountResponse, expectedAccount, asset }) {
   const account = requiredText(accountResponse?.account_id, 'accountResponse.account_id');
+  if (!StrKey.isValidEd25519PublicKey(account)) throw new TypeError('Horizon balance account must be a valid G-address.');
   if (expectedAccount != null && account !== expectedAccount) throw new Error('Horizon balance response is for a different account.');
   const line = matchingBalanceLine(accountResponse, asset);
   if (!line) throw new Error('Requested Stellar asset balance is absent from Horizon account state.');

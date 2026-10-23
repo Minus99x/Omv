@@ -630,3 +630,9 @@ test('Horizon balance evidence rejects contradictory asset type and code length'
  }
 });
 
+
+
+test('Horizon balance evidence requires a valid account even without expectedAccount', () => {
+ for(const account_id of ['not-an-account',T(2)]) assert.throws(()=>extractHorizonBalanceUnits({accountResponse:accountResponse({account_id}),asset:{type:'native'}}),/G-address/);
+});
+
