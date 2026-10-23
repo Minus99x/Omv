@@ -90,6 +90,8 @@ function validateSignerKey(type, key) {
 export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccount }) {
   if (!accountResponse || typeof accountResponse !== 'object') throw new TypeError('Horizon account response is required.');
   const account = requiredText(accountResponse.account_id, 'accountResponse.account_id');
+  // Use the upstream Stellar SDK's StrKey gate before accepting authority proof.
+  if (!StrKey.isValidEd25519PublicKey(account)) throw new TypeError('Horizon account must be a valid Stellar G-address.');
   if (expectedAccount != null && account !== expectedAccount) throw new Error('Horizon account response is for a different account.');
   const sequence = integerString(accountResponse.sequence, 'accountResponse.sequence');
   if (BigInt(sequence) > 0x7fffffffffffffffn) throw new RangeError('Horizon account sequence exceeds int64.');
@@ -155,7 +157,13 @@ function matchingBalanceLine(accountResponse, asset) {
   }
   if (asset.type === 'credit_alphanum' && matches.some(line => line.asset_type !== (asset.code.length <= 4 ? 'credit_alphanum4' : 'credit_alphanum12'))) throw new Error('Horizon asset type contradicts its code length.');
   if (matches.length > 1) throw new Error('Horizon account response contains duplicate balance entries for the requested asset.');
-  return matches[0] ?? null;
+  const line = matches[0] ?? null;
+  // Positive Horizon balance is not transfer authority: frozen and
+  // liabilities-only classic-asset trustlines cannot fund recovery payments.
+  if (line && asset.type === 'credit_alphanum' && line.is_authorized !== true) {
+    throw new Error('Horizon classic-asset trustline is not authorized for outbound recovery payments.');
+  }
+  return line;
 }
 
 export function extractHorizonBalanceUnits({ accountResponse, expectedAccount, asset }) {
