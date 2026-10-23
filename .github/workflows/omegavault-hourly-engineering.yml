@@ -1,0 +1,144 @@
+name: OmegaVault Unattended Engineering
+
+# The workflow is authored on the authorized development branch.
+# GitHub schedule events only fire from the repository default branch.
+# Until a schedule bootstrap exists on the default branch, the push probe below
+# verifies execution but does not establish an hourly schedule.
+on:
+  schedule:
+    - cron: '27 * * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - dev/0.6.60-reconcile-overnight-bitcoin
+    paths:
+      - .github/workflows/omegavault-hourly-engineering.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omegavault-hourly-engineering-dev
+  cancel-in-progress: false
+
+jobs:
+  engineer:
+    name: Free-plan engineering worker
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      copilot-requests: write
+    outputs:
+      has_patch: ${{ steps.patch.outputs.has_patch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev/0.6.60-reconcile-overnight-bitcoin
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+
+      - name: Install pinned project dependencies
+        run: npm ci
+
+      - name: Install GitHub Copilot CLI
+        run: npm install -g @github/copilot
+
+      - name: Attempt one bounded offline engineering objective
+        timeout-minutes: 6
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          copilot -p "You are performing one autonomous engineering iteration for OmegaVault. Work exclusively in this checked-out repository and only on dev/0.6.60-reconcile-overnight-bitcoin. Read the current code and offline tests, choose ONE high-value unfinished security or correctness issue across Cardano, Bitcoin, Stellar, or XDC, then make a narrowly scoped, substantive implementation improvement and add adversarial regression tests. Focus first on Cardano witness and transaction-body safety unless it is already completely covered. You may edit only src/chains/, test/, and docs/; never edit workflows, package files, configuration, deployment code, generated artifacts or secrets. Do not sign, submit or broadcast any transaction, deploy anything, handle keys/funds, call external networks, promote a chain, change branch, commit, push, or ask the operator questions. Prefer no changes over an unverified or speculative alteration. Use the supplied test dependencies. Report what was changed and which tests you executed." -s --no-ask-user --allow-tool='read,write,shell(npm:*),shell(node:*),shell(git diff:*),shell(git status:*),shell(git log:*)'
+
+      - name: Audit candidate changes and prepare patch
+        id: patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --porcelain --untracked-files=all
+          while IFS= read -r name; do
+            case "$name" in
+              src/chains/*|test/*|docs/*) ;;
+              *) echo "::error::Disallowed modified path: $name"; exit 1 ;;
+            esac
+          done < <(git status --porcelain --untracked-files=all | cut -c4-)
+          git add -N -- src/chains test docs
+          git diff --check
+          git diff --binary -- src/chains test docs > candidate.patch
+          if [ -s candidate.patch ]; then
+            echo "has_patch=true" >> "$GITHUB_OUTPUT"
+            echo "Candidate patch produced; validation occurs in the isolated integration job."
+          else
+            echo "has_patch=false" >> "$GITHUB_OUTPUT"
+            echo "No source changes produced in this invocation."
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: steps.patch.outputs.has_patch == 'true'
+        with:
+          name: omegavault-proposed-patch
+          path: candidate.patch
+          if-no-files-found: error
+          retention-days: 7
+
+  validate-and-commit:
+    name: Validate and commit to dev only
+    needs: engineer
+    if: needs.engineer.outputs.has_patch == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: dev/0.6.60-reconcile-overnight-bitcoin
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+          cache: npm
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: omegavault-proposed-patch
+
+      - name: Validate paths, apply patch, run tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s candidate.patch
+          while IFS= read -r name; do
+            case "$name" in
+              src/chains/*|test/*|docs/*) ;;
+              *) echo "::error::Patch attempts disallowed path: $name"; exit 1 ;;
+            esac
+          done < <(git apply --name-only candidate.patch)
+          git apply --check candidate.patch
+          git apply candidate.patch
+          git diff --check
+          npm ci
+          npm test
+          npm run check
+
+      - name: Commit verified engineering change without changing main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = "dev/0.6.60-reconcile-overnight-bitcoin"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- src/chains test docs
+          git diff --cached --quiet && { echo "No substantive changes."; exit 0; }
+          git commit -m "fix(eng): verified unattended offline engineering improvement"
+          gh auth setup-git
+          git push origin HEAD:refs/heads/dev/0.6.60-reconcile-overnight-bitcoin
+          echo "Verified engineering commit: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
