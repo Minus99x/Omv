@@ -386,3 +386,32 @@ test('Cardano real initialize candidate rejects tampered binding evidence and wa
     );
   }
 });
+
+test('Cardano real initialize rejects recomputed binding evidence that aliases seed and collateral', () => {
+  const appliedIdentity = identity();
+  const originalBinding = binding(appliedIdentity);
+  for (const transactionId of [
+    originalBinding.roles.seed.reference.transaction.id,
+    originalBinding.roles.seed.reference.transaction.id.toUpperCase()
+  ]) {
+    const aliasedBinding = structuredClone(originalBinding);
+    aliasedBinding.roles.collateral.reference = {
+      transaction: { id: transactionId },
+      index: aliasedBinding.roles.seed.reference.index
+    };
+    aliasedBinding.evidenceSha256 = hashCardanoEvidence(
+      Object.fromEntries(Object.entries(aliasedBinding).filter(([key]) => key !== 'evidenceSha256'))
+    );
+
+    assert.throws(
+      () => buildCardanoPreprodRealInitializeCandidate({
+        appliedValidatorIdentity: appliedIdentity,
+        utxoBindingEvidence: aliasedBinding,
+        parameters,
+        recoveryConfig,
+        evaluationMode: true
+      }),
+      /seed and collateral must use distinct output references/
+    );
+  }
+});

@@ -74,6 +74,15 @@ function referenceInput(reference) {
   );
 }
 
+function referenceKey(reference, label) {
+  const txId = String(reference?.transaction?.id ?? '').toLowerCase();
+  const index = reference?.index;
+  if (!/^[0-9a-f]{64}$/.test(txId) || !Number.isSafeInteger(index) || index < 0) {
+    throw new Error(`${label} must be a valid Cardano output reference.`);
+  }
+  return `${txId}#${index}`;
+}
+
 function enterpriseKeyAddressFromHash(hash) {
   const credential = Cardano.Credential.from_keyhash(Cardano.Ed25519KeyHash.from_hex(hash));
   return Cardano.EnterpriseAddress.new(CARDANO_PREPROD_NETWORK_ID, credential).to_address();
@@ -197,6 +206,11 @@ function validateBinding(binding, identity) {
     if (addressKeyHash !== value.walletPaymentKeyHash) {
       throw new Error(`${role} UTxO address does not match the bound wallet payment key.`);
     }
+  }
+  const seedReferenceKey = referenceKey(value.roles.seed.reference, 'seed.reference');
+  const collateralReferenceKey = referenceKey(value.roles.collateral.reference, 'collateral.reference');
+  if (seedReferenceKey === collateralReferenceKey) {
+    throw new Error('Initialize seed and collateral must use distinct output references.');
   }
   if (value.roles.seed.reference.transaction.id !== identity.seedReference.transaction.id ||
       value.roles.seed.reference.index !== identity.seedReference.index) {
