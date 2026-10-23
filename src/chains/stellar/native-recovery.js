@@ -9,6 +9,11 @@ function assertAccount(address, label) {
 }
 
 function asSequence(value, label) {
+  if (!['string', 'number', 'bigint'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isSafeInteger(value)) ||
+      (typeof value === 'string' && !/^\d+$/.test(value))) {
+    throw new TypeError(`${label} must be an exact primitive non-negative integer sequence.`);
+  }
   const n = BigInt(value);
   if (n < 0n || n > MAX_INT64) throw new TypeError(`${label} must fit a non-negative signed 64-bit sequence number.`);
   return n;
@@ -16,9 +21,9 @@ function asSequence(value, label) {
 
 export function chooseRecoverySequence({ currentSequence, gap = 2147483648n, safetyMargin = 1024n }) {
   const current = asSequence(currentSequence, 'currentSequence');
-  const desiredGap = BigInt(gap);
+  const desiredGap = asSequence(gap, 'gap');
   if (desiredGap < 2n) throw new TypeError('Recovery sequence gap must leave room for future owner transactions.');
-  const ceiling = MAX_INT64 - BigInt(safetyMargin);
+  const ceiling = MAX_INT64 - asSequence(safetyMargin, 'safetyMargin');
   const recovery = current + desiredGap <= ceiling ? current + desiredGap : ceiling;
   if (recovery <= current + 1n) throw new Error('Current sequence is too close to the signed 64-bit ceiling for a future-safe recovery transaction.');
   return Object.freeze({

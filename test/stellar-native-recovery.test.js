@@ -453,3 +453,15 @@ test('Stellar fee bump refuses a substituted contact-signed inner recovery trans
     baseFeeStroops:'200'
   }), /not eligible for fee-bump wrapping/i);
 });
+
+test('Stellar rejects imprecise and coerced native recovery sequences and policy gaps', () => {
+  for(const invalid of [[1000],new Number(1000),{toString:()=> '1000'},true,Number.MAX_SAFE_INTEGER+1]) {
+    assert.throws(()=>chooseRecoverySequence({currentSequence:invalid}),/exact primitive non-negative integer sequence/);
+    assert.throws(()=>createHeartbeatPlan({vaultAccount:G(1),currentSequence:invalid}),/exact primitive non-negative integer sequence/);
+  }
+  for(const invalid of [[1000],new Number(1000),Number.MAX_SAFE_INTEGER+1]) {
+    assert.throws(()=>chooseRecoverySequence({currentSequence:'1000',gap:invalid}),/gap must be an exact primitive/);
+    assert.throws(()=>chooseRecoverySequence({currentSequence:'1000',safetyMargin:invalid}),/safetyMargin must be an exact primitive/);
+  }
+  assert.equal(chooseRecoverySequence({currentSequence:1000n,gap:'2000',safetyMargin:'1000'}).recoverySequence,'3000');
+});
