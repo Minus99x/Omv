@@ -1,17 +1,11 @@
 name: OmegaVault Scheduler-Only Engineering
 
-# Dedicated scheduler-only branch. No product code lives on this branch.
-# Cron only fires if GitHub designates THIS branch as repository default.
-# Push events are a one-time proof of execution, not evidence of cron delivery.
+# Dedicated scheduler-only branch; no application code lives here.
+# Called from the default branch by GitHub Actions cron or a controlled push probe.
 on:
-  schedule:
-    - cron: '27 * * * *'
-  workflow_dispatch:
-  push:
-    branches:
-      - automation/omegavault-hourly
-    paths:
-      - .github/workflows/omegavault-hourly-engineering.yml
+  # The main default branch owns the hourly schedule and invokes this workflow.
+  # This dedicated branch owns the AI agent code and dev-only verification.
+  workflow_call:
 
 permissions:
   contents: read
