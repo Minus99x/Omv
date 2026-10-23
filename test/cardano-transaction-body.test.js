@@ -77,6 +77,24 @@ test('Cardano Preprod slot fixture maps to stable POSIX time for validator conte
   assert.ok(cardanoPreprodSlotToUnixTimeMs(100000100) > 1655769600000);
 });
 
+test('Cardano Preprod slot conversion rejects lossy POSIX milliseconds at the safe-integer boundary', () => {
+  const maxSafeSlot = 86400 + Math.floor(
+    (Number.MAX_SAFE_INTEGER - 1655769600000) / 1000
+  );
+  assert.ok(Number.isSafeInteger(cardanoPreprodSlotToUnixTimeMs(maxSafeSlot)));
+  assert.throws(
+    () => cardanoPreprodSlotToUnixTimeMs(maxSafeSlot + 1),
+    /outside the safe POSIX millisecond range/
+  );
+  assert.throws(
+    () => buildCardanoTransactionBodyFixture('execute', {
+      evaluationContext: true,
+      evaluationSlot: Number.MAX_SAFE_INTEGER
+    }),
+    /outside the safe POSIX millisecond range/
+  );
+});
+
 for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
   test(`Cardano ${action} evaluation context provides every synthetic input in Ogmios v7 UTxO shape`, () => {
     const utxo = buildCardanoEvaluationAdditionalUtxoSet(action);

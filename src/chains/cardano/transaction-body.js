@@ -79,7 +79,12 @@ function addressDatumFromKeyHash(keyHash) {
 
 export function cardanoPreprodSlotToUnixTimeMs(slot) {
   if (!Number.isSafeInteger(slot) || slot < 0) throw new TypeError('slot must be a non-negative safe integer.');
-  return CARDANO_PREPROD_TIME_ANCHOR_MS + ((slot - CARDANO_PREPROD_SLOT_ANCHOR) * 1000);
+  const timeMs = BigInt(CARDANO_PREPROD_TIME_ANCHOR_MS) +
+    (BigInt(slot) - BigInt(CARDANO_PREPROD_SLOT_ANCHOR)) * 1000n;
+  if (timeMs < BigInt(Number.MIN_SAFE_INTEGER) || timeMs > BigInt(Number.MAX_SAFE_INTEGER)) {
+    throw new TypeError('slot maps outside the safe POSIX millisecond range.');
+  }
+  return Number(timeMs);
 }
 
 function fixtureTiming(action, evaluationSlot = null) {
