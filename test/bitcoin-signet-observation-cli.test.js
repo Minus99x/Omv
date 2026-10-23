@@ -89,6 +89,25 @@ test('operator Signet read-only observation CLI produces anchored proof with fiv
     assert.equal(JSON.parse(readFileSync(f.output,'utf8')).sha256,evidence.sha256);
   }finally{rmSync(f.dir,{recursive:true,force:true});}
 });
+test('operator Signet proof CLI refuses absent, ambiguous or active initial block download status',()=>{
+  const f=setup();try{
+    for(const status of [undefined, null, true, 0, 1, 'false', 'true']) {
+      const replies=structuredClone(f.answers);
+      if(status===undefined) delete replies.getblockchaininfo.initialblockdownload;
+      else replies.getblockchaininfo.initialblockdownload=status;
+      writeFileSync(f.answersPath,JSON.stringify(replies));
+      const run=spawnSync(process.execPath,f.argv,{encoding:'utf8',env:f.env});
+      assert.notEqual(run.status,0,'unexpected successful proof for initialblockdownload='+String(status));
+      assert.match(run.stderr,/not a synchronized Signet node/);
+      assert.equal(existsSync(f.output),false,'rejected observation must not save a proof');
+    }
+    writeFileSync(f.answersPath,JSON.stringify(f.answers));
+    const valid=spawnSync(process.execPath,f.argv,{encoding:'utf8',env:f.env});
+    assert.equal(valid.status,0,valid.stderr);
+    assert.equal(existsSync(f.output),true);
+  }finally{rmSync(f.dir,{recursive:true,force:true});}
+});
+
 test('operator Signet proof CLI refuses spoofed chain history, invalid fees and secret-bearing flags',()=>{
   const f=setup();try{
     f.answers.getblockhash='cc'.repeat(32);
