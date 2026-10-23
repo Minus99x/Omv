@@ -267,3 +267,12 @@ test('Bitcoin CSV rejects positive-looking negative signed Bitcoin versions', ()
     txVersion:0x7fffffff, sequence:144, csvBlocks:144
   }).ok,true);
 });
+
+test('Bitcoin PSBTv2 SIGHASH_SINGLE remains unsafe even when input and output maps are frozen', () => {
+  const risky=createBitcoinPsbtV2LockPlan({
+    inputsModifiable:false,outputsModifiable:false,hasSighashSingle:true
+  });
+  assert.equal(risky.modifiableFlags,4);
+  assert.equal(risky.safeForOmegaVaultSignatureCollection,false);
+  assert.equal(createBitcoinPsbtV2LockPlan({hasSighashSingle:false}).safeForOmegaVaultSignatureCollection,true);
+});

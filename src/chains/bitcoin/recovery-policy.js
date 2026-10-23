@@ -189,7 +189,7 @@ export function createBitcoinPsbtV2LockPlan({ inputsModifiable = false, outputsM
     outputsModifiable,
     hasSighashSingle,
     modifiableFlags,
-    safeForOmegaVaultSignatureCollection: !inputsModifiable && !outputsModifiable,
+    safeForOmegaVaultSignatureCollection: !inputsModifiable && !outputsModifiable && !hasSighashSingle,
     rule: 'OmegaVault freezes PSBTv2 inputs and outputs before recovery signatures are collected.'
   });
 }
