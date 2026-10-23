@@ -28,8 +28,16 @@ async function action(actions, operation, fn) {
 }
 
 function integerString(value, label, { positive = false } = {}) {
-  const text = typeof value === 'bigint' ? value.toString() : String(value ?? '');
-  if (!/^\d+$/.test(text)) throw new TypeError(`${label} must be a non-negative integer string.`);
+  // Driver responses can be injected: no object/array coercion or rounded JS
+  // numbers are admissible as on-ledger evidence. Preserve exact bigint/string.
+  if (!['string', 'number', 'bigint'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isSafeInteger(value))) {
+    throw new TypeError(`${label} must use an exact integer string or safe integer number.`);
+  }
+  const text = String(value);
+  if (!/^(0|[1-9]\d*)$/.test(text)) {
+    throw new TypeError(`${label} must be a canonical non-negative integer.`);
+  }
   if (positive && BigInt(text) === 0n) throw new TypeError(`${label} must be greater than zero.`);
   return text;
 }
@@ -45,9 +53,13 @@ function assetKey(asset) {
 }
 
 function amountUnits(amount, label) {
-  const match = /^(0|[1-9]\d*)\.(\d{7})$/.exec(String(amount ?? ''));
+  // A recovery payment amount must come from the canonical manifest, not from
+  // a coercible object or an imprecise JS number.
+  const match = typeof amount === 'string' ? /^(0|[1-9]\d*)\.(\d{7})$/.exec(amount) : null;
   if (!match) throw new TypeError(`${label} must be a canonical Stellar amount with seven fractional digits.`);
-  return (BigInt(match[1]) * 10000000n + BigInt(match[2])).toString();
+  const units = BigInt(match[1]) * 10000000n + BigInt(match[2]);
+  if (units > 0x7fffffffffffffffn) throw new RangeError(`${label} exceeds Stellar's int64 amount range.`);
+  return units.toString();
 }
 
 function normalizeAccountSnapshot(snapshot, label) {
