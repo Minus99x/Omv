@@ -448,3 +448,52 @@ test('Stellar proof runner rejects unsafe/coercible balance evidence before elig
     assert.equal(fake.calls.some(call => call[0] === 'submitEnvelope' && call[1] === 'eligible-recovery-fee-bump'), false);
   }
 });
+
+
+test('Stellar proof runner bounds account sequence to signed XDR int64 before any submission', async () => {
+  const inputs = proofInputs();
+  for (const sequence of ['9223372036854775808', 9223372036854775808n]) {
+    const fake = fakeDriver(inputs, {
+      readAccountSnapshot() { return { ...readySnapshot(inputs, '1001'), sequence }; }
+    });
+    await assert.rejects(
+      () => runStellarTestnetRecoveryProof({ ...inputs, driver:fake.driver }),
+      /initialAccount\.sequence exceeds the Stellar on-chain integer range/
+    );
+    assert.equal(fake.calls.some(call => call[0] === 'submitEnvelope'), false);
+  }
+});
+
+test('Stellar proof runner refuses out-of-range balances and ledgers rather than promoting impossible proof', async () => {
+  const inputs = proofInputs();
+  const overflowBalance = fakeDriver(inputs, {
+    readBalanceUnits({ account, assetKey, count }) {
+      if (account === inputs.recoveryPlan.sourceAccount && assetKey === 'native' && count === 1) {
+        return '9223372036854775808';
+      }
+      return null;
+    }
+  });
+  await assert.rejects(
+    () => runStellarTestnetRecoveryProof({ ...inputs, driver:overflowBalance.driver }),
+    /before balance for native exceeds the Stellar on-chain integer range/
+  );
+  assert.equal(overflowBalance.calls.some(call => call[0] === 'submitEnvelope' && call[1] === 'eligible-recovery-fee-bump'), false);
+
+  const overflowLedger = fakeDriver(inputs, {
+    submitEnvelope({ purpose }) {
+      if (purpose !== 'heartbeat') return null;
+      return {
+        transactionHashHex:inputs.heartbeatArtifact.transactionHashHex,
+        observedAt:'2026-10-03T00:01:00Z',
+        includedInLedger:true, successful:true, resultCode:'txSUCCESS',
+        ledger:'4294967296'
+      };
+    }
+  });
+  await assert.rejects(
+    () => runStellarTestnetRecoveryProof({ ...inputs, driver:overflowLedger.driver }),
+    /Heartbeat submission\.ledger exceeds the Stellar on-chain integer range/
+  );
+  assert.equal(overflowLedger.calls.some(call => call[0] === 'submitEnvelope' && call[1] === 'eligible-recovery-fee-bump'), false);
+});
