@@ -465,3 +465,23 @@ test('Stellar rejects imprecise and coerced native recovery sequences and policy
   }
   assert.equal(chooseRecoverySequence({currentSequence:1000n,gap:'2000',safetyMargin:'1000'}).recoverySequence,'3000');
 });
+
+test('Stellar recovery rejects coercible credit-asset identities before envelope construction', () => {
+  const args={
+    vaultAccount:G(1),rescueDestination:G(2),currentSequence:'1000',
+    inactivitySeconds:60,contacts:[G(3),G(4)],threshold:2,
+    amounts:{native:'10'}
+  };
+  for(const asset of [
+    {code:['USDC'],issuer:G(6)},
+    {code:'USDC',issuer:[G(6)]},
+    {code:new String('USDC'),issuer:G(6)},
+    {code:'USDC',issuer:{toString:()=>G(6)}},
+    ['USDC',G(6)]
+  ]) {
+    assert.throws(()=>createRecoveryEnvelopePlan({...args,assets:[asset]}),/primitive strings/);
+  }
+  assert.equal(createRecoveryEnvelopePlan({
+    ...args,assets:['native']
+  }).operations[0].asset.type,'native');
+});

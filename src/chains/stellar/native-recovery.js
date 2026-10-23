@@ -51,8 +51,12 @@ export function createHeartbeatPlan({ vaultAccount, currentSequence }) {
 
 function normalizeAsset(asset) {
   if (asset === 'native' || asset?.type === 'native') return Object.freeze({ type: 'native', code: 'XLM' });
-  const code = String(asset?.code ?? '').trim();
-  const issuer = String(asset?.issuer ?? '').trim();
+  if (!asset || typeof asset !== 'object' || Array.isArray(asset) ||
+      typeof asset.code !== 'string' || typeof asset.issuer !== 'string') {
+    throw new TypeError('Classic Stellar asset code and issuer must be primitive strings.');
+  }
+  const code = asset.code.trim();
+  const issuer = asset.issuer.trim();
   if (!/^[A-Za-z0-9]{1,12}$/.test(code)) throw new TypeError('Classic Stellar asset code must be 1-12 alphanumeric characters.');
   assertAccount(issuer, 'asset issuer');
   return Object.freeze({ type: 'credit_alphanum', code, issuer });
