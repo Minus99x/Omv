@@ -581,3 +581,11 @@ test('Horizon proof factory retains default timeout for completed account reads'
   assert.equal(snapshot.account, G(1));
   assert.equal(snapshot.sequence, '1001');
 });
+
+
+test('Horizon balances require primitive decimal strings without coercion', () => {
+ let coerced=0;const values=[{toString(){coerced++;return '1.0000000';}},['1.0000000'],new String('1.0000000')];
+ for(const balance of values) assert.throws(()=>extractHorizonBalanceUnits({accountResponse:accountResponse({balances:[{asset_type:'native',balance}]}),asset:{type:'native'}}),/canonical Stellar amount/);
+ assert.equal(coerced,0);
+});
+

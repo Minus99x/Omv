@@ -54,7 +54,7 @@ function integerString(value, label, { positive = false } = {}) {
 }
 
 function decimalToUnits(value, label) {
-  const match = DECIMAL_7.exec(String(value ?? ''));
+  const match = typeof value === 'string' ? DECIMAL_7.exec(value) : null;
   if (!match) throw new TypeError(`${label} must be a canonical Stellar amount with seven fractional digits.`);
   return (BigInt(match[1]) * 10000000n + BigInt(match[2])).toString();
 }
