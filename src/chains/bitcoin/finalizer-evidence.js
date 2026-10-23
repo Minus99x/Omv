@@ -1,5 +1,6 @@
 import { requireCanonicalBitcoinRecoveryDescriptor } from './descriptor.js';
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { decodePsbtV2, verifyPsbtV2RecoveryThreshold } from './psbt-v2.js';
 import { validateBitcoinCsvRecoveryInput } from './recovery-policy.js';
 
@@ -151,7 +152,7 @@ export function verifyBitcoinFinalizerEvidence({
   } catch (error) {
     return Object.freeze({ ok:false, errors:Object.freeze([String(error?.message || error)]) });
   }
-  if (JSON.stringify(evidence) !== JSON.stringify(expected)) errors.push('Bitcoin finalizer evidence does not match the supplied PSBT and policy.');
+  if (!isDeepStrictEqual(evidence, expected)) errors.push('Bitcoin finalizer evidence does not match the supplied PSBT and policy.');
   return Object.freeze({ ok:errors.length === 0, errors:Object.freeze(errors) });
 }
 

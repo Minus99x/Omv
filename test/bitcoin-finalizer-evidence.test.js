@@ -165,3 +165,14 @@ test('Bitcoin finalization rejects fee-only zero-value rescue outputs in every p
     /positive-value rescue output/
   );
 });
+
+
+test('finalizer-evidence rejects serialization hooks hiding altered evidence', () => {
+ const options={psbt:signedPsbt(),descriptor,rescueScriptPubKey};
+ const expected=createBitcoinFinalizerEvidence(options);
+ const forged={...expected,broadcastAuthorized:true,toJSON:()=>expected};
+ assert.equal(verifyBitcoinFinalizerEvidence({...options,evidence:forged}).ok,false);
+ const reordered=Object.fromEntries(Object.entries(expected).reverse());
+ assert.equal(verifyBitcoinFinalizerEvidence({...options,evidence:reordered}).ok,true);
+});
+
