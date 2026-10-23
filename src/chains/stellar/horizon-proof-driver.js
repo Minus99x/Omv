@@ -56,7 +56,9 @@ function integerString(value, label, { positive = false } = {}) {
 function decimalToUnits(value, label) {
   const match = typeof value === 'string' ? DECIMAL_7.exec(value) : null;
   if (!match) throw new TypeError(`${label} must be a canonical Stellar amount with seven fractional digits.`);
-  return (BigInt(match[1]) * 10000000n + BigInt(match[2])).toString();
+  const units = BigInt(match[1]) * 10000000n + BigInt(match[2]);
+  if (units > 0x7fffffffffffffffn) throw new RangeError(`${label} exceeds the Stellar int64 amount range.`);
+  return units.toString();
 }
 
 function threshold(value, label) {

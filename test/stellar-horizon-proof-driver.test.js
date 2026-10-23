@@ -589,3 +589,11 @@ test('Horizon balances require primitive decimal strings without coercion', () =
  assert.equal(coerced,0);
 });
 
+
+
+test('Horizon balance extraction enforces the int64 stroop boundary', () => {
+ const read=balance=>extractHorizonBalanceUnits({accountResponse:accountResponse({balances:[{asset_type:'native',balance}]}),asset:{type:'native'}});
+ assert.equal(read('922337203685.4775807'),'9223372036854775807');
+ for(const balance of ['922337203685.4775808','9999999999999999999999999.0000000'])assert.throws(()=>read(balance),/int64/);
+});
+
