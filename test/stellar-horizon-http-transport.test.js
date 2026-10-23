@@ -439,3 +439,11 @@ test('eligibility refuses impossible account sequences before polling', async ()
  assert.equal(calls,0);
 });
 
+
+
+test('eligibility refuses durations outside uint64 before polling', async () => {
+ let calls=0;const transport=createStellarTestnetHorizonHttpTransport({fetchImpl:async()=>{calls++;return jsonResponse({});}});
+ await assert.rejects(transport.waitUntilEligible({sourceAccount:G(1),minAccountSequenceAge:'18446744073709551616',currentSequence:'1001',recoverySequence:'5000'}),/uint64/);
+ assert.equal(calls,0);
+});
+
