@@ -6,9 +6,12 @@ const TXID = /^[0-9a-fA-F]{64}$/;
 const MAX_MONEY_SATS = 21_000_000n * 100_000_000n;
 
 function satoshis(value,label) {
+  if (!['string', 'number', 'bigint'].includes(typeof value)) {
+    throw new TypeError(`${label} must be a primitive non-negative integer.`);
+  }
   if (typeof value === 'number' && !Number.isSafeInteger(value)) throw new TypeError(`${label} must be a safe integer when supplied as a number.`);
   if (!/^\d+$/.test(String(value))) throw new TypeError(`${label} must be a non-negative integer.`);
-  return BigInt(String(value));
+  return BigInt(value);
 }
 
 function boundedSatoshis(value, label) {

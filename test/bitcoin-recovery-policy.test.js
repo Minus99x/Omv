@@ -159,3 +159,23 @@ test('recovery planner accepts a maximum-supply value without exceeding the supp
   assert.equal(plan.rescueOutputPresent,true);
   assert.equal(plan.unsignedIntent.feeSats,'1000');
 });
+
+test('Bitcoin PSBT recovery rejects coercible non-primitive satoshi amounts', () => {
+  const args = {
+    inputs: [{ txid, vout: 0, amountSats: '100000' }],
+    outputs: [{ amountSats: '99000', scriptPubKey: '0014' + '11'.repeat(20) }],
+    requiredContactKeys: [a, b],
+    threshold: 2,
+    feeSats: '1000'
+  };
+  for (const invalid of [[1000], new Number(1000), { toString: () => '1000' }, false, true]) {
+    assert.throws(() => createBitcoinPsbtV2RecoveryPlan({ ...args, feeSats: invalid }), /primitive non-negative integer/);
+    assert.throws(() => createBitcoinPsbtV2RecoveryPlan({
+      ...args, inputs: [{ ...args.inputs[0], amountSats: invalid }]
+    }), /primitive non-negative integer/);
+    assert.throws(() => createBitcoinPsbtV2RecoveryPlan({
+      ...args, outputs: [{ ...args.outputs[0], amountSats: invalid }]
+    }), /primitive non-negative integer/);
+  }
+  assert.equal(createBitcoinPsbtV2RecoveryPlan({ ...args, feeSats: 1000n }).unsignedIntent.feeSats, '1000');
+});
