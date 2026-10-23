@@ -27,7 +27,7 @@ async function action(actions, operation, fn) {
   }
 }
 
-function integerString(value, label, { positive = false } = {}) {
+function integerString(value, label, { positive = false, max = 0x7fffffffffffffffn } = {}) {
   // Driver responses can be injected: no object/array coercion or rounded JS
   // numbers are admissible as on-ledger evidence. Preserve exact bigint/string.
   if (!['string', 'number', 'bigint'].includes(typeof value) ||
@@ -39,6 +39,7 @@ function integerString(value, label, { positive = false } = {}) {
     throw new TypeError(`${label} must be a canonical non-negative integer.`);
   }
   if (positive && BigInt(text) === 0n) throw new TypeError(`${label} must be greater than zero.`);
+  if (BigInt(text) > max) throw new RangeError(`${label} exceeds the Stellar on-chain integer range.`);
   return text;
 }
 
@@ -101,7 +102,7 @@ function requireSuccess(result, expectedHash, label) {
     includedInLedger: true,
     successful: true,
     resultCode: 'txSUCCESS',
-    ledger: integerString(result.ledger, `${label}.ledger`, { positive: true })
+    ledger: integerString(result.ledger, `${label}.ledger`, { positive: true, max: 0xffffffffn })
   });
 }
 
@@ -109,7 +110,7 @@ function requireFinality(result, expectedHash, expectedLedger) {
   if (!result || typeof result !== 'object') throw new Error('Finality observation is required.');
   if (result.status !== 'finalized') throw new Error('Stellar proof requires a finalized ledger observation.');
   if (result.transactionHashHex !== expectedHash) throw new Error('Finality observation is bound to another transaction.');
-  const ledger = integerString(result.ledger, 'finality.ledger', { positive: true });
+  const ledger = integerString(result.ledger, 'finality.ledger', { positive: true, max: 0xffffffffn });
   if (ledger !== expectedLedger) throw new Error('Finality observation ledger does not match recovery inclusion ledger.');
   return Object.freeze({
     status: 'finalized',
@@ -420,7 +421,7 @@ function requireAppliedFailure(result, expectedHash, label) {
     includedInLedger:true,
     successful:false,
     resultCode,
-    ledger:integerString(result.ledger, `${label}.ledger`, { positive:true })
+    ledger:integerString(result.ledger, `${label}.ledger`, { positive:true, max: 0xffffffffn })
   });
 }
 
