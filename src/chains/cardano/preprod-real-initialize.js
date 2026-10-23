@@ -194,6 +194,12 @@ function validateBinding(binding, identity) {
   if (value.validatorIdentitySha256 !== identity.identitySha256) {
     throw new Error('Real UTxO binding evidence is bound to a different applied validator identity.');
   }
+  const stableTip = value.stableTip;
+  if (!stableTip || typeof stableTip !== 'object' || Array.isArray(stableTip) ||
+      typeof stableTip.hash !== 'string' || !/^[0-9a-f]{64}$/i.test(stableTip.hash) ||
+      typeof stableTip.slot !== 'number' || !Number.isSafeInteger(stableTip.slot) || stableTip.slot < 30) {
+    throw new Error('Real initialize binding evidence must contain a valid stable Preprod tip hash and numeric slot.');
+  }
   if (!HEX_28.test(String(value.walletPaymentKeyHash ?? '')) ||
       !/^[0-9a-f]{64}$/i.test(String(value.evidenceSha256 ?? '')) ||
       hashCardanoEvidence(withoutDigest(value, 'evidenceSha256')) !== value.evidenceSha256) {
@@ -265,8 +271,7 @@ export function buildCardanoPreprodRealInitializeCandidate({
   }
   const ownerKeyHash = keyHash(binding.walletPaymentKeyHash, 'walletPaymentKeyHash');
   const config = validateRecoveryConfig(recoveryConfig, ownerKeyHash);
-  const tipSlot = Number(binding.stableTip?.slot);
-  if (!Number.isSafeInteger(tipSlot) || tipSlot < 30) throw new Error('Real UTxO binding evidence is missing a usable stable Preprod slot.');
+  const tipSlot = binding.stableTip.slot;
 
   let memory = 0n;
   let steps = 0n;

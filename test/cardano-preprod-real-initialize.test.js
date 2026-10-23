@@ -415,3 +415,33 @@ test('Cardano real initialize rejects recomputed binding evidence that aliases s
     );
   }
 });
+
+test('Cardano real initialize rejects malformed stable-tip evidence without coercion', () => {
+  const appliedIdentity = identity();
+  const originalBinding = binding(appliedIdentity);
+  const invalidTips = [
+    { ...originalBinding.stableTip, slot: String(originalBinding.stableTip.slot) },
+    { ...originalBinding.stableTip, slot: true },
+    { ...originalBinding.stableTip, slot: Number.MAX_SAFE_INTEGER + 1 },
+    { ...originalBinding.stableTip, slot: 29 },
+    { ...originalBinding.stableTip, hash: 'aa' }
+  ];
+
+  for (const stableTip of invalidTips) {
+    const malformedBinding = structuredClone(originalBinding);
+    malformedBinding.stableTip = stableTip;
+    malformedBinding.evidenceSha256 = hashCardanoEvidence(
+      Object.fromEntries(Object.entries(malformedBinding).filter(([key]) => key !== 'evidenceSha256'))
+    );
+    assert.throws(
+      () => buildCardanoPreprodRealInitializeCandidate({
+        appliedValidatorIdentity: appliedIdentity,
+        utxoBindingEvidence: malformedBinding,
+        parameters,
+        recoveryConfig,
+        evaluationMode: true
+      }),
+      /valid stable Preprod tip hash and numeric slot/
+    );
+  }
+});
