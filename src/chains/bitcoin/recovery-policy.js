@@ -178,6 +178,9 @@ export function createBitcoinPsbtV2LockPlan({ inputsModifiable = false, outputsM
 }
 
 export function createBitcoinFeeBumpPlan({ rbfEnabled = true, cpfpAnchorAvailable = false, signaturesAlreadyCollected = false }) {
+  if ([rbfEnabled, cpfpAnchorAvailable, signaturesAlreadyCollected].some(value => typeof value !== 'boolean')) {
+    throw new TypeError('Bitcoin fee-bump policy flags must be explicit booleans.');
+  }
   return Object.freeze({
     rbfEnabled, cpfpAnchorAvailable, signaturesAlreadyCollected,
     rules: Object.freeze([

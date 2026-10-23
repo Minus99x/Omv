@@ -219,3 +219,15 @@ test('Bitcoin signature coordinator rejects non-hexadecimal, odd, and missing si
     plan, signatures: [{ publicKey: a, intentDigest: plan.intentDigest, signature: 'AABB' }]
   }).signatureCount, 1);
 });
+
+test('Bitcoin fee-bump planning rejects coercible flags and preserves explicit policy', () => {
+  for (const invalid of ['false', 0, 1, null, [], {}]) {
+    assert.throws(() => createBitcoinFeeBumpPlan({ rbfEnabled: invalid }), /explicit booleans/);
+    assert.throws(() => createBitcoinFeeBumpPlan({ cpfpAnchorAvailable: invalid }), /explicit booleans/);
+    assert.throws(() => createBitcoinFeeBumpPlan({ signaturesAlreadyCollected: invalid }), /explicit booleans/);
+  }
+  const plan = createBitcoinFeeBumpPlan({ rbfEnabled: false, cpfpAnchorAvailable: true, signaturesAlreadyCollected: true });
+  assert.equal(plan.rbfEnabled, false);
+  assert.match(plan.rules[0], /invalidate existing signatures/);
+  assert.match(plan.rules[2], /controlled child output/);
+});
