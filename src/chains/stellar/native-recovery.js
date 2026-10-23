@@ -63,7 +63,11 @@ function normalizeAsset(asset) {
 }
 
 function amountToStroops(value, label = 'amount') {
-  const match = /^(0|[1-9]\d*)(?:\.(\d{1,7}))?$/.exec(String(value ?? ''));
+  if (!['string','number','bigint'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isSafeInteger(value))) {
+    throw new TypeError(`${label} must be an exact primitive decimal amount; fractional values require a string.`);
+  }
+  const match = /^(0|[1-9]\d*)(?:\.(\d{1,7}))?$/.exec(String(value));
   if (!match) throw new TypeError(`${label} must be a positive decimal with at most seven fractional digits.`);
   const stroops = BigInt(match[1]) * 10000000n + BigInt((match[2] ?? '').padEnd(7, '0'));
   if (stroops <= 0n || stroops > MAX_INT64) throw new TypeError(`${label} must fit Stellar's positive signed 64-bit amount range.`);

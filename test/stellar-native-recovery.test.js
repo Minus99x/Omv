@@ -485,3 +485,19 @@ test('Stellar recovery rejects coercible credit-asset identities before envelope
     ...args,assets:['native']
   }).operations[0].asset.type,'native');
 });
+
+test('Stellar does not turn coercible or imprecise recovery amounts into spendable payment operations', () => {
+  const args={
+    vaultAccount:G(1),rescueDestination:G(2),currentSequence:'1000',
+    inactivitySeconds:60,contacts:[G(3),G(4)],threshold:2,
+    assets:['native']
+  };
+  for(const invalid of [[10],new Number(10),{toString:()=> '10'},10.25,Number.MAX_SAFE_INTEGER+1]) {
+    const plan=createRecoveryEnvelopePlan({...args,amounts:{native:invalid}});
+    assert.equal(plan.operations.length,0);
+    assert.ok(plan.limitations.some(item=>/Exact payment amount for native/.test(item)));
+    assert.throws(()=>buildRecoveryEnvelopeArtifact(plan),/every protected asset has an exact payment operation/);
+  }
+  const valid=createRecoveryEnvelopePlan({...args,amounts:{native:'10.25'}});
+  assert.equal(valid.operations[0].amount,'10.2500000');
+});
