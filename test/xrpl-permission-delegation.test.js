@@ -187,3 +187,23 @@ test('XRPL delegated non-recovery permissions cannot claim exact OmegaVault resc
   assert.equal(payment.exactOmegaVaultDelegatedRecovery, false);
   assert.ok(payment.risks.some(risk => /destination, amount, or currency/i.test(risk)));
 });
+
+test('XRPL permission feature fails closed on duplicate or malformed amendment identifiers', () => {
+  const feature={ name:'PermissionDelegationV1_1', supported:true, enabled:true };
+  const duplicate=evaluateXrplPermissionDelegationFeature({
+    featureResponse:{ result:{ ['aa'.repeat(32)]:feature, ['bb'.repeat(32)]:feature } }
+  });
+  assert.equal(duplicate.known,false);
+  assert.equal(duplicate.enabled,false);
+  for(const id of ['metadata','a'.repeat(63),'zz'.repeat(32)]) {
+    const found=evaluateXrplPermissionDelegationFeature({ featureResponse:{ result:{ [id]:feature } } });
+    assert.equal(found.known,false);
+    assert.equal(found.enabled,false);
+    assert.equal(found.amendmentId,null);
+  }
+  const valid=evaluateXrplPermissionDelegationFeature({
+    featureResponse:{ result:{ ['ab'.repeat(32)]:feature } }
+  });
+  assert.equal(valid.known,true);
+  assert.equal(valid.amendmentId,'AB'.repeat(32));
+});

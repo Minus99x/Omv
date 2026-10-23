@@ -60,10 +60,13 @@ export function evaluateXrplPermissionDelegationFeature({
   featureName='PermissionDelegationV1_1'
 }={}){
   const result=featureResponse?.result ?? featureResponse ?? {};
-  const entries=Object.entries(result);
-  const match=entries.find(([_id,feature])=>feature?.name===featureName);
-  if(!match) return Object.freeze({ known:false,supported:false,enabled:false,featureName,amendmentId:null });
-  const [id,feature]=match;
+  // A single canonical 32-byte amendment identifier is required. Multiple
+  // name matches or response metadata posing as an ID cannot prove capability.
+  const matches=Object.entries(result).filter(([_id,feature])=>feature?.name===featureName);
+  if(matches.length!==1 || !/^[0-9a-f]{64}$/i.test(matches[0][0])) {
+    return Object.freeze({ known:false,supported:false,enabled:false,featureName,amendmentId:null });
+  }
+  const [id,feature]=matches[0];
   return Object.freeze({
     known:true,
     supported:feature?.supported===true,
