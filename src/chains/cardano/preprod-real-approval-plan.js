@@ -1,5 +1,6 @@
 import { hashCardanoEvidence } from './evidence-binding.js';
 import { cardanoPreprodPaymentKeyHashFromAddress } from './preprod-recovery-config.js';
+import { cardanoPositiveSafeInteger } from './policy-integer.js';
 
 const HEX_28=/^[0-9a-f]{56}$/i;
 const HEX_32=/^[0-9a-f]{64}$/i;
@@ -93,10 +94,9 @@ export function createCardanoPreprodRealApprovalPlan({
   if (!Number.isSafeInteger(predecessor.state?.lastHeartbeatMs) || predecessor.state.lastHeartbeatMs<0) {
     throw new Error('Predecessor active-state evidence is missing lastHeartbeatMs.');
   }
-  const threshold=Number(predecessor.state?.threshold);
-  if (!Number.isInteger(threshold) || threshold<1 || threshold>contacts.length) throw new Error('Predecessor threshold is invalid.');
-  const inactivityMs=Number(predecessor.state?.inactivityMs);
-  if (!Number.isSafeInteger(inactivityMs) || inactivityMs<1) throw new Error('Predecessor inactivity interval is invalid.');
+  const threshold=cardanoPositiveSafeInteger(predecessor.state?.threshold,'Predecessor threshold');
+  if (threshold>contacts.length) throw new Error('Predecessor threshold is invalid.');
+  const inactivityMs=cardanoPositiveSafeInteger(predecessor.state?.inactivityMs,'Predecessor inactivity interval');
 
   const funding=plainAdaOnlyRole(contactFundingUtxo,'contactFundingUtxo',selectedContact);
   const collateral=plainAdaOnlyRole(contactCollateralUtxo,'contactCollateralUtxo',selectedContact);

@@ -133,6 +133,28 @@ test('Cardano real initialize rejects a rescue destination that collapses into t
   );
 });
 
+test('Cardano real initialize rejects coercive recovery-policy integer inputs', () => {
+  const appliedIdentity = identity();
+  const utxoBindingEvidence = binding(appliedIdentity);
+  for (const invalid of [
+    { threshold: true },
+    { inactivityMs: true },
+    { threshold: '0x2' },
+    { inactivityMs: '6e4' }
+  ]) {
+    assert.throws(
+      () => buildCardanoPreprodRealInitializeCandidate({
+        appliedValidatorIdentity: appliedIdentity,
+        utxoBindingEvidence,
+        parameters,
+        recoveryConfig: { ...recoveryConfig, ...invalid },
+        evaluationMode: true
+      }),
+      /must be a positive safe integer/
+    );
+  }
+});
+
 test('Cardano real initialize live-budget candidate applies evaluated budget while remaining unsigned and non-submit-authorized', () => {
   const appliedIdentity = identity();
   const utxoBindingEvidence = binding(appliedIdentity);

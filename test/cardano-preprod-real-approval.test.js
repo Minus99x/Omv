@@ -167,6 +167,23 @@ test('real approval plan rejects owner substitution, unconfigured contacts and d
   );
 });
 
+test('real approval plan rejects coercive predecessor policy integers after digest recomputation',()=>{
+  for(const invalid of [
+    { threshold:true },
+    { inactivityMs:'6e4' }
+  ]){
+    const evidence=structuredClone(activeStateEvidence());
+    Object.assign(evidence.state,invalid);
+    evidence.stateEvidenceSha256=hashCardanoEvidence(
+      Object.fromEntries(Object.entries(evidence).filter(([key])=>key!=='stateEvidenceSha256'))
+    );
+    assert.throws(
+      ()=>createCardanoPreprodRealApprovalPlan(planInput(evidence)),
+      /must be a positive safe integer/
+    );
+  }
+});
+
 test('real approval plan rejects funding controlled by owner instead of selected contact',()=>{
   const input=planInput();
   assert.throws(
@@ -231,6 +248,28 @@ test('real approval candidate enforces inactivity at the candidate validity lowe
     }),
     /inactivity period has not elapsed/
   );
+});
+
+test('real approval rejects coercive recovery-policy integer inputs',()=>{
+  const approvalPlan=createCardanoPreprodRealApprovalPlan(planInput());
+  for(const invalid of [
+    { threshold:true },
+    { inactivityMs:true },
+    { threshold:'0x2' },
+    { inactivityMs:'6e4' }
+  ]){
+    assert.throws(
+      ()=>buildCardanoPreprodRealApprovalCandidate({
+        approvalPlan,
+        appliedValidatorIdentity:identity,
+        parameters,
+        recoveryConfig:{ ...recoveryConfig,...invalid },
+        stableTip:{ hash:'56'.repeat(32),slot:100000200 },
+        evaluationMode:true
+      }),
+      /must be a positive safe integer/
+    );
+  }
 });
 
 test('real approval candidate rejects immutable recovery-policy drift',()=>{

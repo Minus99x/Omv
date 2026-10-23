@@ -158,6 +158,23 @@ test('real execute plan rejects insufficient approval threshold',()=>{
   );
 });
 
+test('real execute plan rejects coercive predecessor policy integers after digest recomputation',()=>{
+  for(const invalid of [
+    { threshold:true },
+    { inactivityMs:'6e4' }
+  ]){
+    const evidence=structuredClone(approvedStateEvidence());
+    Object.assign(evidence.state,invalid);
+    evidence.stateEvidenceSha256=hashCardanoEvidence(
+      Object.fromEntries(Object.entries(evidence).filter(([key])=>key!=='stateEvidenceSha256'))
+    );
+    assert.throws(
+      ()=>createCardanoPreprodRealExecutePlan(planInput(evidence)),
+      /must be a positive safe integer/
+    );
+  }
+});
+
 test('real execute plan rejects non-fee-payer funding control',()=>{
   const input=planInput();
   assert.throws(
@@ -223,6 +240,28 @@ test('real execute candidate remains inactivity-gated',()=>{
     }),
     /inactivity period has not elapsed/
   );
+});
+
+test('real execute rejects coercive recovery-policy integer inputs',()=>{
+  const executePlan=createCardanoPreprodRealExecutePlan(planInput());
+  for(const invalid of [
+    { threshold:true },
+    { inactivityMs:true },
+    { threshold:'0x2' },
+    { inactivityMs:'6e4' }
+  ]){
+    assert.throws(
+      ()=>buildCardanoPreprodRealExecuteCandidate({
+        executePlan,
+        appliedValidatorIdentity:identity,
+        parameters,
+        recoveryConfig:{ ...recoveryConfig,...invalid },
+        stableTip:{ hash:'56'.repeat(32),slot:100000200 },
+        evaluationMode:true
+      }),
+      /must be a positive safe integer/
+    );
+  }
 });
 
 test('real execute candidate rejects rescue-policy mutation',()=>{

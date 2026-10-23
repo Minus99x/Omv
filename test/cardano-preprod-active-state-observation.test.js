@@ -99,6 +99,20 @@ test('active-state observation rejects datum drift',()=>{
   );
 });
 
+test('active-state observation rejects coercive recovery-policy integer inputs',()=>{
+  for(const invalid of [
+    { threshold:true },
+    { inactivityMs:true },
+    { threshold:'0x2' },
+    { inactivityMs:'6e4' }
+  ]){
+    assert.throws(
+      ()=>createCardanoPreprodActiveStateEvidence({ ...input('heartbeat',[]),...invalid }),
+      /must be a positive safe integer/
+    );
+  }
+});
+
 test('active-state observation rejects protected-value leakage or extra assets',()=>{
   const args=input('approve',[contactA]);
   args.observedStateUtxo={

@@ -1,18 +1,13 @@
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { hashCardanoEvidence } from './evidence-binding.js';
 import { CARDANO_PREPROD_NETWORK_ID } from './transaction-body.js';
+import { cardanoPositiveSafeInteger } from './policy-integer.js';
 
 function plainObject(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
     throw new TypeError(`${label} must be a plain object.`);
   }
   return value;
-}
-
-function safePositiveInteger(value, label) {
-  const n = Number(value);
-  if (!Number.isSafeInteger(n) || n < 1) throw new TypeError(`${label} must be a positive safe integer.`);
-  return n;
 }
 
 function positiveIntegerString(value, label) {
@@ -73,9 +68,9 @@ export function createCardanoPreprodRecoveryConfiguration({
     throw new Error('The rescue destination cannot also be a trusted-contact approval key.');
   }
 
-  const requiredThreshold = safePositiveInteger(threshold, 'threshold');
+  const requiredThreshold = cardanoPositiveSafeInteger(threshold, 'threshold');
   if (requiredThreshold > contactKeyHashes.length) throw new Error('Recovery threshold must be reachable by the configured trusted contacts.');
-  const inactivity = safePositiveInteger(inactivityMs, 'inactivityMs');
+  const inactivity = cardanoPositiveSafeInteger(inactivityMs, 'inactivityMs');
   const protectedLovelace = positiveIntegerString(stateLovelace, 'stateLovelace');
 
   const core = Object.freeze({

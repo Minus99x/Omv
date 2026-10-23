@@ -15,6 +15,7 @@ import {
 import { calculateCardanoMinRequiredLovelace } from './recovery-validator.js';
 import { createCardanoPlutusV3CostModels } from './witness-set.js';
 import { createCardanoOgmiosEvaluationRequest } from './ogmios-evaluation.js';
+import { cardanoPositiveSafeInteger } from './policy-integer.js';
 
 const HEX_28=/^[0-9a-f]{56}$/i;
 const HEX_32=/^[0-9a-f]{64}$/i;
@@ -162,10 +163,9 @@ function validateRecoveryConfig(value, ownerKeyHash, plan) {
   if (new Set(contactKeyHashes).size!==contactKeyHashes.length) throw new Error('Recovery contacts must be unique.');
   if (contactKeyHashes.includes(ownerKeyHash)) throw new Error('Owner cannot also be a trusted contact.');
   if (contactKeyHashes.includes(rescueKeyHash)) throw new Error('Rescue destination cannot also be a trusted contact.');
-  const threshold=Number(config.threshold);
-  if (!Number.isInteger(threshold) || threshold<1 || threshold>contactKeyHashes.length) throw new Error('Recovery threshold must be reachable.');
-  const inactivityMs=Number(config.inactivityMs);
-  if (!Number.isSafeInteger(inactivityMs) || inactivityMs<1) throw new Error('Recovery inactivityMs must be positive.');
+  const threshold=cardanoPositiveSafeInteger(config.threshold,'Recovery threshold');
+  if (threshold>contactKeyHashes.length) throw new Error('Recovery threshold must be reachable.');
+  const inactivityMs=cardanoPositiveSafeInteger(config.inactivityMs,'Recovery inactivityMs');
   const stateLovelace=positiveBigInt(config.stateLovelace, 'recoveryConfig.stateLovelace');
   if (stateLovelace!==positiveBigInt(plan.protectedState.lovelace, 'heartbeatPlan.protectedState.lovelace')) {
     throw new Error('Recovery configuration protected lovelace differs from the observed heartbeat predecessor state.');

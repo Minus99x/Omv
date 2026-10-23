@@ -1,5 +1,6 @@
 import { hashCardanoEvidence } from './evidence-binding.js';
 import { createCardanoVaultDatumData } from './transaction-body.js';
+import { cardanoPositiveSafeInteger } from './policy-integer.js';
 
 const HEX_28=/^[0-9a-f]{56}$/i;
 const HEX_32=/^[0-9a-f]{64}$/i;
@@ -87,10 +88,9 @@ export function createCardanoPreprodActiveStateEvidence({
   if(sourceAction==='heartbeat' && approvals.length!==0) throw new Error('Observed heartbeat state must clear all approvals.');
   if(sourceAction==='approve' && approvals.length<1) throw new Error('Observed approval state must contain at least one configured approval.');
 
-  const normalizedThreshold=Number(threshold);
-  if(!Number.isInteger(normalizedThreshold) || normalizedThreshold<1 || normalizedThreshold>contacts.length) throw new Error('threshold must be reachable.');
-  const normalizedInactivity=Number(inactivityMs);
-  if(!Number.isSafeInteger(normalizedInactivity) || normalizedInactivity<1) throw new Error('inactivityMs must be positive.');
+  const normalizedThreshold=cardanoPositiveSafeInteger(threshold,'threshold');
+  if(normalizedThreshold>contacts.length) throw new Error('threshold must be reachable.');
+  const normalizedInactivity=cardanoPositiveSafeInteger(inactivityMs,'inactivityMs');
   const heartbeat=Number(lastHeartbeatMs);
   if(!Number.isSafeInteger(heartbeat) || heartbeat<0) throw new Error('lastHeartbeatMs must be a non-negative safe integer.');
   const lovelace=String(stateLovelace);

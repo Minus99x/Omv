@@ -221,3 +221,24 @@ test('real heartbeat evaluation candidate rejects nonzero budget injection', () 
     /must keep the spend redeemer budget at zero/
   );
 });
+
+test('real heartbeat rejects coercive recovery-policy integer inputs', () => {
+  for (const invalid of [
+    { threshold: true },
+    { inactivityMs: true },
+    { threshold: '0x2' },
+    { inactivityMs: '6e4' }
+  ]) {
+    assert.throws(
+      () => buildCardanoPreprodRealHeartbeatCandidate({
+        heartbeatPlan: heartbeatPlan(),
+        appliedValidatorIdentity: identity,
+        parameters,
+        recoveryConfig: { ...recoveryConfig, ...invalid },
+        stableTip: { hash: '12'.repeat(32), slot: 100000200 },
+        evaluationMode: true
+      }),
+      /must be a positive safe integer/
+    );
+  }
+});

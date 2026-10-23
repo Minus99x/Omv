@@ -1,5 +1,6 @@
 import { hashCardanoEvidence } from './evidence-binding.js';
 import { cardanoPreprodPaymentKeyHashFromAddress } from './preprod-recovery-config.js';
+import { cardanoPositiveSafeInteger } from './policy-integer.js';
 
 const HEX_28=/^[0-9a-f]{56}$/i;
 const HEX_32=/^[0-9a-f]{64}$/i;
@@ -68,14 +69,13 @@ export function createCardanoPreprodRealExecutePlan({
   const rescue=keyHash(predecessor.state?.rescueKeyHash,'predecessorStateEvidence.state.rescueKeyHash');
   const contacts=(predecessor.state?.contactKeyHashes ?? []).map((entry,index)=>keyHash(entry,`predecessorStateEvidence.state.contactKeyHashes[${index}]`));
   const approvals=(predecessor.state?.approvalKeyHashes ?? []).map((entry,index)=>keyHash(entry,`predecessorStateEvidence.state.approvalKeyHashes[${index}]`));
-  const threshold=Number(predecessor.state?.threshold);
-  const inactivityMs=Number(predecessor.state?.inactivityMs);
+  const threshold=cardanoPositiveSafeInteger(predecessor.state?.threshold,'Execute predecessor threshold');
+  const inactivityMs=cardanoPositiveSafeInteger(predecessor.state?.inactivityMs,'Execute predecessor inactivity interval');
 
   if(!contacts.length || new Set(contacts).size!==contacts.length) throw new Error('Execute predecessor contact set is invalid.');
-  if(!Number.isInteger(threshold) || threshold<1 || threshold>contacts.length) throw new Error('Execute predecessor threshold is invalid.');
+  if(threshold>contacts.length) throw new Error('Execute predecessor threshold is invalid.');
   if(new Set(approvals).size!==approvals.length || approvals.some(entry=>!contacts.includes(entry))) throw new Error('Execute predecessor approvals are invalid.');
   if(approvals.length<threshold) throw new Error('Execute predecessor has not reached the configured approval threshold.');
-  if(!Number.isSafeInteger(inactivityMs) || inactivityMs<1) throw new Error('Execute predecessor inactivity interval is invalid.');
   if(!Number.isSafeInteger(predecessor.state?.lastHeartbeatMs) || predecessor.state.lastHeartbeatMs<0) throw new Error('Execute predecessor is missing lastHeartbeatMs.');
   if(String(predecessor.state?.beaconQuantity)!=='1') throw new Error('Execute predecessor must carry exactly one state beacon.');
   if(!HEX_32.test(String(predecessor.validatorIdentitySha256 ?? ''))) throw new Error('Execute predecessor is missing validator identity digest.');

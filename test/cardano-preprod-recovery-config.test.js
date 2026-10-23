@@ -76,6 +76,32 @@ test('Cardano Preprod recovery configuration rejects unreachable threshold, dupl
   );
 });
 
+test('Cardano Preprod recovery configuration rejects coercive policy integer inputs', () => {
+  const rescueAddress = enterpriseAddress('66');
+  const contactAddresses = [enterpriseAddress('22'), enterpriseAddress('33')];
+  const base = { rescueAddress, contactAddresses, threshold: 2, inactivityMs: 60000 };
+
+  for (const invalid of [
+    { threshold: true },
+    { threshold: '0x2' },
+    { inactivityMs: true },
+    { inactivityMs: '6e4' }
+  ]) {
+    assert.throws(
+      () => createCardanoPreprodRecoveryConfiguration({ ...base, ...invalid }),
+      /must be a positive safe integer/
+    );
+  }
+
+  const normalized = createCardanoPreprodRecoveryConfiguration({
+    ...base,
+    threshold: '2',
+    inactivityMs: '60000'
+  });
+  assert.equal(normalized.threshold, 2);
+  assert.equal(normalized.inactivityMs, 60000);
+});
+
 test('Cardano Preprod recovery configuration rejects script credentials and wrong-network addresses', () => {
   const scriptAddress = Cardano.EnterpriseAddress
     .new(CARDANO_PREPROD_NETWORK_ID, Cardano.Credential.from_scripthash(Cardano.ScriptHash.from_hex('ab'.repeat(28))))
