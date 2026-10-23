@@ -135,6 +135,7 @@ function matchingBalanceLine(accountResponse, asset) {
   if (!asset || !['native', 'credit_alphanum'].includes(asset.type)) throw new TypeError('Unsupported Stellar balance asset type.');
   if (!Array.isArray(accountResponse?.balances)) throw new TypeError('Horizon account balances are required.');
   if (asset.type === 'credit_alphanum' && (typeof asset.code !== 'string' || !/^[a-zA-Z0-9]{1,12}$/.test(asset.code))) throw new TypeError('Stellar asset code must contain 1-12 alphanumeric characters.');
+  if (asset.type === 'credit_alphanum' && (typeof asset.issuer !== 'string' || !StrKey.isValidEd25519PublicKey(asset.issuer))) throw new TypeError('Stellar asset issuer must be a valid G-address.');
   let matches;
   if (asset?.type === 'native') {
     matches = accountResponse.balances.filter(line => line?.asset_type === 'native');

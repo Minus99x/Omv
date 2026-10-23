@@ -612,3 +612,12 @@ test('Horizon balance lookup refuses malformed matching asset codes', () => {
  }
 });
 
+
+
+test('Horizon balance lookup refuses invalid matching issuers', () => {
+ for(const issuer of ['not-an-account',T(1),G(6).slice(0,-1)+'!']) {
+  const raw=accountResponse({balances:[{asset_type:'credit_alphanum4',asset_code:'USDC',asset_issuer:issuer,balance:'1.0000000'}]});
+  assert.throws(()=>extractHorizonBalanceUnits({accountResponse:raw,asset:{type:'credit_alphanum',code:'USDC',issuer}}),/issuer/);
+ }
+});
+
