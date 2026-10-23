@@ -447,3 +447,12 @@ test('eligibility refuses durations outside uint64 before polling', async () => 
  assert.equal(calls,0);
 });
 
+
+
+test('eligibility cannot trust conflicting sequence time within the same ledger', async () => {
+ const routes=[{url:`https://horizon-testnet.stellar.org/accounts/${G(1)}`,data:{account_id:G(1),sequence:'1001',sequence_time:'1760000000',sequence_ledger:600}},
+ {url:'https://horizon-testnet.stellar.org/ledgers?order=desc&limit=1',data:{_embedded:{records:[{sequence:600,closed_at:'2025-10-09T10:13:20Z'}]}}}];
+ const transport=createStellarTestnetHorizonHttpTransport({fetchImpl:routedFetch(routes,[])});
+ await assert.rejects(transport.waitUntilEligible({sourceAccount:G(1),minAccountSequenceAge:'0',currentSequence:'1001',recoverySequence:'5000'}),/same ledger/);
+});
+

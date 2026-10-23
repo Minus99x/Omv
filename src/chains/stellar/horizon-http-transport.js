@@ -222,6 +222,7 @@ export function createStellarTestnetHorizonHttpTransport({
               ledgerClosedSeconds !== previousLedgerClosedSeconds))) {
           throw new Error('Horizon latest-ledger observations regressed or conflicted during eligibility polling.');
         }
+        if (ledgerNumber === BigInt(sequenceLedger) && BigInt(sequenceTime) !== ledgerClosedSeconds) throw new Error('Horizon sequence timestamp contradicts the close time of the same ledger.');
         previousLedgerSequence = ledgerNumber;
         previousLedgerClosedSeconds = ledgerClosedSeconds;
         if (ledgerClosedSeconds >= eligibleAtSeconds) {
