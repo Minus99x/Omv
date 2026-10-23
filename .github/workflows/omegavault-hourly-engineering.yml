@@ -1,0 +1,66 @@
+name: OmegaVault GitHub-Native Hourly Engineering Gate
+
+on:
+  schedule:
+    - cron: '30 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/omegavault-hourly-engineering.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: omegavault-github-native-hourly-gate
+  cancel-in-progress: false
+
+jobs:
+  engineering-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Checkout existing OmegaVault development branch
+        uses: actions/checkout@v4
+        with:
+          ref: dev/0.6.60-reconcile-overnight-bitcoin
+          persist-credentials: false
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.12.0'
+
+      - name: Establish independent execution evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "Minus99x/Omegavault"
+          test "$GITHUB_EVENT_NAME" = "schedule" -o "$GITHUB_EVENT_NAME" = "workflow_dispatch" -o "$GITHUB_EVENT_NAME" = "push"
+          actual_sha="$(git rev-parse HEAD)"
+          test "${#actual_sha}" -eq 40
+          echo "OMEGAVAULT_GITHUB_NATIVE_STARTED event=$GITHUB_EVENT_NAME dev_sha=$actual_sha"
+          {
+            echo "## OmegaVault GitHub-native execution"
+            echo "- Scheduler: **GitHub Actions** (independent of ChatGPT tasks)"
+            echo "- Trigger: **$GITHUB_EVENT_NAME**"
+            echo "- Development SHA: **$actual_sha**"
+            echo "- Workflow default branch: **$GITHUB_WORKFLOW_REF**"
+            echo "- Code operations: **read-only**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run native engineering compatibility regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --test test/upstream-reuse-catalog.test.js
+          echo "OMEGAVAULT_GITHUB_NATIVE_TESTS_OK"
+          echo "- Native dependency reuse regression: **PASS**" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Confirm scheduler and engineering roles
+        shell: bash
+        run: |
+          echo "The hourly GitHub-native scheduler and deterministic engineering tests ran together."
+          echo "This is not an AI coding agent, wallet action, deployment, or unattended repository write."
+          echo "- GitHub CI code commits: **0** (expected for this read-only gate)" >> "$GITHUB_STEP_SUMMARY"
