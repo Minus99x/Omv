@@ -166,3 +166,13 @@ test('XDC matcher rejects internally inconsistent proof binding even with unchan
     }),false);
   }
 });
+
+test('EVM finality preserves canonical extended-year ISO timestamps at supported clock extremes', () => {
+  const extreme=new Date(8640000000000*1000).toISOString();
+  const a=args();
+  const evidence=createEvmBlockFinalityEvidence({...a,observedAt:extreme});
+  assert.equal(evidence.observedAt,extreme);
+  assert.equal(evmFinalityMatchesProof(evidence,a.proof,{
+    networkId:a.networkId,kind:'native-recovery'
+  }),true);
+});

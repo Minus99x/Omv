@@ -45,7 +45,7 @@ function quantity(value, label) {
 
 function canonicalUtcObservation(value) {
   if (typeof value !== 'string' ||
-      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) return false;
+      !/^(?:\d{4}|[+-]\d{6})-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) return false;
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) &&
     new Date(timestamp).toISOString().slice(0, 19) === value.slice(0, 19);
