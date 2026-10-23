@@ -207,3 +207,22 @@ test('XRPL permission feature fails closed on duplicate or malformed amendment i
   assert.equal(valid.known,true);
   assert.equal(valid.amendmentId,'AB'.repeat(32));
 });
+
+test('XRPL DelegateSet rejects unverified amendment metadata and coercive fee inputs', () => {
+  const base={ owner, delegate, permissions:['Payment'], sequence:10, permissionDelegationFeature:enabledFeature() };
+  for(const override of [
+    { featureName:'UnrelatedAmendment' },
+    { amendmentId:null },
+    { amendmentId:'not-an-amendment-hash' },
+    { featureName:undefined }
+  ]) {
+    assert.throws(()=>buildXrplDelegateSet({
+      ...base, permissionDelegationFeature:{...base.permissionDelegationFeature,...override}
+    }),/requires verified enabled PermissionDelegationV1_1/);
+  }
+  for(const feeDrops of [[12],new Number(12),{toString:()=> '12'},1.5,Number.MAX_SAFE_INTEGER+1,'01']) {
+    assert.throws(()=>buildXrplDelegateSet({...base,feeDrops}),/canonical non-negative primitive integer/);
+  }
+  assert.equal(buildXrplDelegateSet({...base,feeDrops:12n}).transaction.Fee,'12');
+  assert.equal(buildXrplDelegateSet({...base,feeDrops:'0'}).transaction.Fee,'0');
+});

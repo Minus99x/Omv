@@ -90,7 +90,9 @@ export function buildXrplDelegateSet({
   assertClassicAddress(owner,'owner');
   assertClassicAddress(delegate,'delegate');
   if(owner===delegate) throw new TypeError('XRPL delegate must be different from owner.');
-  if(!permissionDelegationFeature?.known ||
+  if(permissionDelegationFeature?.featureName!=='PermissionDelegationV1_1' ||
+      !/^[0-9a-f]{64}$/i.test(permissionDelegationFeature?.amendmentId ?? '') ||
+      !permissionDelegationFeature?.known ||
       !permissionDelegationFeature?.supported ||
       !permissionDelegationFeature?.enabled) {
     throw new TypeError('DelegateSet requires verified enabled PermissionDelegationV1_1 capability on the target network.');
@@ -115,7 +117,11 @@ export function buildXrplDelegateSet({
     ...normalizeXrplSequenceBinding({ sequence,ticketSequence })
   };
   if(feeDrops!=null){
-    if(!/^\d+$/.test(String(feeDrops)) || BigInt(feeDrops)<0n) throw new TypeError('feeDrops must be a non-negative integer.');
+    if(!['string','number','bigint'].includes(typeof feeDrops) ||
+        (typeof feeDrops==='number' && !Number.isSafeInteger(feeDrops)) ||
+        !/^(0|[1-9]\d*)$/.test(String(feeDrops))) {
+      throw new TypeError('feeDrops must be a canonical non-negative primitive integer.');
+    }
     transaction.Fee=String(feeDrops);
   }
   if(lastLedgerSequence!=null){
