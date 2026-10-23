@@ -179,3 +179,17 @@ test('Bitcoin PSBT recovery rejects coercible non-primitive satoshi amounts', ()
   }
   assert.equal(createBitcoinPsbtV2RecoveryPlan({ ...args, feeSats: 1000n }).unsignedIntent.feeSats, '1000');
 });
+
+test('Bitcoin rollover heartbeat binds a real uint32 output index and bounded confirmation target', () => {
+  const args = {
+    currentTxid: txid, currentVout: 0,
+    currentPolicyDigest: '11'.repeat(32), nextPolicyDigest: '22'.repeat(32)
+  };
+  assert.equal(createBitcoinRolloverHeartbeatPlan({ ...args, currentVout: 0xffffffff }).spends.vout, 0xffffffff);
+  for (const bad of [-1, 1.2, 0x100000000, Number.MAX_SAFE_INTEGER]) {
+    assert.throws(() => createBitcoinRolloverHeartbeatPlan({ ...args, currentVout: bad }), /currentVout must be a uint32/);
+  }
+  for (const bad of [0, 1.2, -1, 0x100000000, Number.MAX_SAFE_INTEGER]) {
+    assert.throws(() => createBitcoinRolloverHeartbeatPlan({ ...args, minimumConfirmations: bad }), /minimumConfirmations must be a positive uint32/);
+  }
+});

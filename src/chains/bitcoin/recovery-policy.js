@@ -58,9 +58,9 @@ export function createBitcoinRecoveryPolicy({ ownerKey, contactKeys, threshold, 
 
 export function createBitcoinRolloverHeartbeatPlan({ currentTxid, currentVout, currentPolicyDigest, nextPolicyDigest, minimumConfirmations = 1 }) {
   if (!TXID.test(currentTxid)) throw new TypeError('currentTxid must be a 32-byte hex txid.');
-  if (!Number.isInteger(currentVout) || currentVout < 0) throw new TypeError('currentVout must be a non-negative integer.');
+  if (!Number.isInteger(currentVout) || currentVout < 0 || currentVout > 0xffffffff) throw new TypeError('currentVout must be a uint32 Bitcoin output index.');
   if (!/^[0-9a-f]{64}$/i.test(currentPolicyDigest) || !/^[0-9a-f]{64}$/i.test(nextPolicyDigest)) throw new TypeError('policy digests must be SHA-256 hex strings.');
-  if (!Number.isInteger(minimumConfirmations) || minimumConfirmations < 1) throw new TypeError('minimumConfirmations must be positive.');
+  if (!Number.isInteger(minimumConfirmations) || minimumConfirmations < 1 || minimumConfirmations > 0xffffffff) throw new TypeError('minimumConfirmations must be a positive uint32.');
   return Object.freeze({
     operation: 'owner-rollover-heartbeat',
     spends: Object.freeze({ txid: currentTxid.toLowerCase(), vout: currentVout, policyDigest: currentPolicyDigest.toLowerCase() }),
