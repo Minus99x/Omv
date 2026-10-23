@@ -113,6 +113,11 @@ jobs:
               *) echo "::error::Patch attempts disallowed path: $name"; exit 1 ;;
             esac
           done < <(git apply --name-only candidate.patch)
+          # Reject documentation-only patches: unattended runs must deliver code or tests.
+          if ! git apply --name-only candidate.patch | grep -Eq '^(src/chains/|test/)'; then
+            echo "::error::Patch contains no implementation or test changes"
+            exit 1
+          fi
           git apply --check candidate.patch
           git apply candidate.patch
           git diff --check
