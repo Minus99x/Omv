@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import { requireCanonicalBitcoinRecoveryDescriptor } from './descriptor.js';
 import { createBitcoinFinalizerEvidence } from './finalizer-evidence.js';
 import { decodePsbtV2, encodeCompactSize, verifyPsbtV2RecoveryThreshold } from './psbt-v2.js';
@@ -181,7 +182,7 @@ export function createBitcoinFinalTransactionEvidence(options) {
 export function verifyBitcoinFinalTransactionEvidence({ evidence, ...options }) {
   try {
     const expected = createBitcoinFinalTransactionEvidence(options);
-    const ok = JSON.stringify(evidence) === JSON.stringify(expected);
+    const ok = isDeepStrictEqual(evidence, expected);
     return Object.freeze({ ok, errors:Object.freeze(ok ? [] : ['Bitcoin final-transaction evidence does not match the supplied PSBT and descriptor.']) });
   } catch (error) {
     return Object.freeze({ ok:false, errors:Object.freeze([String(error?.message || error)]) });

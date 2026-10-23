@@ -210,3 +210,14 @@ test('authentic decoded PSBT objects and serialized clones retain identical reco
   }
 });
 
+
+
+test('transaction-finalizer rejects serialization hooks hiding altered evidence', () => {
+ const options={psbt:signedPsbt(),descriptor,rescueScriptPubKey};
+ const expected=createBitcoinFinalTransactionEvidence(options);
+ const forged={...expected,broadcastAuthorized:true,toJSON:()=>expected};
+ assert.equal(verifyBitcoinFinalTransactionEvidence({...options,evidence:forged}).ok,false);
+ const reordered=Object.fromEntries(Object.entries(expected).reverse());
+ assert.equal(verifyBitcoinFinalTransactionEvidence({...options,evidence:reordered}).ok,true);
+});
+
