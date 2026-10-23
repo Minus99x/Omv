@@ -268,3 +268,12 @@ test('signature verification rejects malformed allowlists before processing sign
  assert.equal(verifyPsbtV2RecoverySignature({psbt,inputIndex:0,publicKey:contactKeyA,allowedPublicKeys:[contactKeyA.toUpperCase()]}).valid,true);
 });
 
+
+
+test('PSBT wire parser rejects compressed keys that are not secp256k1 points', () => {
+ const intent=unsignedIntent();intent.inputs[0].partialSignatures=[{publicKey:contactKeyA,signature:'300602010102010101'}];
+ const bytes=encodePsbtV2(intent);const key=Buffer.from(contactKeyA,'hex');const at=bytes.indexOf(key);
+ assert.ok(at>0);Buffer.from('02'+'00'.repeat(32),'hex').copy(bytes,at);
+ assert.throws(()=>decodePsbtV2(bytes),/secp256k1 point/);
+});
+

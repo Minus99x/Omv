@@ -291,6 +291,7 @@ export function decodePsbtV2(encoded) {
     if (!witnessUtxo.scriptPubKey.equals(expectedScript)) throw new Error(`PSBT input ${i} witness script does not match the witness UTXO.`);
     const partialSignatures = parsed.entries.filter(entry => entry.key[0] === 0x02).map(entry => {
       if (entry.key.length !== 34 || !COMPRESSED_KEY.test(entry.key.subarray(1).toString('hex'))) throw new Error(`PSBT input ${i} has malformed partial-signature key data.`);
+      try { secp256k1.Point.fromBytes(entry.key.subarray(1)).assertValidity(); } catch { throw new Error(`PSBT input ${i} partial-signature key is not a valid secp256k1 point.`); }
       if (entry.value.length < 9 || entry.value.at(-1) !== 0x01) throw new Error(`PSBT input ${i} partial signature must use SIGHASH_ALL.`);
       return Object.freeze({ publicKey: entry.key.subarray(1).toString('hex'), signature: entry.value.toString('hex') });
     });
