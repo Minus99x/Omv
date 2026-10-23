@@ -556,6 +556,51 @@ test('Stellar does not turn coercible or imprecise recovery amounts into spendab
   assert.equal(valid.operations[0].amount,'10.2500000');
 });
 
+test('Stellar refuses to build or verify a partial recovery envelope when a declared asset amount is missing', () => {
+  const issuer = G(6);
+  const args = {
+    vaultAccount:G(1), rescueDestination:G(2), currentSequence:'1000',
+    inactivitySeconds:60, contacts:[G(3),G(4)], threshold:2,
+    assets:['native', { code:'USDC', issuer }],
+    amounts:{ native:'10' }
+  };
+  const incomplete = createRecoveryEnvelopePlan(args);
+  assert.deepEqual(incomplete.protectedAssetKeys, ['native', `USDC:${issuer}`]);
+  assert.equal(incomplete.operations.length, 1);
+  assert.throws(
+    () => buildRecoveryEnvelopeArtifact(incomplete),
+    /every protected asset has an exact payment operation/
+  );
+  const malformed = createRecoveryEnvelopePlan({
+    ...args, amounts:{ native:'10', [`USDC:${issuer}`]:[20] }
+  });
+  assert.equal(malformed.operations.length, 1);
+  assert.throws(
+    () => buildRecoveryEnvelopeArtifact(malformed),
+    /every protected asset has an exact payment operation/
+  );
+
+  const nativeOnly = createRecoveryEnvelopePlan({
+    ...args, assets:['native']
+  });
+  const partialArtifact = buildRecoveryEnvelopeArtifact(nativeOnly);
+  const verification = verifyRecoveryEnvelopeArtifact({ plan:incomplete, artifact:partialArtifact });
+  assert.equal(verification.valid, false);
+  assert.ok(verification.errors.some(error => /every protected asset has an exact payment operation/.test(error)));
+
+  const complete = createRecoveryEnvelopePlan({
+    ...args, amounts:{ native:'10', [`USDC:${issuer}`]:'20.5' }
+  });
+  const completeArtifact = buildRecoveryEnvelopeArtifact(complete);
+  assert.equal(complete.operations.length, 2);
+  assert.equal(verifyRecoveryEnvelopeArtifact({ plan:complete, artifact:completeArtifact }).valid, true);
+  const reorderedPlan = { ...complete, operations:Object.freeze([...complete.operations].reverse()) };
+  assert.throws(
+    () => buildRecoveryEnvelopeArtifact(reorderedPlan),
+    /every protected asset has an exact payment operation/
+  );
+});
+
 test('Stellar fee sponsor rejects coercible and out-of-range fee-bump caps', () => {
   const args={feeAccount:G(7),innerEnvelopeHash:'ab'.repeat(32)};
   for(const bad of [[1000],new Number(1000),{toString:()=> '1000'},true,Number.MAX_SAFE_INTEGER+1]) {

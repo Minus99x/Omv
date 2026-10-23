@@ -100,6 +100,30 @@ function planAssetToSdk(asset) {
   return asset.type === 'native' ? Asset.native() : new Asset(asset.code, asset.issuer);
 }
 
+function recoveryAssetKey(asset) {
+  const normalized = normalizeAsset(asset);
+  return normalized.type === 'native' ? 'native' : `${normalized.code}:${normalized.issuer}`;
+}
+
+function assertRecoveryPlanAssetCoverage(plan) {
+  const protectedAssetKeys = plan?.protectedAssetKeys;
+  const operations = plan?.operations;
+  if (!Array.isArray(protectedAssetKeys) || protectedAssetKeys.length === 0 ||
+      !Array.isArray(operations) || operations.length !== protectedAssetKeys.length ||
+      new Set(protectedAssetKeys).size !== protectedAssetKeys.length) {
+    throw new Error('Recovery envelope cannot be built until every protected asset has an exact payment operation.');
+  }
+  const operationAssetKeys = operations.map(operation => {
+    if (operation?.type !== 'payment') {
+      throw new Error('Recovery envelope cannot be built until every protected asset has an exact payment operation.');
+    }
+    return recoveryAssetKey(operation.asset);
+  });
+  if (operationAssetKeys.some((key, index) => key !== protectedAssetKeys[index])) {
+    throw new Error('Recovery envelope cannot be built until every protected asset has an exact payment operation.');
+  }
+}
+
 export function createRecoveryEnvelopePlan({
   vaultAccount,
   rescueDestination,
@@ -161,6 +185,7 @@ export function createRecoveryEnvelopePlan({
     baseFeeStroops: baseFee.toString(),
     feeStroops: baseFee.toString(),
     operations: Object.freeze(operations),
+    protectedAssetKeys: Object.freeze([...assetKeys]),
     signerPolicy: Object.freeze({
       contacts: Object.freeze([...contacts]),
       threshold,
@@ -183,7 +208,7 @@ export function createRecoveryEnvelopePlan({
 export function buildRecoveryEnvelopeArtifact(plan) {
   if (!plan || plan.strategy !== 'preauth-min-sequence-age') throw new TypeError('A Stellar pre-authorized recovery plan is required.');
   if (plan.networkRef !== 'stellar:testnet' || plan.networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Stellar recovery artifact construction is currently restricted to the configured Stellar Testnet identity.');
-  if (!Array.isArray(plan.operations) || plan.operations.length === 0) throw new Error('Recovery envelope cannot be built until every protected asset has an exact payment operation.');
+  assertRecoveryPlanAssetCoverage(plan);
   assertAccount(plan.sourceAccount, 'sourceAccount');
   assertAccount(plan.rescueDestination, 'rescueDestination');
 
@@ -240,6 +265,7 @@ export function verifyRecoveryEnvelopeArtifact({ plan, artifact }) {
   if (!artifact?.transactionXdr || !artifact?.transactionHashHex) throw new TypeError('Recovery envelope artifact is incomplete.');
   const transaction = TransactionBuilder.fromXdr(artifact.transactionXdr, plan.networkPassphrase);
   const errors = [];
+  try { assertRecoveryPlanAssetCoverage(plan); } catch (error) { errors.push(error.message); }
   if (plan.networkRef !== 'stellar:testnet' || plan.networkPassphrase !== TESTNET_PASSPHRASE) errors.push('Recovery plan is not bound to the configured Stellar Testnet identity.');
   if (artifact.networkPassphrase !== plan.networkPassphrase) errors.push('Recovery artifact network passphrase does not match plan.');
   if (toHex(transaction.hash()) !== artifact.transactionHashHex) errors.push('Transaction hash does not match XDR.');
