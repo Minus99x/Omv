@@ -5,7 +5,9 @@ name: OmegaVault Frequent AI Engineering Launcher
 on:
   schedule:
     # Three unattended engineering runs per hour, at :07, :27, :47 Arizona.
-    - cron: '7-47/20 * * * *'
+    - cron: '7 * * * *'
+    - cron: '27 * * * *'
+    - cron: '47 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -28,6 +30,11 @@ jobs:
     steps:
       - name: Record trigger receipt
         env:
+          ACTOR: ${{ github.actor }}
+          ACTOR_ID: ${{ github.actor_id }}
+          TRIGGERING_ACTOR: ${{ github.triggering_actor }}
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EVENT_NAME: ${{ github.event_name }}
           EVENT_SCHEDULE: ${{ github.event.schedule }}
           RUN_ID: ${{ github.run_id }}
@@ -40,7 +47,9 @@ jobs:
           python3 - <<'PY'
           import datetime, json, os
           receipt = {key.lower(): os.environ[key] for key in
-                     ('EVENT_NAME', 'EVENT_SCHEDULE', 'RUN_ID', 'RUN_ATTEMPT', 'SOURCE_SHA', 'SOURCE_REF')}
+                     ('EVENT_NAME', 'EVENT_SCHEDULE', 'RUN_ID', 'RUN_ATTEMPT', 'SOURCE_SHA', 'SOURCE_REF',
+                      'ACTOR', 'ACTOR_ID', 'TRIGGERING_ACTOR', 'WORKFLOW_REF', 'RUN_URL')}
+          receipt['chat_attribution'] = 'unavailable: GitHub does not authenticate a ChatGPT conversation ID'
           receipt['observed_at_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
           payload = json.dumps(receipt, indent=2)
           print(payload)
@@ -48,10 +57,24 @@ jobs:
               summary.write('## GitHub trigger receipt\n\n```json\n' + payload + '\n```\n')
           PY
 
+  verify-worker-controls:
+    name: Verify pinned worker guard regressions
+    needs: trigger-receipt
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 3189442e08aaf3a3e288376b65b2921558ff5be4
+          persist-credentials: false
+      - run: python3 .github/tests/test_worker_controls.py
+
   autonomous-engineering:
     name: Trigger isolated AI worker on scheduler-only branch
-    needs: trigger-receipt
-    uses: Minus99x/Omegavault/.github/workflows/omegavault-hourly-engineering.yml@automation/omegavault-hourly
+    needs: verify-worker-controls
+    uses: Minus99x/Omegavault/.github/workflows/omegavault-hourly-engineering.yml@3189442e08aaf3a3e288376b65b2921558ff5be4
     permissions:
       contents: write
       copilot-requests: write
