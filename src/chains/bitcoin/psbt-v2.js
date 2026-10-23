@@ -227,7 +227,7 @@ function toBuffer(encoded) {
   if (Buffer.isBuffer(encoded) || encoded instanceof Uint8Array) return Buffer.from(encoded);
   if (typeof encoded !== 'string' || !encoded) throw new TypeError('PSBT must be bytes or base64.');
   const buffer = Buffer.from(encoded, 'base64');
-  if (buffer.toString('base64').replace(/=+$/, '') !== encoded.replace(/=+$/, '')) throw new TypeError('PSBT string must be canonical base64.');
+  if (encoded !== buffer.toString('base64') && encoded !== buffer.toString('base64').replace(/=+$/, '')) throw new TypeError('PSBT string must be canonical base64.');
   return buffer;
 }
 

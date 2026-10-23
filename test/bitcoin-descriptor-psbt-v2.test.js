@@ -246,3 +246,12 @@ test('Bitcoin PSBT monetary validation retains zero and MAX_MONEY boundaries',()
     assert.throws(()=>encodePsbtV2(intent),/non-negative integer|MAX_MONEY/);
   }
 });
+
+
+test('PSBT base64 rejects padded aliases while preserving unpadded bytes', () => {
+ const bytes=encodePsbtV2(unsignedIntent()); const encoded=bytes.toString('base64');
+ assert.equal(decodePsbtV2(encoded.replace(/=+$/, '')).hex,bytes.toString('hex'));
+ for(const value of [encoded+'=',encoded+'====',encoded.slice(0,10)+'='+encoded.slice(10)])
+   assert.throws(()=>decodePsbtV2(value),/canonical base64/);
+});
+
