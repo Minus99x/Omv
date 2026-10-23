@@ -422,3 +422,11 @@ test('eligibility polling fails closed on ledger rollback or conflicting cross-p
     assert.equal(calls.length, 4, name);
   }
 });
+
+
+test('Horizon transport rejects impossible ledger lookups without network calls', async () => {
+ let calls=0;const transport=createStellarTestnetHorizonHttpTransport({fetchImpl:async()=>{calls++;return jsonResponse({});}});
+ for(const sequence of ['4294967296',4294967296,4294967296n])await assert.rejects(transport.loadLedger(sequence),/uint32/);
+ assert.equal(calls,0);await transport.loadLedger('4294967295');assert.equal(calls,1);
+});
+

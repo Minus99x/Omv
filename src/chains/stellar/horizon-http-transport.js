@@ -159,6 +159,7 @@ export function createStellarTestnetHorizonHttpTransport({
 
     async loadLedger(sequence) {
       const ledger = integerString(sequence, 'ledger sequence', { positive: true });
+      if (BigInt(ledger) > 0xffffffffn) throw new RangeError('ledger sequence exceeds uint32.');
       return request(`/ledgers/${ledger}`, {
         method: 'GET',
         headers: { accept: 'application/json' }
