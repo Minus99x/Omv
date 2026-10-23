@@ -603,3 +603,12 @@ test('Horizon balances reject unknown asset kinds even when code and issuer matc
  for(const type of [undefined,'unknown','liquidity_pool_shares','credit_alphanum4'])assert.throws(()=>extractHorizonBalanceUnits({accountResponse:accountResponse(),asset:{type,code:'USDC',issuer:G(6)}}),/asset type/);
 });
 
+
+
+test('Horizon balance lookup refuses malformed matching asset codes', () => {
+ for(const code of ['', 'A-B', 'ABCDEFGHIJKLM', '😀']) {
+  const raw=accountResponse({balances:[{asset_type:'credit_alphanum4',asset_code:code,asset_issuer:G(6),balance:'1.0000000'}]});
+  assert.throws(()=>extractHorizonBalanceUnits({accountResponse:raw,asset:{type:'credit_alphanum',code,issuer:G(6)}}),/asset code/);
+ }
+});
+
