@@ -1,8 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { readFileSync } from 'node:fs';
 import { normalizeCardanoProtocolParameterSnapshot } from '../src/chains/cardano/protocol-parameters.js';
-import { buildCardanoOgmiosEvaluationFixture, buildCardanoWitnessSetFixture } from '../src/chains/cardano/witness-set.js';
+import {
+  buildCardanoOgmiosEvaluationFixture,
+  buildCardanoWitnessSetFixture,
+  createCardanoPlutusV3CostModels
+} from '../src/chains/cardano/witness-set.js';
 
 const evidence = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
 const parameters = normalizeCardanoProtocolParameterSnapshot(evidence);
@@ -10,6 +15,24 @@ const beacon = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/s
 const vault = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/recovery-vault.applied.json', import.meta.url), 'utf8'));
 const beaconCode = beacon.validators.find(item => item.title === 'omegavault.state_beacon.mint').compiledCode;
 const recoveryCode = vault.validators.find(item => item.title === 'omegavault.recovery_vault.spend').compiledCode;
+
+test('Cardano Plutus V3 cost-model construction requires 350 dense, valid integer entries', () => {
+  const valid = [...parameters.plutusV3CostModel];
+  const models = createCardanoPlutusV3CostModels(valid);
+  assert.equal(models.get(Cardano.Language.new_plutus_v3()).len(), 350);
+
+  const sparse = [...valid];
+  delete sparse[174];
+  assert.throws(() => createCardanoPlutusV3CostModels(sparse), /complete 350-entry/);
+  for (const invalid of [NaN, Infinity, 1.5, '1.5', '1e3', true, null]) {
+    const malformed = [...valid];
+    malformed[174] = invalid;
+    assert.throws(() => createCardanoPlutusV3CostModels(malformed), /integer/);
+  }
+  const excessive = [...valid];
+  excessive[174] = '9'.repeat(1001);
+  assert.throws(() => createCardanoPlutusV3CostModels(excessive), /supported precision/);
+});
 
 for (const action of ['initialize', 'heartbeat', 'approve', 'execute']) {
   test(`Cardano ${action} script-data hash and witness set round-trip`, () => {

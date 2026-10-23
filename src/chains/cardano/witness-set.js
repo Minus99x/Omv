@@ -85,7 +85,26 @@ function attachKeyWitnesses(witnessSet, body, action) {
 export function createCardanoPlutusV3CostModels(costModelValues) {
   if (!Array.isArray(costModelValues) || costModelValues.length !== 350) throw new TypeError('A complete 350-entry Plutus V3 cost model is required.');
   const model = Cardano.CostModel.new();
-  costModelValues.forEach((value, index) => model.set(index, Cardano.Int.from_str(String(value))));
+  for (let index = 0; index < costModelValues.length; index += 1) {
+    if (!Object.hasOwn(costModelValues, index)) {
+      throw new TypeError('A complete 350-entry Plutus V3 cost model is required.');
+    }
+    const value = costModelValues[index];
+    if (typeof value !== 'number' && typeof value !== 'string' && typeof value !== 'bigint') {
+      throw new TypeError(`Plutus V3 cost model entry ${index} must be an integer.`);
+    }
+    if (typeof value === 'number' && !Number.isSafeInteger(value)) {
+      throw new TypeError(`Plutus V3 cost model entry ${index} must be a safe integer.`);
+    }
+    const decimal = String(value);
+    if (decimal.length > 1000) {
+      throw new RangeError(`Plutus V3 cost model entry ${index} exceeds the supported precision.`);
+    }
+    if (!/^-?\d+$/.test(decimal)) {
+      throw new TypeError(`Plutus V3 cost model entry ${index} must be an integer.`);
+    }
+    model.set(index, Cardano.Int.from_str(decimal));
+  }
   const models = Cardano.Costmdls.new();
   models.insert(Cardano.Language.new_plutus_v3(), model);
   return models;

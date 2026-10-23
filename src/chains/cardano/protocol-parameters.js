@@ -40,13 +40,21 @@ function costModelDigest(model) {
   return createHash('sha256').update(JSON.stringify(model)).digest('hex');
 }
 
+function isCompletePlutusV3CostModel(model) {
+  if (!Array.isArray(model) || model.length !== 350) return false;
+  for (let index = 0; index < model.length; index += 1) {
+    if (!Object.hasOwn(model, index) || !Number.isSafeInteger(model[index])) return false;
+  }
+  return true;
+}
+
 export function normalizeCardanoProtocolParameterSnapshot(snapshot) {
   if (!snapshot || snapshot.network !== 'preprod' || snapshot.networkId !== 0) throw new TypeError('A Preprod network-id 0 snapshot is required.');
   if (!snapshot.source || !Number.isSafeInteger(snapshot.source.independentSourceCount) || snapshot.source.independentSourceCount < 1) throw new TypeError('Snapshot provenance is required.');
   const params = snapshot.parameters;
   if (!params || params.era !== 'Conway' || !/^\d+\.\d+$/.test(params.protocolVersion)) throw new TypeError('Conway protocol-version metadata is required.');
   if (!Number.isSafeInteger(params.epoch) || params.epoch < 0 || !snapshot.tip || !Number.isSafeInteger(snapshot.tip.epoch) || params.epoch !== snapshot.tip.epoch) throw new TypeError('Protocol-parameter epoch must match the captured tip epoch.');
-  if (!Array.isArray(params.plutusV3CostModel) || params.plutusV3CostModel.length !== 350 || params.plutusV3CostModel.some(value => !Number.isSafeInteger(value))) throw new TypeError('A complete 350-entry Plutus V3 cost model is required.');
+  if (!isCompletePlutusV3CostModel(params.plutusV3CostModel)) throw new TypeError('A complete 350-entry Plutus V3 cost model is required.');
   if (costModelDigest(params.plutusV3CostModel) !== params.plutusV3CostModelSha256) throw new Error('Plutus V3 cost-model digest mismatch.');
 
   const normalized = {
@@ -95,9 +103,7 @@ export function createCardanoProtocolParameterGate(snapshots) {
     /^[0-9a-f]{64}$/.test(snapshot.plutusV3CostModelSha256) &&
     // Caller-provided "normalized" objects still need their complete cost
     // model verified; agreeing digest strings alone do not prove agreement.
-    Array.isArray(snapshot.plutusV3CostModel) &&
-    snapshot.plutusV3CostModel.length === 350 &&
-    snapshot.plutusV3CostModel.every(Number.isSafeInteger) &&
+    isCompletePlutusV3CostModel(snapshot.plutusV3CostModel) &&
     costModelDigest(snapshot.plutusV3CostModel) === snapshot.plutusV3CostModelSha256 &&
     ['memory', 'steps'].every(field => typeof snapshot.maxTxExUnits?.[field] === 'bigint' && snapshot.maxTxExUnits[field] > 0n) &&
     ['priceMemory', 'priceSteps'].every(field =>
@@ -166,4 +172,3 @@ export function calculateCardanoRequiredCollateral({ feeLovelace, parameters, co
     collateralIsAdaOnly: true
   });
 }
-

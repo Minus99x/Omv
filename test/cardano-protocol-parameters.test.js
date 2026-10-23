@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import {
   calculateCardanoExecutionFee,
@@ -16,6 +17,30 @@ test('Cardano protocol snapshot binds epoch, provenance and complete Plutus V3 c
   assert.equal(parameters.epoch, 316);
   assert.equal(parameters.plutusV3CostModel.length, 350);
   assert.equal(parameters.plutusV3CostModelSha256, '6b74a19b00bcca178a4c723c0ce871d41fc5c5a417d738798faea60930961b4e');
+});
+
+test('Cardano protocol snapshots reject sparse cost models even when their digest matches', () => {
+  const malformed = structuredClone(evidence);
+  delete malformed.parameters.plutusV3CostModel[174];
+  malformed.parameters.plutusV3CostModelSha256 = createHash('sha256')
+    .update(JSON.stringify(malformed.parameters.plutusV3CostModel))
+    .digest('hex');
+  assert.throws(
+    () => normalizeCardanoProtocolParameterSnapshot(malformed),
+    /complete 350-entry Plutus V3 cost model/
+  );
+
+  const sparseNormalized = {
+    ...parameters,
+    plutusV3CostModel: [...parameters.plutusV3CostModel]
+  };
+  delete sparseNormalized.plutusV3CostModel[174];
+  sparseNormalized.plutusV3CostModelSha256 = createHash('sha256')
+    .update(JSON.stringify(sparseNormalized.plutusV3CostModel))
+    .digest('hex');
+  const gate = createCardanoProtocolParameterGate([sparseNormalized]);
+  assert.equal(gate.matching, false);
+  assert.equal(gate.liveConstructionReady, false);
 });
 
 test('Cardano parameter gate refuses a single current provider for live construction', () => {
