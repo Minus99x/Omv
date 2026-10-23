@@ -1,23 +1,43 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { createHash } from 'node:crypto';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { runCardanoScalusInitializeTrial } from '../src/chains/cardano/scalus-local-validation.js';
 
-const hex = '84a0a0f5';
-const sha = createHash('sha256').update(Buffer.from(hex, 'hex')).digest('hex');
 const address = 'addr_test1' + 's'.repeat(30);
 const ref = (id, index) => ({ transaction: { id: id.repeat(64) }, index });
 const input = (id, amount) => ({ reference: ref(id, 0), address, value: { ada: { lovelace: amount } }, datum: null, datumHash: null, script: null });
+function serializedTransaction(outputLovelace='5000000') {
+  const keyHash=Cardano.Ed25519KeyHash.from_hex('1'.repeat(56));
+  const ownerAddress=Cardano.EnterpriseAddress.new(0,Cardano.Credential.from_keyhash(keyHash)).to_address();
+  const inputs=Cardano.TransactionInputs.new();
+  inputs.add(Cardano.TransactionInput.new(Cardano.TransactionHash.from_hex('11'.repeat(32)),0));
+  const outputs=Cardano.TransactionOutputs.new();
+  outputs.add(Cardano.TransactionOutput.new(ownerAddress,Cardano.Value.new(Cardano.BigNum.from_str(outputLovelace))));
+  const body=Cardano.TransactionBody.new_tx_body(inputs,outputs,Cardano.BigNum.from_str('200000'));
+  body.set_network_id(Cardano.NetworkId.testnet());
+  body.set_validity_start_interval_bignum(Cardano.BigNum.from_str('100'));
+  body.set_ttl(Cardano.BigNum.from_str('200'));
+  return Object.freeze({
+    signedTransactionCborHex:Cardano.Transaction.new(body,Cardano.TransactionWitnessSet.new()).to_hex(),
+    unsignedTransactionBodyCborHex:body.to_hex()
+  });
+}
 function fixture() {
+  const transaction=serializedTransaction();
   const f = {
-    signedTransactionCborHex: hex,
+    signedTransactionCborHex: transaction.signedTransactionCborHex,
     preSubmitEvidence: {
-      schema: 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v2',
+      schema: 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v3',
       network: 'preprod', action: 'initialize',
       checks: { preSubmitFreshnessGateComplete: true, walletWitnessEvidenceVerified: true, completePhaseOneValidated: false },
       liveActions: { transactionSubmissionAuthorized: false, transactionSubmissionPerformed: false },
-      signedTransaction: { sha256: sha, bytes: 4 },
+      signedTransaction: {
+        sha256: createHash('sha256').update(Buffer.from(transaction.signedTransactionCborHex,'hex')).digest('hex'),
+        bytes: transaction.signedTransactionCborHex.length/2
+      },
+      unsignedTransactionBodyCborHex:transaction.unsignedTransactionBodyCborHex,
       validity: { lowerSlot: 100, upperSlot: 200 },
       currentTip: { hash: 'cd'.repeat(32), slot: 150 },
       ledgerInputSnapshot: {
@@ -51,14 +71,15 @@ function fakeScalus(result = { isSuccess: true, txHash: 'e'.repeat(64) }) {
 
 test('offline gate sends exact immutable signed bytes with two bound UTxOs to a local Scalus-compatible emulator', async () => {
   const fake = fakeScalus();
-  const output = await runCardanoScalusInitializeTrial({ ...fixture(), scalusApi: fake.api });
+  const inputs=fixture();
+  const output = await runCardanoScalusInitializeTrial({ ...inputs, scalusApi: fake.api });
   assert.equal(output.acceptedByEmulator, true);
   assert.equal(output.localTransactionHash, 'e'.repeat(64));
   assert.equal(fake.calls[0].network, 'preprod-protocol-context');
   assert.equal(fake.calls[0].opts.slot, 150);
   assert.equal(fake.calls[0].opts.utxos.length, 2);
   assert.equal(fake.calls[0].opts.utxos[0].value.coin, 20_000_000n);
-  assert.equal(fake.calls[1].bytes, hex);
+  assert.equal(fake.calls[1].bytes, inputs.signedTransactionCborHex);
   assert.equal(output.authority.publicPreprodTransactionSubmitted, false);
   assert.equal(output.authority.completeCurrentPreprodPhaseOneValidated, false);
   assert.equal(output.authority.supportClaimAuthorized, false);
@@ -77,6 +98,51 @@ test('rejects forged or altered signed transaction before invoking emulator', as
   const fake = fakeScalus();
   await assert.rejects(() => runCardanoScalusInitializeTrial({ ...fixture(), signedTransactionCborHex: '84a0a0f4', scalusApi: fake.api }), /digest/);
   assert.equal(fake.calls.length, 0);
+});
+
+test('rejects a newly signed transaction body that differs from the frozen pre-submit body', async () => {
+  const inputs=fixture();
+  const alternate=serializedTransaction('6000000');
+  inputs.signedTransactionCborHex=alternate.signedTransactionCborHex;
+  inputs.preSubmitEvidence.signedTransaction.sha256=createHash('sha256')
+    .update(Buffer.from(alternate.signedTransactionCborHex,'hex')).digest('hex');
+  inputs.preSubmitEvidence.signedTransaction.bytes=alternate.signedTransactionCborHex.length/2;
+  inputs.preSubmitEvidence.preSubmitSha256=hashCardanoEvidence(
+    Object.fromEntries(Object.entries(inputs.preSubmitEvidence).filter(([key])=>key!=='preSubmitSha256'))
+  );
+  const fake=fakeScalus();
+  await assert.rejects(
+    () => runCardanoScalusInitializeTrial({...inputs,scalusApi:fake.api}),
+    /body differs from frozen pre-submit transaction body/
+  );
+  assert.equal(fake.calls.length,0);
+});
+
+test('retains the non-captured v2 Scalus regression harness without treating it as frozen production evidence', async () => {
+  const inputs=fixture();
+  const evidence=inputs.preSubmitEvidence;
+  evidence.schema='omegavault.cardano.preprod-initialize-pre-submit-evidence.v2';
+  delete evidence.unsignedTransactionBodyCborHex;
+  evidence.preSubmitSha256=hashCardanoEvidence(
+    Object.fromEntries(Object.entries(evidence).filter(([key])=>key!=='preSubmitSha256'))
+  );
+  const fake=fakeScalus();
+  const output=await runCardanoScalusInitializeTrial({...inputs,scalusApi:fake.api});
+  assert.equal(output.acceptedByEmulator,true);
+  assert.equal(output.authority.completeCurrentPreprodPhaseOneValidated,false);
+});
+
+test('requires captured legacy pre-submit evidence to be regenerated with the frozen-body schema', async () => {
+  const inputs=fixture();
+  inputs.preSubmitEvidence.schema='omegavault.cardano.preprod-initialize-pre-submit-evidence.v2';
+  inputs.preSubmitEvidence.currentProtocolSnapshot={schemaVersion:2};
+  inputs.preSubmitEvidence.preSubmitSha256=hashCardanoEvidence(
+    Object.fromEntries(Object.entries(inputs.preSubmitEvidence).filter(([key])=>key!=='preSubmitSha256'))
+  );
+  await assert.rejects(
+    () => runCardanoScalusInitializeTrial({...inputs,scalusApi:fakeScalus().api}),
+    /Preprod initialize evidence v3 required/
+  );
 });
 
 test('rejects pre-submit evidence that asserts submission or phase-one authority', async () => {
@@ -108,13 +174,13 @@ test('rejects mismatched ledger snapshot and input drift', async () => {
 });
 
 test('rejects malformed byte length and slot intervals, preserves deterministic simulated slot', async () => {
-  for (const mutation of [
-    x => { x.preSubmitEvidence.signedTransaction.bytes = 99; },
-    x => { x.preSubmitEvidence.validity.upperSlot = 100; },
-    x => { x.simulatedSlot = 1.5; }
+  for (const [label,mutation] of [
+    ['byte length',x => { x.preSubmitEvidence.signedTransaction.bytes += 1; }],
+    ['slot interval',x => { x.preSubmitEvidence.validity.upperSlot = 100; }],
+    ['simulated slot',x => { x.simulatedSlot = 1.5; }]
   ]) {
     const inputs = fixture(); mutation(inputs);
-    await assert.rejects(() => runCardanoScalusInitializeTrial({ ...inputs, scalusApi: fakeScalus().api }));
+    await assert.rejects(() => runCardanoScalusInitializeTrial({ ...inputs, scalusApi: fakeScalus().api }), undefined, label);
   }
   const fake = fakeScalus({ isSuccess: false, error: 'ExpiredValidityInterval' });
   const output = await runCardanoScalusInitializeTrial({ ...fixture(), simulatedSlot: 199, scalusApi: fake.api });

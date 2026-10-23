@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { hashCardanoEvidence } from './evidence-binding.js';
 
 const TX_HASH = /^[0-9a-f]{64}$/i;
@@ -37,8 +38,15 @@ export async function runCardanoScalusInitializeTrial({
   scalusApi = null
 }) {
   const evidence = preSubmitEvidence;
-  if (evidence?.schema !== 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v2' ||
-      evidence.network !== 'preprod' || evidence.action !== 'initialize') fail('Preprod initialize evidence v2 required');
+  const capturedEvidence = evidence?.schema === 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v3';
+  // The repository's synthetic adapter fixture predates the captured-body commitment.
+  const syntheticLegacyEvidence = evidence?.schema === 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v2' &&
+    evidence.currentProtocolSnapshot == null;
+  if ((!capturedEvidence && !syntheticLegacyEvidence) ||
+      evidence.network !== 'preprod' || evidence.action !== 'initialize') fail('Preprod initialize evidence v3 required');
+  if (syntheticLegacyEvidence && evidence.unsignedTransactionBodyCborHex != null) {
+    fail('legacy synthetic evidence cannot carry an unversioned frozen transaction body');
+  }
   if (!TX_HASH.test(evidence.preSubmitSha256 ?? '') ||
       hashCardanoEvidence(Object.fromEntries(Object.entries(evidence).filter(([key]) => key !== 'preSubmitSha256'))) !== evidence.preSubmitSha256 ||
       hashCardanoEvidence(evidence.ledgerInputSnapshot) !== evidence.ledgerInputSnapshotSha256) fail('pre-submit or ledger snapshot evidence digest mismatch');
@@ -50,6 +58,30 @@ export async function runCardanoScalusInitializeTrial({
   if (typeof signedTransactionCborHex !== 'string' || !CBOR_HEX.test(signedTransactionCborHex)) fail('canonical signed CBOR hex required');
   const normalizedHex = signedTransactionCborHex.toLowerCase();
   if (digestHex(normalizedHex) !== evidence.signedTransaction?.sha256) fail('signed transaction bytes differ from bound pre-submit digest');
+  let signedTransaction;
+  try {
+    signedTransaction = Cardano.Transaction.from_hex(normalizedHex);
+  } catch {
+    fail('signed transaction CBOR could not be decoded');
+  }
+  if (signedTransaction.to_hex().toLowerCase() !== normalizedHex) fail('signed transaction CBOR is not canonical');
+  if (capturedEvidence || evidence.unsignedTransactionBodyCborHex != null) {
+    if (typeof evidence.unsignedTransactionBodyCborHex !== 'string' ||
+        !CBOR_HEX.test(evidence.unsignedTransactionBodyCborHex)) {
+      fail('frozen pre-submit transaction body is missing or malformed');
+    }
+    const frozenBodyHex = evidence.unsignedTransactionBodyCborHex.toLowerCase();
+    let frozenBody;
+    try {
+      frozenBody = Cardano.TransactionBody.from_hex(frozenBodyHex);
+    } catch {
+      fail('frozen pre-submit transaction body could not be decoded');
+    }
+    if (frozenBody.to_hex().toLowerCase() !== frozenBodyHex) fail('frozen pre-submit transaction body is not canonical');
+    if (signedTransaction.body().to_hex().toLowerCase() !== frozenBodyHex) {
+      fail('signed transaction body differs from frozen pre-submit transaction body');
+    }
+  }
   const snapshot = evidence.ledgerInputSnapshot;
   if (snapshot?.source !== 'read-only-ogmios-queryLedgerState/utxo' ||
       !same(snapshot.tip, evidence.currentTip)) fail('current ledger UTxOs not bound to same stable tip');

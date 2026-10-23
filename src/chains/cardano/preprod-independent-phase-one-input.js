@@ -121,7 +121,7 @@ export function createCardanoPreprodIndependentPhaseOneInput({
   if (witness.schema !== 'omegavault.cardano.preprod-initialize-wallet-witness-evidence.v1' || witness.network !== 'preprod' || witness.action !== 'initialize') {
     throw new Error('Expected a verified Cardano Preprod initialize owner-witness record.');
   }
-  if (preSubmit.schema !== 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v2' || preSubmit.network !== 'preprod' || preSubmit.action !== 'initialize') {
+  if (preSubmit.schema !== 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v3' || preSubmit.network !== 'preprod' || preSubmit.action !== 'initialize') {
     throw new Error('Expected a Cardano Preprod initialize pre-submit freshness record.');
   }
   const witnessDigest = assertDigest(witness, 'witnessEvidenceSha256', 'witnessEvidence');
@@ -213,6 +213,13 @@ export function createCardanoPreprodIndependentPhaseOneInput({
   // interval directly with the fresh UTxO/validity commitments. Matching
   // document digests alone cannot prove those describe the signed body.
   const signedBody = signedTransaction.body();
+  const frozenBodyHex = bytes(
+    preSubmit.unsignedTransactionBodyCborHex,
+    'preSubmitEvidence.unsignedTransactionBodyCborHex'
+  );
+  if (signedBody.to_hex().toLowerCase() !== frozenBodyHex) {
+    throw new Error('Signed initialize body does not match the frozen pre-submit transaction body.');
+  }
   const unsupportedBodyFields = [
     ['reference inputs', signedBody.reference_inputs()],
     ['certificates', signedBody.certs()],

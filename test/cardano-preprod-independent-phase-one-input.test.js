@@ -13,6 +13,7 @@ function serializedFixtureTransaction({
   changeLovelace='1800000',
   collateralReturnLovelace='4500000',
   totalCollateralLovelace='500000',
+  vaultAddressOverride=null,
   changeAddressOverride=null,
   collateralReturnAddressOverride=null,
   includeReferenceInput=false,
@@ -35,7 +36,10 @@ function serializedFixtureTransaction({
     0,Cardano.Credential.from_keyhash(Cardano.Ed25519KeyHash.from_hex('3'.repeat(56)))
   ).to_address();
   outputs.add(Cardano.TransactionOutput.new(
-    vaultAddress, Cardano.Value.new(Cardano.BigNum.from_str('3000000'))
+    vaultAddressOverride
+      ? Cardano.Address.from_bech32(vaultAddressOverride)
+      : vaultAddress,
+    Cardano.Value.new(Cardano.BigNum.from_str('3000000'))
   ));
   if (includeChange) {
     outputs.add(Cardano.TransactionOutput.new(
@@ -107,7 +111,7 @@ function fixture() {
  const snapshot={schemaVersion:2,tip:{blockHash:tip.hash,slot:tip.slot},parameters:{sourceBlockHash:tip.hash}};
  const utxo=(char,index)=>({reference:{transaction:{id:h(char)},index},address:ownerAddress,lovelace:'5000000',valueSha256:h(char),datumPresent:false,referenceScriptPresent:false,stillUnspent:true,exactValuePreserved:true,exactOutputShapePreserved:true});
  const presubmit={
-   schema:'omegavault.cardano.preprod-initialize-pre-submit-evidence.v2',network:'preprod',action:'initialize',
+   schema:'omegavault.cardano.preprod-initialize-pre-submit-evidence.v3',network:'preprod',action:'initialize',
    witnessEvidenceSha256:witness.witnessEvidenceSha256,
    unsignedCandidateSha256:witness.unsignedCandidateSha256,
    unsignedPreflightSha256:witness.unsignedPreflightSha256,
@@ -116,6 +120,7 @@ function fixture() {
    signedTransaction:{sha256:sha,bytes:signed.length/2,feeLovelace:'200000',currentMinimumFeeLovelace:'200000'},
    currentProtocolSnapshot:snapshot,currentProtocolSnapshotSha256:hashCardanoEvidence(snapshot),
    currentProtocolParametersSha256:h('a'),currentTip:tip,
+   unsignedTransactionBodyCborHex:Cardano.Transaction.from_hex(signed).body().to_hex(),
    validity:{lowerSlot:9990,upperSlot:10010,currentTipWithinInterval:true},
    currentInputs:{seed:utxo('1',0),collateral:utxo('2',1)},
    checks:{...checks,completeCurrentInputValuesPreserved:true,completePhaseOneValidated:false},liveActions:{...actions}
@@ -320,7 +325,7 @@ test('accepts the real signed seed, collateral and half-open validity commitment
  assert.equal(out.completePhaseOneValidated,false);
 });
 
-function rebindSignedFixture(x, alternate) {
+function rebindSignedFixture(x, alternate, { updateFrozenBody=true }={}) {
   const newSha=createHash('sha256').update(Buffer.from(alternate.signed,'hex')).digest('hex');
   x.signedTransactionCborHex=alternate.signed;
   x.witnessEvidence.signedTransactionCborHex=alternate.signed;
@@ -331,6 +336,9 @@ function rebindSignedFixture(x, alternate) {
   x.preSubmitEvidence.signedTransaction.sha256=newSha;
   x.preSubmitEvidence.signedTransaction.bytes=alternate.signed.length/2;
   x.preSubmitEvidence.signedTransaction.feeLovelace=alternate.feeLovelace;
+  if(updateFrozenBody) {
+   x.preSubmitEvidence.unsignedTransactionBodyCborHex=Cardano.Transaction.from_hex(alternate.signed).body().to_hex();
+  }
   resign(x.preSubmitEvidence,'preSubmitSha256');
 }
 
@@ -385,6 +393,15 @@ test('independent handoff rejects unbound signed reference inputs',()=>{
  const x=fixture();
  rebindSignedFixture(x,serializedFixtureTransaction({includeReferenceInput:true}));
  assert.throws(()=>create(x),/unsupported reference inputs/);
+});
+
+test('independent handoff rejects an owner-signed body that changes the frozen vault output',()=>{
+ const x=fixture();
+ const alien=Cardano.EnterpriseAddress.new(
+  0,Cardano.Credential.from_keyhash(Cardano.Ed25519KeyHash.from_hex('8'.repeat(56)))
+ ).to_address().to_bech32();
+ rebindSignedFixture(x,serializedFixtureTransaction({vaultAddressOverride:alien}),{updateFrozenBody:false});
+ assert.throws(()=>create(x),/does not match the frozen pre-submit transaction body/);
 });
 
 test('independent handoff rejects unsupported signed body effects',()=>{

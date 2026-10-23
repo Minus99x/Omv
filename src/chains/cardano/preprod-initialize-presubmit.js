@@ -195,7 +195,8 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
   const ledgerInputSnapshotSha256 = hashCardanoEvidence(ledgerInputSnapshotCore);
 
   const signedTx = Cardano.Transaction.from_hex(signedTransactionCborHex);
-  if (signedTx.body().to_hex() !== Cardano.Transaction.from_hex(unsignedCandidate.transaction.cborHex).body().to_hex()) {
+  const unsignedTx = Cardano.Transaction.from_hex(unsignedCandidate.transaction.cborHex);
+  if (signedTx.body().to_hex() !== unsignedTx.body().to_hex()) {
     throw new Error('Signed transaction body no longer matches the frozen unsigned initialize candidate.');
   }
 
@@ -212,7 +213,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
     throw new Error('Signed initialize transaction fee is below the current minimum for its actual serialized size and execution units.');
   }
   const core = Object.freeze({
-    schema: 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v2',
+    schema: 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v3',
     network: 'preprod',
     action: 'initialize',
     witnessEvidenceSha256: witnessEvidence.witnessEvidenceSha256,
@@ -224,6 +225,7 @@ export function createCardanoPreprodInitializePreSubmitEvidence({
     currentProtocolParametersSha256,
     currentProtocolSnapshot,
     currentTip: tip,
+    unsignedTransactionBodyCborHex: unsignedTx.body().to_hex(),
     signedTransaction: Object.freeze({
       sha256: witnessEvidence.signedTransactionSha256,
       bytes: signedTransactionBytes,
