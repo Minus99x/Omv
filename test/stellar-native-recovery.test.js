@@ -527,3 +527,27 @@ test('Stellar recovery planner rejects coerced and imprecise transaction fee inp
   }),/signed 64-bit sequence number/);
   assert.equal(createRecoveryEnvelopePlan({...args,baseFeeStroops:100n}).baseFeeStroops,'100');
 });
+
+test('Stellar classic-asset preflight compares exact seven-decimal stroops and fails closed on missing capacity', () => {
+  const asset={code:'USDC',issuer:G(6)};
+  const args={
+    asset,vaultTrustline:{exists:true},
+    rescueTrustline:{exists:true,authorized:true,limit:'0.0000002',balance:'0.0000001'},
+    vaultBalance:'0.0000001',paymentAmount:'0.0000001'
+  };
+  assert.equal(createClassicAssetPreflight(args).ready,true);
+  for(const change of [
+    {rescueTrustline:{exists:true,authorized:true,limit:'0.0000001',balance:'0.0000001'}},
+    {rescueTrustline:{exists:true,authorized:true}},
+    {rescueTrustline:{exists:true,limit:'1',balance:'0'}},
+    {rescueTrustline:{exists:'true',authorized:true,limit:'1',balance:'0'}},
+    {vaultBalance:'0.0000000'},
+    {paymentAmount:0.0000001},
+    {paymentAmount:[0.0000001]},
+    {paymentAmount:'0.00000011'},
+    {vaultBalance:Number.MAX_SAFE_INTEGER+1}
+  ]) {
+    assert.equal(createClassicAssetPreflight({...args,...change}).ready,false,JSON.stringify(change));
+  }
+  assert.equal(createClassicAssetPreflight({...args,paymentAmount:'0.0000001'}).ready,true);
+});

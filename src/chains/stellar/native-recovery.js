@@ -357,20 +357,51 @@ export function estimateReserveImpact({ baseReserveStroops, existingSubentries =
   });
 }
 
+function nonnegativeStellarAmountStroops(value, label) {
+  if (!['string', 'number', 'bigint'].includes(typeof value) ||
+      (typeof value === 'number' && !Number.isSafeInteger(value))) {
+    throw new TypeError(label + ' must be an exact primitive decimal amount.');
+  }
+  const match = /^(0|[1-9]\d*)(?:\.(\d{1,7}))?$/.exec(String(value));
+  if (!match) throw new TypeError(label + ' must be a non-negative decimal with at most seven fractional digits.');
+  const stroops = BigInt(match[1]) * 10000000n + BigInt((match[2] ?? '').padEnd(7, '0'));
+  if (stroops > MAX_INT64) throw new TypeError(label + ' exceeds the Stellar signed 64-bit amount range.');
+  return stroops;
+}
+
 export function createClassicAssetPreflight({ asset, vaultTrustline, rescueTrustline, vaultBalance, paymentAmount }) {
   const normalized = normalizeAsset(asset);
   if (normalized.type === 'native') throw new TypeError('Classic-asset preflight requires a non-native Stellar asset.');
-  const amount = Number(paymentAmount);
-  const balance = Number(vaultBalance);
   const errors = [];
-  if (!vaultTrustline?.exists) errors.push('Vault trustline missing.');
-  if (!rescueTrustline?.exists) errors.push('Rescue trustline missing.');
-  if (rescueTrustline?.authorized === false) errors.push('Rescue trustline is not authorized by issuer.');
-  if (!Number.isFinite(amount) || amount <= 0 || amount > balance) errors.push('Recovery payment amount exceeds or does not validly fit vault balance.');
-  if (Number(rescueTrustline?.limit ?? Infinity) - Number(rescueTrustline?.balance ?? 0) < amount) errors.push('Rescue trustline limit does not have enough capacity.');
+  if (vaultTrustline?.exists !== true) errors.push('Vault trustline missing.');
+  if (rescueTrustline?.exists !== true) errors.push('Rescue trustline missing.');
+  if (rescueTrustline?.exists === true && rescueTrustline?.authorized !== true) {
+    errors.push('Rescue trustline is not positively authorized by issuer.');
+  }
+  let amount, balance, rescueLimit, rescueBalance;
+  try { amount = amountToStroops(paymentAmount, 'paymentAmount'); }
+  catch { errors.push('Recovery payment amount must be an exact positive seven-decimal Stellar amount.'); }
+  try { balance = nonnegativeStellarAmountStroops(vaultBalance, 'vaultBalance'); }
+  catch { errors.push('Vault balance must be an exact non-negative seven-decimal Stellar amount.'); }
+  if (rescueTrustline?.exists === true) {
+    try {
+      rescueLimit = nonnegativeStellarAmountStroops(rescueTrustline.limit, 'rescueTrustline.limit');
+      rescueBalance = nonnegativeStellarAmountStroops(rescueTrustline.balance, 'rescueTrustline.balance');
+    } catch {
+      errors.push('Rescue trustline limit and balance must be exact seven-decimal Stellar amounts.');
+    }
+  }
+  if (amount !== undefined && balance !== undefined && amount > balance) {
+    errors.push('Recovery payment amount exceeds vault balance.');
+  }
+  if (rescueLimit !== undefined && rescueBalance !== undefined) {
+    if (rescueBalance > rescueLimit) errors.push('Rescue trustline balance exceeds its declared limit.');
+    else if (amount !== undefined && amount > rescueLimit - rescueBalance) {
+      errors.push('Rescue trustline limit does not have enough capacity.');
+    }
+  }
   return Object.freeze({ asset: normalized, ready: errors.length === 0, errors: Object.freeze(errors) });
 }
-
 
 function decoratedSignatureValue(signature) {
   const value = signature?.signature;
