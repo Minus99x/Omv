@@ -37,6 +37,7 @@ function optionalLedger(value, label) {
   }
   const number = Number(value);
   if (!Number.isSafeInteger(number) || number < 1) throw new TypeError(`${label} must be a positive safe integer.`);
+  if (number > 0xffffffff) throw new RangeError(`${label} exceeds uint32.`);
   return number;
 }
 
@@ -49,6 +50,7 @@ function integerString(value, label, { positive = false } = {}) {
   }
   const text = String(value ?? '');
   if (!/^\d+$/.test(text)) throw new TypeError(`${label} must be a non-negative integer string.`);
+  if (positive && BigInt(text) > 0xffffffffn) throw new RangeError(`${label} exceeds uint32.`);
   if (positive && BigInt(text) === 0n) throw new TypeError(`${label} must be greater than zero.`);
   return text;
 }

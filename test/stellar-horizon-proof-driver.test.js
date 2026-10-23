@@ -334,15 +334,15 @@ test('Horizon account proof preserves exact large sequences and optional sequenc
 function precisionFinalityFixture() {
   return {
     transactionResponse: {
-      hash: 'aa'.repeat(32), successful: true, ledger: '9007199254740992',
+      hash: 'aa'.repeat(32), successful: true, ledger: '4294967295',
       created_at: '2026-10-03T00:04:00Z'
     },
     ledgerResponse: {
-      sequence: '9007199254740992', hash: 'bb'.repeat(32),
+      sequence: '4294967295', hash: 'bb'.repeat(32),
       closed_at: '2026-10-03T00:05:00Z'
     },
     expectedTransactionHashHex: 'aa'.repeat(32),
-    expectedLedger: '9007199254740992'
+    expectedLedger: '4294967295'
   };
 }
 
@@ -471,7 +471,7 @@ for (const [field, normalizedField] of [
   });
 
   test('Horizon account preserves exact and absent optional ledger: ' + field, () => {
-    for (const value of [1, 501, '501', 501n, Number.MAX_SAFE_INTEGER, String(Number.MAX_SAFE_INTEGER)]) {
+    for (const value of [1, 501, '501', 501n, 0xffffffff, String(0xffffffff)]) {
       const result = normalizeHorizonAccountSnapshot({
         accountResponse: accountResponse({ [field]: value })
       });
@@ -641,5 +641,16 @@ test('Horizon balance evidence requires a valid account even without expectedAcc
 test('Horizon account sequences cannot exceed the signed XDR range', () => {
  assert.equal(normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence:'9223372036854775807'})}).sequence,'9223372036854775807');
  for(const sequence of ['9223372036854775808',9223372036854775808n])assert.throws(()=>normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence})}),/int64/);
+});
+
+
+
+test('Horizon proof rejects impossible ledger numbers across inclusion and snapshots', () => {
+ for(const value of ['4294967296',4294967296n,4294967296]) {
+  for(const field of ['sequence_ledger','last_modified_ledger']) assert.throws(()=>normalizeHorizonAccountSnapshot({accountResponse:accountResponse({[field]:value})}),/uint32/);
+  assert.throws(()=>normalizeHorizonSubmissionSuccess({response:{hash:'aa'.repeat(32),successful:true,created_at:'2026-10-03T00:04:00Z',ledger:value}}),/uint32/);
+ }
+ const args=precisionFinalityFixture();args.transactionResponse.ledger='4294967295';args.ledgerResponse.sequence='4294967295';args.expectedLedger='4294967295';
+ assert.equal(normalizeHorizonFinality(args).ledger,'4294967295');
 });
 
