@@ -65,6 +65,36 @@ test('Stellar recovery envelope fixes rescue operations and documents bounded as
   assert.ok(plan.limitations.some(x => /immutable/i.test(x)));
 });
 
+test('Stellar recovery verifier binds the actual envelope fee to the planned fee', () => {
+  const plan = createRecoveryEnvelopePlan({
+    vaultAccount:G(1), rescueDestination:G(2), currentSequence:'1000', inactivitySeconds:60,
+    contacts:[G(3), G(4)], threshold:2, assets:['native'], amounts:{ native:'10' },
+    baseFeeStroops:'125'
+  });
+  const artifact = buildRecoveryEnvelopeArtifact(plan);
+  assert.equal(verifyRecoveryEnvelopeArtifact({ plan, artifact }).valid, true);
+  assert.equal(artifact.totalFeeStroops, '125');
+
+  const inconsistentPlan = { ...plan, feeStroops:'126' };
+  const inconsistent = verifyRecoveryEnvelopeArtifact({ plan:inconsistentPlan, artifact });
+  assert.equal(inconsistent.valid, false);
+  assert.ok(inconsistent.errors.some(error => /base-fee fields do not match/i.test(error)));
+
+  const alteredPlan = { ...plan, baseFeeStroops:'126', feeStroops:'126' };
+  const alteredArtifact = buildRecoveryEnvelopeArtifact(alteredPlan);
+  const altered = verifyRecoveryEnvelopeArtifact({ plan, artifact:alteredArtifact });
+  assert.equal(altered.valid, false);
+  assert.ok(altered.errors.some(error => /fee does not match the planned/i.test(error)));
+
+  const signed = TransactionBuilder.fromXdr(alteredArtifact.transactionXdr, alteredPlan.networkPassphrase);
+  signed.sign(KP(3), KP(4));
+  const signedResult = verifySignedRecoveryEnvelopeArtifact({
+    plan, artifact:alteredArtifact, signedTransactionXdr:signed.toXdr()
+  });
+  assert.equal(signedResult.valid, false);
+  assert.ok(signedResult.errors.some(error => /fee does not match the planned/i.test(error)));
+});
+
 test('Stellar fee bump separates fee payer without altering the inner transaction', () => {
   const plan = createFeeBumpSponsorPlan({ feeAccount: G(7), innerEnvelopeHash: 'ab'.repeat(32), maxFeeStroops: '10000' });
   assert.equal(plan.mode, 'fee-bump');
@@ -242,6 +272,30 @@ test('Stellar heartbeat artifact round-trips the exact sequence bump', () => {
   assert.match(artifact.transactionHashHex, /^[a-f0-9]{64}$/);
   const verified = verifyHeartbeatEnvelopeArtifact({ plan, artifact });
   assert.equal(verified.valid, true, verified.errors.join('; '));
+});
+
+test('Stellar heartbeat verifier binds the actual envelope fee to the planned fee', () => {
+  const plan = createHeartbeatPlan({ vaultAccount:G(1), currentSequence:'1000', baseFeeStroops:'125' });
+  const artifact = buildHeartbeatEnvelopeArtifact({
+    vaultAccount:G(1), currentSequence:'1000', baseFeeStroops:'125'
+  });
+  assert.equal(verifyHeartbeatEnvelopeArtifact({ plan, artifact }).valid, true);
+  assert.equal(artifact.totalFeeStroops, '125');
+
+  const alteredArtifact = buildHeartbeatEnvelopeArtifact({
+    vaultAccount:G(1), currentSequence:'1000', baseFeeStroops:'126'
+  });
+  const altered = verifyHeartbeatEnvelopeArtifact({ plan, artifact:alteredArtifact });
+  assert.equal(altered.valid, false);
+  assert.ok(altered.errors.some(error => /fee does not match the planned/i.test(error)));
+
+  const signed = TransactionBuilder.fromXdr(alteredArtifact.transactionXdr, alteredArtifact.networkPassphrase);
+  signed.sign(KP(1));
+  const signedResult = verifySignedHeartbeatEnvelopeArtifact({
+    plan, artifact:alteredArtifact, signedTransactionXdr:signed.toXdr()
+  });
+  assert.equal(signedResult.valid, false);
+  assert.ok(signedResult.errors.some(error => /fee does not match the planned/i.test(error)));
 });
 
 test('Stellar signed heartbeat requires exactly the vault owner signature', () => {

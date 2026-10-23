@@ -35,14 +35,17 @@ export function chooseRecoverySequence({ currentSequence, gap = 2147483648n, saf
   });
 }
 
-export function createHeartbeatPlan({ vaultAccount, currentSequence }) {
+export function createHeartbeatPlan({ vaultAccount, currentSequence, baseFeeStroops = '100' }) {
   assertAccount(vaultAccount, 'vaultAccount');
   const current = asSequence(currentSequence, 'currentSequence');
   if (current + 2n > MAX_INT64) throw new Error('Sequence number is too high for a heartbeat bump.');
+  const baseFee = asSequence(baseFeeStroops, 'baseFeeStroops');
+  if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
   return Object.freeze({
     networkRef: 'stellar:testnet',
     sourceAccount: vaultAccount,
     transactionSequence: (current + 1n).toString(),
+    baseFeeStroops: baseFee.toString(),
     operations: Object.freeze([{ type: 'bumpSequence', bumpTo: (current + 2n).toString() }]),
     livenessEffect: 'Successful application changes the source account sequence and therefore resets minAccountSequenceAge for the pre-authorized recovery transaction.',
     requiresOwnerAuthorization: true
@@ -246,6 +249,22 @@ export function verifyRecoveryEnvelopeArtifact({ plan, artifact }) {
   if (transaction.minAccountSequenceAge?.toString() !== plan.preconditions.minAccountSequenceAge) errors.push('Minimum account sequence age does not match plan.');
   const actualExtraSigners = (transaction.extraSigners ?? []).map(signer => SignerKey.encodeSignerKey(signer));
   if (JSON.stringify(actualExtraSigners) !== JSON.stringify(plan.signerPolicy.requiredExtraSigners)) errors.push('Required extra signers do not match plan.');
+  let baseFee;
+  try {
+    baseFee = asSequence(plan.baseFeeStroops ?? plan.feeStroops, 'plan.baseFeeStroops');
+    if (baseFee <= 0n) throw new TypeError('plan.baseFeeStroops must be positive.');
+    if (plan.feeStroops != null && asSequence(plan.feeStroops, 'plan.feeStroops') !== baseFee) {
+      errors.push('Recovery plan base-fee fields do not match.');
+    }
+    const totalFee = baseFee * BigInt(transaction.operations.length);
+    if (transaction.fee !== totalFee.toString() ||
+        artifact.baseFeeStroops !== baseFee.toString() ||
+        artifact.totalFeeStroops !== totalFee.toString()) {
+      errors.push('Recovery transaction fee does not match the planned base and total fees.');
+    }
+  } catch (error) {
+    errors.push(error.message);
+  }
   if (transaction.operations.length !== plan.operations.length) errors.push('Operation count does not match plan.');
 
   transaction.operations.forEach((operation, index) => {
@@ -498,10 +517,10 @@ export function buildHeartbeatEnvelopeArtifact({
   baseFeeStroops = '100',
   networkPassphrase = TESTNET_PASSPHRASE
 }) {
-  const plan = createHeartbeatPlan({ vaultAccount, currentSequence });
   if (networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Stellar heartbeat proof is currently testnet-only; networkPassphrase must match Stellar Testnet.');
-  const baseFee = BigInt(baseFeeStroops);
+  const baseFee = asSequence(baseFeeStroops, 'baseFeeStroops');
   if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
+  const plan = createHeartbeatPlan({ vaultAccount, currentSequence, baseFeeStroops: baseFee.toString() });
   const source = new Account(plan.sourceAccount, String(currentSequence));
   const transaction = new TransactionBuilder(source, {
     fee: baseFee.toString(),
@@ -559,6 +578,19 @@ export function verifyHeartbeatEnvelopeArtifact({ plan, artifact }) {
   if (recomputedHashHex !== artifact.transactionHashHex) errors.push('Heartbeat transaction hash does not match XDR.');
   if (transaction.source !== plan.sourceAccount) errors.push('Heartbeat source account does not match plan.');
   if (transaction.sequence !== plan.transactionSequence) errors.push('Heartbeat transaction sequence does not match plan.');
+  let baseFee;
+  try {
+    baseFee = asSequence(plan.baseFeeStroops, 'plan.baseFeeStroops');
+    if (baseFee <= 0n) throw new TypeError('plan.baseFeeStroops must be positive.');
+    const totalFee = baseFee;
+    if (transaction.fee !== totalFee.toString() ||
+        artifact.baseFeeStroops !== baseFee.toString() ||
+        artifact.totalFeeStroops !== totalFee.toString()) {
+      errors.push('Heartbeat transaction fee does not match the planned base and total fees.');
+    }
+  } catch (error) {
+    errors.push(error.message);
+  }
   if (transaction.operations.length !== 1 || operation?.type !== 'bumpSequence') errors.push('Heartbeat must contain exactly one bumpSequence operation.');
   else if (String(operation.bumpTo) !== plan.operations[0].bumpTo) errors.push('Heartbeat bump target does not match plan.');
   if (artifact.sourceAccount !== plan.sourceAccount || artifact.transactionSequence !== plan.transactionSequence || artifact.bumpTo !== plan.operations[0].bumpTo) {
