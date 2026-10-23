@@ -38,12 +38,7 @@ function minAdaCheck(output, parameters, label) {
 
 function valueSizeCheck(output, parameters, label) {
   if (parameters.maxValueSize == null) {
-    return Object.freeze({
-      serializedValueBytes: output.amount().to_bytes().length,
-      maxValueSize: null,
-      parameterAvailable: false,
-      satisfied: false
-    });
+    throw new Error('Unsigned initialize preflight requires the current Cardano maxValueSize protocol parameter.');
   }
   if (!Number.isSafeInteger(parameters.maxValueSize) || parameters.maxValueSize < 1) {
     throw new TypeError('maxValueSize must be a positive safe integer when present.');

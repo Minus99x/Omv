@@ -19,6 +19,7 @@ import { createCardanoPreprodUnsignedInitializePreflight, verifyCardanoPreprodUn
 const protocolSnapshot = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
 protocolSnapshot.source.independentSourceCount = 2;
 protocolSnapshot.promotion.independentlyConfirmed = true;
+protocolSnapshot.parameters.maxValueSize = 5000;
 const parameters = normalizeCardanoProtocolParameterSnapshot(protocolSnapshot);
 
 const fixtureEvidence = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_APPLIED_FIXTURE_0.6.12.json', import.meta.url), 'utf8'));
@@ -197,6 +198,41 @@ test('Cardano unsigned initialize preflight verifies real-input structure withou
     recoveryConfig
   });
   assert.equal(rejected.valid, false);
+});
+
+test('Cardano unsigned initialize preflight rejects missing or insufficient current maxValueSize evidence', () => {
+  const appliedIdentity = identity();
+  const utxoBindingEvidence = binding(appliedIdentity);
+  const mintBudget = { memory: '101167', steps: '30755345' };
+  const candidate = buildCardanoPreprodRealInitializeCandidate({
+    appliedValidatorIdentity: appliedIdentity,
+    utxoBindingEvidence,
+    parameters,
+    recoveryConfig,
+    evaluationMode: false,
+    mintBudget
+  });
+
+  assert.throws(
+    () => createCardanoPreprodUnsignedInitializePreflight({
+      candidate,
+      appliedValidatorIdentity: appliedIdentity,
+      utxoBindingEvidence,
+      parameters: Object.freeze({ ...parameters, maxValueSize: null }),
+      recoveryConfig
+    }),
+    /requires the current Cardano maxValueSize/
+  );
+  assert.throws(
+    () => createCardanoPreprodUnsignedInitializePreflight({
+      candidate,
+      appliedValidatorIdentity: appliedIdentity,
+      utxoBindingEvidence,
+      parameters: Object.freeze({ ...parameters, maxValueSize: 1 }),
+      recoveryConfig
+    }),
+    /serialized value exceeds current maxValueSize/
+  );
 });
 
 test('Cardano real initialize candidate verifier reproduces exact evidence and rejects tampering', () => {

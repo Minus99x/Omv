@@ -23,6 +23,7 @@ import {
 const protocolSnapshot = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json', import.meta.url), 'utf8'));
 protocolSnapshot.source.independentSourceCount = 2;
 protocolSnapshot.promotion.independentlyConfirmed = true;
+protocolSnapshot.parameters.maxValueSize = 5000;
 const parameters = normalizeCardanoProtocolParameterSnapshot(protocolSnapshot);
 const fixtureEvidence = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_APPLIED_FIXTURE_0.6.12.json', import.meta.url), 'utf8'));
 const beaconBlueprint = JSON.parse(readFileSync(new URL('../validators/cardano/fixtures/state-beacon.applied.json', import.meta.url), 'utf8'));
