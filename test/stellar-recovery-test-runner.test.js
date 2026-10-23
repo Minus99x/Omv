@@ -414,3 +414,37 @@ test('Stellar failed-applied proof runner rejects signer-survival after applied 
     /did not consume the matching preAuthTx signer/i
   );
 });
+
+
+test('Stellar proof runner rejects unsafe/coercible account sequence before any envelope submission', async () => {
+  const inputs = proofInputs();
+  for (const sequence of [Number.MAX_SAFE_INTEGER + 1, true, {}, ['1001'], '01001', '1e3', 1.5]) {
+    const fake = fakeDriver(inputs, {
+      readAccountSnapshot({ accountRead }) {
+        return { ...readySnapshot(inputs, accountRead === 1 ? '1001' : '1003'), sequence };
+      }
+    });
+    await assert.rejects(
+      () => runStellarTestnetRecoveryProof({ ...inputs, driver:fake.driver }),
+      /initialAccount\.sequence must (use an exact integer string|be a canonical non-negative integer)/
+    );
+    assert.equal(fake.calls.some(call => call[0] === 'submitEnvelope'), false);
+  }
+});
+
+test('Stellar proof runner rejects unsafe/coercible balance evidence before eligible recovery submission', async () => {
+  const inputs = proofInputs();
+  for (const value of [Number.MAX_SAFE_INTEGER + 1, true, {}, ['1000000000'], '01000000000', 1.5]) {
+    const fake = fakeDriver(inputs, {
+      readBalanceUnits({ account, assetKey, count }) {
+        if (account === inputs.recoveryPlan.sourceAccount && assetKey === 'native' && count === 1) return value;
+        return null;
+      }
+    });
+    await assert.rejects(
+      () => runStellarTestnetRecoveryProof({ ...inputs, driver:fake.driver }),
+      /before balance for native must (use an exact integer string|be a canonical non-negative integer)/
+    );
+    assert.equal(fake.calls.some(call => call[0] === 'submitEnvelope' && call[1] === 'eligible-recovery-fee-bump'), false);
+  }
+});
