@@ -501,3 +501,14 @@ test('Stellar does not turn coercible or imprecise recovery amounts into spendab
   const valid=createRecoveryEnvelopePlan({...args,amounts:{native:'10.25'}});
   assert.equal(valid.operations[0].amount,'10.2500000');
 });
+
+test('Stellar fee sponsor rejects coercible and out-of-range fee-bump caps', () => {
+  const args={feeAccount:G(7),innerEnvelopeHash:'ab'.repeat(32)};
+  for(const bad of [[1000],new Number(1000),{toString:()=> '1000'},true,Number.MAX_SAFE_INTEGER+1]) {
+    assert.throws(()=>createFeeBumpSponsorPlan({...args,maxFeeStroops:bad}),/exact primitive non-negative integer sequence/);
+  }
+  assert.throws(()=>createFeeBumpSponsorPlan({
+    ...args,maxFeeStroops:'9223372036854775808'
+  }),/signed 64-bit sequence number/);
+  assert.equal(createFeeBumpSponsorPlan({...args,maxFeeStroops:1000n}).maxFeeStroops,'1000');
+});
