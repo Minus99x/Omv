@@ -2,25 +2,39 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { createHash } from 'node:crypto';
+import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import { runCardanoScalusInitializeTrial } from '../src/chains/cardano/scalus-local-validation.js';
 
-const address = 'addr_test1' + 's'.repeat(30);
+const ownerPrivateKey = Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({ length: 32 }, () => 9));
+const ownerKeyHash = ownerPrivateKey.to_public().hash();
+const ownerAddress = Cardano.EnterpriseAddress.new(
+  0, Cardano.Credential.from_keyhash(ownerKeyHash)
+).to_address().to_bech32();
 const ref = (id, index) => ({ transaction: { id: id.repeat(64) }, index });
-const input = (id, amount) => ({ reference: ref(id, 0), address, value: { ada: { lovelace: amount } }, datum: null, datumHash: null, script: null });
-function serializedTransaction(outputLovelace='5000000') {
-  const keyHash=Cardano.Ed25519KeyHash.from_hex('1'.repeat(56));
-  const ownerAddress=Cardano.EnterpriseAddress.new(0,Cardano.Credential.from_keyhash(keyHash)).to_address();
+const input = (id, amount) => ({ reference: ref(id, 0), address: ownerAddress, value: { ada: { lovelace: amount } }, datum: null, datumHash: null, script: null });
+function serializedTransaction(outputLovelace='5000000', signingKey=ownerPrivateKey, networkId=0) {
   const inputs=Cardano.TransactionInputs.new();
   inputs.add(Cardano.TransactionInput.new(Cardano.TransactionHash.from_hex('11'.repeat(32)),0));
   const outputs=Cardano.TransactionOutputs.new();
-  outputs.add(Cardano.TransactionOutput.new(ownerAddress,Cardano.Value.new(Cardano.BigNum.from_str(outputLovelace))));
+  outputs.add(Cardano.TransactionOutput.new(
+    Cardano.EnterpriseAddress.new(0,Cardano.Credential.from_keyhash(ownerKeyHash)).to_address(),
+    Cardano.Value.new(Cardano.BigNum.from_str(outputLovelace))
+  ));
   const body=Cardano.TransactionBody.new_tx_body(inputs,outputs,Cardano.BigNum.from_str('200000'));
-  body.set_network_id(Cardano.NetworkId.testnet());
+  body.set_network_id(networkId === 0 ? Cardano.NetworkId.testnet() : Cardano.NetworkId.mainnet());
   body.set_validity_start_interval_bignum(Cardano.BigNum.from_str('100'));
   body.set_ttl(Cardano.BigNum.from_str('200'));
+  const requiredSigners=Cardano.Ed25519KeyHashes.new();
+  requiredSigners.add(ownerKeyHash);
+  body.set_required_signers(requiredSigners);
+  const witnesses=Cardano.TransactionWitnessSet.new();
+  const vkeys=Cardano.Vkeywitnesses.new();
+  const bodyHash=Cardano.TransactionHash.from_bytes(blake2b(body.to_bytes(),{dkLen:32}));
+  vkeys.add(Cardano.make_vkey_witness(bodyHash,signingKey));
+  witnesses.set_vkeys(vkeys);
   return Object.freeze({
-    signedTransactionCborHex:Cardano.Transaction.new(body,Cardano.TransactionWitnessSet.new()).to_hex(),
+    signedTransactionCborHex:Cardano.Transaction.new(body,witnesses).to_hex(),
     unsignedTransactionBodyCborHex:body.to_hex()
   });
 }
@@ -68,6 +82,18 @@ function fakeScalus(result = { isSuccess: true, txHash: 'e'.repeat(64) }) {
     }
   };
 }
+function rebindSignedTransaction(inputs, transaction) {
+  const signedTransactionCborHex=transaction.to_hex();
+  const evidence=inputs.preSubmitEvidence;
+  evidence.unsignedTransactionBodyCborHex=transaction.body().to_hex();
+  evidence.signedTransaction.sha256=createHash('sha256')
+    .update(Buffer.from(signedTransactionCborHex,'hex')).digest('hex');
+  evidence.signedTransaction.bytes=signedTransactionCborHex.length/2;
+  evidence.preSubmitSha256=hashCardanoEvidence(
+    Object.fromEntries(Object.entries(evidence).filter(([key])=>key!=='preSubmitSha256'))
+  );
+  inputs.signedTransactionCborHex=signedTransactionCborHex;
+}
 
 test('offline gate sends exact immutable signed bytes with two bound UTxOs to a local Scalus-compatible emulator', async () => {
   const fake = fakeScalus();
@@ -98,6 +124,81 @@ test('rejects forged or altered signed transaction before invoking emulator', as
   const fake = fakeScalus();
   await assert.rejects(() => runCardanoScalusInitializeTrial({ ...fixture(), signedTransactionCborHex: '84a0a0f4', scalusApi: fake.api }), /digest/);
   assert.equal(fake.calls.length, 0);
+});
+
+test('captured Scalus trial rejects a false transaction validity flag before emulator invocation', async () => {
+  const inputs=fixture();
+  const transaction=Cardano.Transaction.from_hex(inputs.signedTransactionCborHex);
+  transaction.set_is_valid(false);
+  rebindSignedTransaction(inputs,transaction);
+  const fake=fakeScalus();
+  await assert.rejects(
+    () => runCardanoScalusInitializeTrial({...inputs,scalusApi:fake.api}),
+    /validity flag must be true/
+  );
+  assert.equal(fake.calls.length,0);
+});
+
+test('captured Scalus trial rejects a VKey that does not match the required owner signer', async () => {
+  const inputs=fixture();
+  const wrongKey=Cardano.PrivateKey.from_normal_bytes(Uint8Array.from({length:32},()=>10));
+  const alternate=Cardano.Transaction.from_hex(serializedTransaction('5000000',wrongKey).signedTransactionCborHex);
+  rebindSignedTransaction(inputs,alternate);
+  const fake=fakeScalus();
+  await assert.rejects(
+    () => runCardanoScalusInitializeTrial({...inputs,scalusApi:fake.api}),
+    /does not match its required owner signer/
+  );
+  assert.equal(fake.calls.length,0);
+});
+
+test('captured Scalus trial rejects an owner signature for a changed transaction body', async () => {
+  const inputs=fixture();
+  const transaction=Cardano.Transaction.from_hex(inputs.signedTransactionCborHex);
+  const changedBody=Cardano.Transaction.from_hex(
+    serializedTransaction('6000000').signedTransactionCborHex
+  ).body();
+  const changed=Cardano.Transaction.new(
+    changedBody,
+    transaction.witness_set(),
+    transaction.auxiliary_data()
+  );
+  rebindSignedTransaction(inputs,changed);
+  const fake=fakeScalus();
+  await assert.rejects(
+    () => runCardanoScalusInitializeTrial({...inputs,scalusApi:fake.api}),
+    /owner VKey signature is invalid/
+  );
+  assert.equal(fake.calls.length,0);
+});
+
+test('captured Scalus trial rejects a non-Preprod transaction body before emulator invocation', async () => {
+  const inputs=fixture();
+  const alternate=Cardano.Transaction.from_hex(serializedTransaction('5000000',ownerPrivateKey,1).signedTransactionCborHex);
+  rebindSignedTransaction(inputs,alternate);
+  const fake=fakeScalus();
+  await assert.rejects(
+    () => runCardanoScalusInitializeTrial({...inputs,scalusApi:fake.api}),
+    /must target Preprod\/testnet network id 0/
+  );
+  assert.equal(fake.calls.length,0);
+});
+
+test('captured Scalus trial rejects a missing owner VKey witness before emulator invocation', async () => {
+  const inputs=fixture();
+  const transaction=Cardano.Transaction.from_hex(inputs.signedTransactionCborHex);
+  const unsigned=Cardano.Transaction.new(
+    transaction.body(),
+    Cardano.TransactionWitnessSet.new(),
+    transaction.auxiliary_data()
+  );
+  rebindSignedTransaction(inputs,unsigned);
+  const fake=fakeScalus();
+  await assert.rejects(
+    () => runCardanoScalusInitializeTrial({...inputs,scalusApi:fake.api}),
+    /exactly one required owner signer and one VKey witness/
+  );
+  assert.equal(fake.calls.length,0);
 });
 
 test('rejects a newly signed transaction body that differs from the frozen pre-submit body', async () => {

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
+import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from './evidence-binding.js';
 
 const TX_HASH = /^[0-9a-f]{64}$/i;
@@ -24,6 +25,41 @@ function boundInput(role, snapshot, api) {
     fail(`${role} is not an ADA-only, datum-free, script-free UTxO`);
   }
   return new api.Utxo(txHash.toLowerCase(), outputIndex, address, new api.Value(BigInt(ada)));
+}
+function verifyCapturedOwnerWitness(transaction, seedAddress) {
+  if (transaction.is_valid() !== true) fail('captured initialize transaction validity flag must be true');
+  if (transaction.body().network_id()?.kind() !== Cardano.NetworkId.testnet().kind()) {
+    fail('captured initialize transaction must target Preprod/testnet network id 0');
+  }
+
+  const requiredSigners = transaction.body().required_signers();
+  const vkeys = transaction.witness_set().vkeys();
+  if (!requiredSigners || requiredSigners.len() !== 1 || !vkeys || vkeys.len() !== 1) {
+    fail('captured initialize transaction must contain exactly one required owner signer and one VKey witness');
+  }
+
+  const witness = vkeys.get(0);
+  const publicKey = witness.vkey().public_key();
+  const ownerKeyHash = publicKey.hash().to_hex();
+  if (requiredSigners.get(0).to_hex() !== ownerKeyHash) {
+    fail('captured initialize VKey witness does not match its required owner signer');
+  }
+  if (!publicKey.verify(blake2b(transaction.body().to_bytes(), { dkLen: 32 }), witness.signature())) {
+    fail('captured initialize owner VKey signature is invalid for its transaction body');
+  }
+
+  let address;
+  try {
+    address = Cardano.Address.from_bech32(seedAddress);
+  } catch {
+    fail('captured initialize seed must have a valid Preprod payment-key address');
+  }
+  const paymentCredential = Cardano.BaseAddress.from_address(address)?.payment_cred() ??
+    Cardano.EnterpriseAddress.from_address(address)?.payment_cred() ??
+    Cardano.PointerAddress.from_address(address)?.payment_cred();
+  if (address.network_id() !== 0 || paymentCredential?.to_keyhash()?.to_hex() !== ownerKeyHash) {
+    fail('captured initialize seed payment credential must match its owner VKey on Preprod');
+  }
 }
 
 /**
@@ -81,6 +117,10 @@ export async function runCardanoScalusInitializeTrial({
     if (signedTransaction.body().to_hex().toLowerCase() !== frozenBodyHex) {
       fail('signed transaction body differs from frozen pre-submit transaction body');
     }
+  }
+  if (capturedEvidence) {
+    const seedAddress = evidence.ledgerInputSnapshot?.utxos?.seed?.address;
+    verifyCapturedOwnerWitness(signedTransaction, seedAddress);
   }
   const snapshot = evidence.ledgerInputSnapshot;
   if (snapshot?.source !== 'read-only-ogmios-queryLedgerState/utxo' ||
