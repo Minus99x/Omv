@@ -369,7 +369,8 @@ export function verifyPsbtV2RecoverySignature({ psbt, inputIndex, publicKey, all
   const decoded = readPsbtForRecovery(psbt);
   const normalizedKey = assertHex(publicKey, 'publicKey');
   if (!COMPRESSED_KEY.test(normalizedKey)) throw new TypeError('publicKey must be compressed secp256k1.');
-  if (Array.isArray(allowedPublicKeys) && !allowedPublicKeys.map(key => String(key).toLowerCase()).includes(normalizedKey)) throw new Error('Partial signature key is not an allowed recovery contact.');
+  if (allowedPublicKeys !== null && (!Array.isArray(allowedPublicKeys) || allowedPublicKeys.some(key => typeof key !== 'string' || !COMPRESSED_KEY.test(key)))) throw new TypeError('allowedPublicKeys must be an array of compressed public-key strings or null.');
+  if (Array.isArray(allowedPublicKeys) && !allowedPublicKeys.map(key => key.toLowerCase()).includes(normalizedKey)) throw new Error('Partial signature key is not an allowed recovery contact.');
   const partial = decoded.inputs[inputIndex]?.partialSignatures.find(item => item.publicKey === normalizedKey);
   if (!partial) throw new Error('PSBT does not contain a partial signature for this key.');
   const signature = Buffer.from(partial.signature, 'hex');

@@ -255,3 +255,16 @@ test('PSBT base64 rejects padded aliases while preserving unpadded bytes', () =>
    assert.throws(()=>decodePsbtV2(value),/canonical base64/);
 });
 
+
+
+test('signature verification rejects malformed allowlists before processing signatures', () => {
+ const unsigned=encodePsbtV2(unsignedIntent());
+ const {digest}=createBitcoinWitnessV0Sighash({psbt:unsigned,inputIndex:0});
+ const sig=Buffer.from(secp256k1.sign(digest,contactPrivateKeyA,{prehash:false,lowS:true,format:'der'})).toString('hex')+'01';
+ const intent=unsignedIntent();intent.inputs[0].partialSignatures=[{publicKey:contactKeyA,signature:sig}];
+ const psbt=encodePsbtV2(intent);
+ for(const allowedPublicKeys of ['not-an-array',{},false,[{toString:()=>contactKeyA}]])
+  assert.throws(()=>verifyPsbtV2RecoverySignature({psbt,inputIndex:0,publicKey:contactKeyA,allowedPublicKeys}),/allowedPublicKeys/);
+ assert.equal(verifyPsbtV2RecoverySignature({psbt,inputIndex:0,publicKey:contactKeyA,allowedPublicKeys:[contactKeyA.toUpperCase()]}).valid,true);
+});
+
