@@ -551,3 +551,17 @@ test('Stellar classic-asset preflight compares exact seven-decimal stroops and f
   }
   assert.equal(createClassicAssetPreflight({...args,paymentAmount:'0.0000001'}).ready,true);
 });
+
+test('Stellar reserve estimator rejects imprecise reserve estimates and entry-count overflow', () => {
+  const args={baseReserveStroops:'5000000',existingSubentries:1,addedSigners:1,addedTrustlines:1,sponsoredEntries:0};
+  for(const reserve of [[5000000],new Number(5000000),Number.MAX_SAFE_INTEGER+1]) {
+    assert.throws(()=>estimateReserveImpact({...args,baseReserveStroops:reserve}),/exact primitive non-negative integer sequence/);
+  }
+  for(const count of [1.5,Number.MAX_SAFE_INTEGER+1]) {
+    assert.throws(()=>estimateReserveImpact({...args,addedSigners:count}),/non-negative safe integer/);
+  }
+  assert.throws(()=>estimateReserveImpact({
+    ...args,existingSubentries:Number.MAX_SAFE_INTEGER,addedSigners:1
+  }),/entry totals must remain safe integers/);
+  assert.equal(estimateReserveImpact(args).minimumAfterUnsponsoredStroops,'25000000');
+});

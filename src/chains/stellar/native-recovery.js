@@ -337,12 +337,16 @@ export function createFeeBumpSponsorPlan({ feeAccount, innerEnvelopeHash, maxFee
 }
 
 export function estimateReserveImpact({ baseReserveStroops, existingSubentries = 0, addedSigners = 0, addedTrustlines = 0, sponsoredEntries = 0 }) {
-  const reserve = BigInt(baseReserveStroops);
+  const reserve = asSequence(baseReserveStroops, 'baseReserveStroops');
   if (reserve <= 0n) throw new TypeError('baseReserveStroops must be positive.');
   for (const [name, value] of Object.entries({ existingSubentries, addedSigners, addedTrustlines, sponsoredEntries })) {
-    if (!Number.isInteger(value) || value < 0) throw new TypeError(`${name} must be a non-negative integer.`);
+    if (!Number.isSafeInteger(value) || value < 0) throw new TypeError(`${name} must be a non-negative safe integer.`);
   }
   const added = addedSigners + addedTrustlines;
+  if (!Number.isSafeInteger(added) ||
+      !Number.isSafeInteger(2 + existingSubentries + added)) {
+    throw new TypeError('Stellar reserve entry totals must remain safe integers.');
+  }
   const before = reserve * BigInt(2 + existingSubentries);
   const afterUnsponsored = reserve * BigInt(2 + existingSubentries + added);
   const sponsored = Math.min(added, sponsoredEntries);
