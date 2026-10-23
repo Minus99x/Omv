@@ -5,10 +5,7 @@ name: OmegaVault Frequent AI Engineering Launcher
 on:
   schedule:
     # Three unattended engineering runs per hour, at :07, :27, :47 Arizona.
-    - cron: '7,27,47 * * * *'
-    # One-time scheduled proof, October 23 2026 at 04:56 UTC (Oct 22 21:56 AZ).
-    # Remove the probe cron after obtaining the scheduled execution receipt.
-    - cron: '56 4 23 10 *'
+    - cron: '7-47/20 * * * *'
   workflow_dispatch:
   push:
     branches: [main]
@@ -23,10 +20,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  trigger-receipt:
+    name: Record actual GitHub trigger
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Record trigger receipt
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import datetime, json, os
+          receipt = {key.lower(): os.environ[key] for key in
+                     ('EVENT_NAME', 'EVENT_SCHEDULE', 'RUN_ID', 'RUN_ATTEMPT', 'SOURCE_SHA', 'SOURCE_REF')}
+          receipt['observed_at_utc'] = datetime.datetime.now(datetime.timezone.utc).isoformat()
+          payload = json.dumps(receipt, indent=2)
+          print(payload)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
+              summary.write('## GitHub trigger receipt\n\n```json\n' + payload + '\n```\n')
+          PY
+
   autonomous-engineering:
     name: Trigger isolated AI worker on scheduler-only branch
-    # On a future year's probe anniversary, skip; hourly schedule is unaffected.
-    if: github.event_name != 'schedule' || github.event.schedule != '56 4 23 10 *' || github.event.repository.default_branch == 'main'
+    needs: trigger-receipt
     uses: Minus99x/Omegavault/.github/workflows/omegavault-hourly-engineering.yml@automation/omegavault-hourly
     permissions:
       contents: write
