@@ -565,3 +565,14 @@ test('Stellar reserve estimator rejects imprecise reserve estimates and entry-co
   }),/entry totals must remain safe integers/);
   assert.equal(estimateReserveImpact(args).minimumAfterUnsponsoredStroops,'25000000');
 });
+
+test('Stellar preauthorized recovery rejects numerically rounded inactivity periods', () => {
+  const args={
+    vaultAccount:G(1),rescueDestination:G(2),currentSequence:'1000',
+    contacts:[G(3),G(4)],threshold:2,assets:['native'],amounts:{native:'1'}
+  };
+  for(const inactivitySeconds of [Number.MAX_SAFE_INTEGER+1,Infinity,NaN,1.1,-1,0]) {
+    assert.throws(()=>createRecoveryEnvelopePlan({...args,inactivitySeconds}),/positive safe integer/);
+  }
+  assert.equal(createRecoveryEnvelopePlan({...args,inactivitySeconds:60}).preconditions.minAccountSequenceAge,'60');
+});

@@ -109,7 +109,7 @@ export function createRecoveryEnvelopePlan({
   if (new Set(contacts).size !== contacts.length) throw new TypeError('contacts must be unique.');
   if (contacts.includes(vaultAccount) || contacts.includes(rescueDestination)) throw new TypeError('contacts must differ from the vault and rescue accounts.');
   if (!Number.isInteger(threshold) || threshold !== contacts.length) throw new TypeError('Exact native Stellar recovery currently supports N-of-N contact approval only; M-of-N requires the Soroban fallback.');
-  if (!Number.isInteger(inactivitySeconds) || inactivitySeconds < 1) throw new TypeError('inactivitySeconds must be positive.');
+  if (!Number.isSafeInteger(inactivitySeconds) || inactivitySeconds < 1) throw new TypeError('inactivitySeconds must be a positive safe integer.');
   if (networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Exact native Stellar recovery is currently testnet-only; networkPassphrase must match Stellar Testnet.');
   const baseFee = asSequence(baseFeeStroops, 'baseFeeStroops');
   if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
