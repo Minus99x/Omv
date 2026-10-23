@@ -202,3 +202,20 @@ test('Bitcoin immutable-rescue capability must not be asserted from coercible tr
   assert.equal(assessBitcoinImmutableRescue({ covenantActive: false }).enforceable, false);
   assert.equal(assessBitcoinImmutableRescue({ covenantActive: true }).status.includes('requires separate'), true);
 });
+
+test('Bitcoin signature coordinator rejects non-hexadecimal, odd, and missing signature bytes', () => {
+  const plan = createBitcoinPsbtV2RecoveryPlan({
+    inputs: [{ txid, vout: 0, amountSats: '100000' }],
+    outputs: [{ amountSats: '99000', scriptPubKey: '0014' + '11'.repeat(20) }],
+    requiredContactKeys: [a, b], threshold: 2, feeSats: '1000'
+  });
+  for (const invalid of ['', 'a', 'abc', 'gg', '0g', 12, null, [], {}]) {
+    assert.throws(() => coordinateBitcoinRecoverySignatures({
+      plan,
+      signatures: [{ publicKey: a, intentDigest: plan.intentDigest, signature: invalid }]
+    }), /signature bytes must be non-empty even-length hexadecimal/);
+  }
+  assert.equal(coordinateBitcoinRecoverySignatures({
+    plan, signatures: [{ publicKey: a, intentDigest: plan.intentDigest, signature: 'AABB' }]
+  }).signatureCount, 1);
+});

@@ -125,7 +125,7 @@ export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
     const key = assertKey(signature?.publicKey, `signatures[${index}].publicKey`);
     if (!allowed.has(key)) throw new TypeError(`Unexpected Bitcoin recovery signer: ${key}`);
     if (seen.has(key)) throw new TypeError(`Duplicate Bitcoin recovery signer: ${key}`);
-    if (typeof signature.signature !== 'string' || signature.signature.length < 2) throw new TypeError('signature bytes are required.');
+    if (typeof signature.signature !== 'string' || !/^(?:[0-9a-f]{2})+$/i.test(signature.signature)) throw new TypeError('signature bytes must be non-empty even-length hexadecimal.');
     if (signature.intentDigest !== plan.intentDigest) throw new TypeError('Signature was produced for a different recovery transaction intent.');
     seen.add(key);
   }
