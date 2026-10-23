@@ -111,7 +111,7 @@ export function createRecoveryEnvelopePlan({
   if (!Number.isInteger(threshold) || threshold !== contacts.length) throw new TypeError('Exact native Stellar recovery currently supports N-of-N contact approval only; M-of-N requires the Soroban fallback.');
   if (!Number.isInteger(inactivitySeconds) || inactivitySeconds < 1) throw new TypeError('inactivitySeconds must be positive.');
   if (networkPassphrase !== TESTNET_PASSPHRASE) throw new TypeError('Exact native Stellar recovery is currently testnet-only; networkPassphrase must match Stellar Testnet.');
-  const baseFee = BigInt(baseFeeStroops);
+  const baseFee = asSequence(baseFeeStroops, 'baseFeeStroops');
   if (baseFee <= 0n) throw new TypeError('baseFeeStroops must be positive.');
   const sequence = chooseRecoverySequence({ currentSequence });
   const normalizedAssets = assets.map(normalizeAsset);

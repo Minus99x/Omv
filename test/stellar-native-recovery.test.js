@@ -512,3 +512,18 @@ test('Stellar fee sponsor rejects coercible and out-of-range fee-bump caps', () 
   }),/signed 64-bit sequence number/);
   assert.equal(createFeeBumpSponsorPlan({...args,maxFeeStroops:1000n}).maxFeeStroops,'1000');
 });
+
+test('Stellar recovery planner rejects coerced and imprecise transaction fee inputs', () => {
+  const args={
+    vaultAccount:G(1),rescueDestination:G(2),currentSequence:'1000',
+    inactivitySeconds:60,contacts:[G(3),G(4)],threshold:2,
+    amounts:{native:'10'}
+  };
+  for(const fee of [[100],new Number(100),{valueOf:()=>100},true,Number.MAX_SAFE_INTEGER+1]) {
+    assert.throws(()=>createRecoveryEnvelopePlan({...args,baseFeeStroops:fee}),/exact primitive non-negative integer sequence/);
+  }
+  assert.throws(()=>createRecoveryEnvelopePlan({
+    ...args,baseFeeStroops:'9223372036854775808'
+  }),/signed 64-bit sequence number/);
+  assert.equal(createRecoveryEnvelopePlan({...args,baseFeeStroops:100n}).baseFeeStroops,'100');
+});
