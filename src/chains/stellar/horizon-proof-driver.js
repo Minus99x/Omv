@@ -97,6 +97,9 @@ export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccou
   if (!thresholds || typeof thresholds !== 'object') throw new TypeError('Horizon account thresholds are required.');
   if (!Array.isArray(accountResponse.signers)) throw new TypeError('Horizon account signers are required.');
 
+  const sequenceLedger = optionalLedger(accountResponse.sequence_ledger, 'accountResponse.sequence_ledger');
+  const lastModifiedLedger = optionalLedger(accountResponse.last_modified_ledger, 'accountResponse.last_modified_ledger');
+  if (sequenceLedger !== null && lastModifiedLedger !== null && sequenceLedger > lastModifiedLedger) throw new Error('Horizon sequence ledger follows account last modification.');
   let masterWeight = null;
   const normalizedSigners = [];
   for (const signer of accountResponse.signers) {
@@ -120,9 +123,9 @@ export function normalizeHorizonAccountSnapshot({ accountResponse, expectedAccou
   return Object.freeze({
     account,
     sequence,
-    sequenceLedger: optionalLedger(accountResponse.sequence_ledger, 'accountResponse.sequence_ledger'),
+    sequenceLedger,
     sequenceTime: accountResponse.sequence_time == null ? null : integerString(accountResponse.sequence_time, 'accountResponse.sequence_time'),
-    lastModifiedLedger: optionalLedger(accountResponse.last_modified_ledger, 'accountResponse.last_modified_ledger'),
+    lastModifiedLedger,
     lastModifiedTime: accountResponse.last_modified_time == null ? null : isoTime(accountResponse.last_modified_time, 'accountResponse.last_modified_time'),
     masterWeight,
     thresholds: Object.freeze({

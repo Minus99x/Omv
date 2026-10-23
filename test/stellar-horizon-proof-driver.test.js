@@ -473,7 +473,7 @@ for (const [field, normalizedField] of [
   test('Horizon account preserves exact and absent optional ledger: ' + field, () => {
     for (const value of [1, 501, '501', 501n, 0xffffffff, String(0xffffffff)]) {
       const result = normalizeHorizonAccountSnapshot({
-        accountResponse: accountResponse({ [field]: value })
+        accountResponse: accountResponse({ sequence_ledger: value, last_modified_ledger: value })
       });
       assert.equal(result[normalizedField], Number(value));
     }
@@ -659,5 +659,12 @@ test('Horizon proof rejects impossible ledger numbers across inclusion and snaps
 test('Horizon sequence timestamps respect the uint64 TimePoint range', () => {
  assert.equal(normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence_time:'18446744073709551615'})}).sequenceTime,'18446744073709551615');
  assert.throws(()=>normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence_time:'18446744073709551616'})}),/uint64/);
+});
+
+
+
+test('Horizon account sequence ledger cannot follow last modification', () => {
+ assert.throws(()=>normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence_ledger:501,last_modified_ledger:500})}),/sequence ledger.*last modification/);
+ assert.equal(normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence_ledger:500,last_modified_ledger:501})}).sequenceLedger,500);
 });
 
