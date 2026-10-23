@@ -133,6 +133,9 @@ export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
 }
 
 export function assessBitcoinImmutableRescue({ covenantActive = false, recoveryPathUsesContactKeys = true } = {}) {
+  if (typeof covenantActive !== 'boolean' || typeof recoveryPathUsesContactKeys !== 'boolean') {
+    throw new TypeError('Bitcoin covenant capability and recovery-path flags must be explicit booleans.');
+  }
   if (covenantActive) return Object.freeze({ enforceable: true, mechanism: 'covenant-capable script path', status: 'requires separate consensus/network capability verification and dedicated security design' });
   return Object.freeze({
     enforceable: false,

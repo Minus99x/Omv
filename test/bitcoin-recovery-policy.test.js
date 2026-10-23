@@ -193,3 +193,12 @@ test('Bitcoin rollover heartbeat binds a real uint32 output index and bounded co
     assert.throws(() => createBitcoinRolloverHeartbeatPlan({ ...args, minimumConfirmations: bad }), /minimumConfirmations must be a positive uint32/);
   }
 });
+
+test('Bitcoin immutable-rescue capability must not be asserted from coercible truthy flags', () => {
+  for (const value of ['false', 'true', 1, 0, {}, [], null]) {
+    assert.throws(() => assessBitcoinImmutableRescue({ covenantActive: value }), /explicit booleans/);
+    assert.throws(() => assessBitcoinImmutableRescue({ recoveryPathUsesContactKeys: value }), /explicit booleans/);
+  }
+  assert.equal(assessBitcoinImmutableRescue({ covenantActive: false }).enforceable, false);
+  assert.equal(assessBitcoinImmutableRescue({ covenantActive: true }).status.includes('requires separate'), true);
+});
