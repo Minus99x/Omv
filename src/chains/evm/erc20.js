@@ -37,7 +37,7 @@ export function erc20RecoveryAction({ chainId = 'ethereum', networkRef, vaultCon
   if (typeof chainId!=='string'||!chainId.trim()||typeof networkRef!=='string'||!networkRef.trim())
     throw new TypeError('ERC-20 recovery action requires primitive chain and network identity.');
   for(const [label,value] of [['requiredSigner',requiredSigner],['feePayer',feePayer]]){
-    if(!/^0x[a-f0-9]{40}$/.test(normalizeAddress(value)||'') ||
+    if(typeof value!=='string' || !/^0x[a-f0-9]{40}$/.test(normalizeAddress(value)||'') ||
        normalizeAddress(value)==='0x'+'0'.repeat(40))
       throw new TypeError(`ERC-20 recovery ${label} must be a nonzero EVM account.`);
   }
