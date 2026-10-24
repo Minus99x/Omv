@@ -51,24 +51,33 @@ export function boundedApothemFee({estimatedGas,gasPriceWei,spentFeeWei=0n,capWe
  return Object.freeze({gasLimit,gasPriceWei:price,maxFee,remainingAfterReservation:cap-spent-maxFee});
 }
 export function verifyApothemReceipt({receipt,transactionHash,expectedContract=null}){
- if(!receipt||Number(receipt.status)!==1)throw new Error('Receipt did not prove an included successful transaction.');
- if(typeof transactionHash!=='string'||!TX.test(transactionHash)||String(receipt.hash??receipt.transactionHash).toLowerCase()!==transactionHash.toLowerCase())
+ if(!receipt||!([1,1n,'0x1'].includes(receipt.status)))throw new Error('Receipt did not prove an included successful transaction.');
+ const receiptHash=receipt.hash??receipt.transactionHash;
+ if(typeof transactionHash!=='string'||!TX.test(transactionHash)||typeof receiptHash!=='string'||
+    !TX.test(receiptHash)||receiptHash.toLowerCase()!==transactionHash.toLowerCase())
   throw new Error('Receipt transaction hash mismatch.');
- if(receipt.blockNumber==null||BigInt(receipt.blockNumber)<=0n||!TX.test(receipt.blockHash))
+ let blockNumber;
+ try{blockNumber=unsignedExact(receipt.blockNumber,'receipt.blockNumber');}catch{throw new Error('Receipt does not contain canonical block identity.');}
+ if(blockNumber===0n||typeof receipt.blockHash!=='string'||!TX.test(receipt.blockHash))
   throw new Error('Receipt does not contain canonical block identity.');
  if(expectedContract!=null&&(typeof expectedContract!=='string'||!ADDRESS.test(expectedContract)||
-   String(receipt.contractAddress??'').toLowerCase()!==expectedContract.toLowerCase()))
+   typeof receipt.contractAddress!=='string'||!ADDRESS.test(receipt.contractAddress)||
+   receipt.contractAddress.toLowerCase()!==expectedContract.toLowerCase()))
   throw new Error('Deployment contract address mismatches receipt.');
- if(receipt.gasUsed==null||BigInt(receipt.gasUsed)<21000n||receipt.gasPrice==null||BigInt(receipt.gasPrice)<1n)
-  throw new Error('Receipt has invalid fee observations.');
+ let gasUsed,gasPrice;
+ try{
+  gasUsed=unsignedExact(receipt.gasUsed,'receipt.gasUsed');
+  gasPrice=unsignedExact(receipt.gasPrice,'receipt.gasPrice');
+ }catch{throw new Error('Receipt has invalid fee observations.');}
+ if(gasUsed<21000n||gasPrice<1n)throw new Error('Receipt has invalid fee observations.');
  return Object.freeze({
   txHash:transactionHash.toLowerCase(),
-  blockNumber:String(receipt.blockNumber),
+  blockNumber:blockNumber.toString(),
   blockHash:receipt.blockHash.toLowerCase(),
   contractAddress:receipt.contractAddress??null,
-  gasUsed:String(receipt.gasUsed),
-  gasPriceWei:String(receipt.gasPrice),
-  actualFeeWei:String(BigInt(receipt.gasUsed)*BigInt(receipt.gasPrice))
+  gasUsed:gasUsed.toString(),
+  gasPriceWei:gasPrice.toString(),
+  actualFeeWei:(gasUsed*gasPrice).toString()
  });
 }
 export function verifyApothemRuntimeBytecode({compiledRuntime,immutableReferences={},actualRuntime}){
