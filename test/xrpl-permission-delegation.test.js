@@ -236,3 +236,12 @@ test('XRPL DelegateSet freezes permission entries so recovery authority cannot c
   assert.equal(Object.isFrozen(built.transaction.Permissions[0].Permission),true);
   assert.throws(()=>built.transaction.Permissions.pop(),TypeError);
 });
+
+
+test('XRPL DelegateSet Fee uses exact supply-bounded drop normalization',()=>{
+  const params={owner,delegate,permissions:['Payment'],sequence:10,permissionDelegationFeature:enabledFeature()};
+  assert.equal(buildXrplDelegateSet({...params,feeDrops:'100000000000000000'}).transaction.Fee,'100000000000000000');
+  for(const feeDrops of ['100000000000000001','0001',Number.MAX_SAFE_INTEGER+1]){
+    assert.throws(()=>buildXrplDelegateSet({...params,feeDrops}),/canonical non-negative/);
+  }
+});

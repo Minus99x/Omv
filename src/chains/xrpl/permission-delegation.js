@@ -1,4 +1,4 @@
-import { assertClassicAddress, normalizeXrplSequenceBinding } from './signer-list.js';
+import { assertClassicAddress, normalizeXrplFeeDrops, normalizeXrplSequenceBinding } from './signer-list.js';
 
 const UINT32_MAX=0xffffffff;
 const MAX_PERMISSIONS=10;
@@ -117,12 +117,7 @@ export function buildXrplDelegateSet({
     ...normalizeXrplSequenceBinding({ sequence,ticketSequence })
   };
   if(feeDrops!=null){
-    if(!['string','number','bigint'].includes(typeof feeDrops) ||
-        (typeof feeDrops==='number' && !Number.isSafeInteger(feeDrops)) ||
-        !/^(0|[1-9]\d*)$/.test(String(feeDrops))) {
-      throw new TypeError('feeDrops must be a canonical non-negative primitive integer.');
-    }
-    transaction.Fee=String(feeDrops);
+    transaction.Fee=normalizeXrplFeeDrops(feeDrops);
   }
   if(lastLedgerSequence!=null){
     assertUInt(lastLedgerSequence,'lastLedgerSequence');
