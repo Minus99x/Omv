@@ -27,6 +27,12 @@ function freezeNetwork(spec) {
     if(spec[field] && new Set(spec[field]).size!==spec[field].length)
       throw new TypeError(`Network ${field} cannot contain duplicates.`);
   }
+  if(spec.rpcProtocol==='evm-json-rpc') {
+    if(!Number.isSafeInteger(spec.chainIdDecimal)||spec.chainIdDecimal<1||
+      typeof spec.chainIdHex!=='string'||!/^0x[1-9a-f][0-9a-f]*$/.test(spec.chainIdHex)||
+      BigInt(spec.chainIdHex)!==BigInt(spec.chainIdDecimal))
+      throw new TypeError('EVM registry network chain ID representations must agree exactly.');
+  }
   return Object.freeze({
     ...spec,
     rpcUrls: Object.freeze([...(spec.rpcUrls ?? [])]),
