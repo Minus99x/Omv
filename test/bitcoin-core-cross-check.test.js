@@ -623,3 +623,10 @@ test('Rejected Core receipt chains require a reason and no successful fee rate',
   assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([rehashReceipt(valid,edit)]).ok,false);
  }
 });
+
+test('Accepted Core receipt chains recheck decimal fees and rejection status',()=>{const tx=transaction(), input=observations(tx); const valid=createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,observationContext:context(1,'2026-10-07T05:20:00Z')});
+ assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([valid]).ok,true);
+ for(const edit of [r=>{r.mempool.rejectReason='rejected';},r=>{r.mempool.baseFeeBtc='0.1';},r=>{r.mempool.effectiveFeeRateSatsPerKvB='-1';},r=>{r.mempool.effectiveFeeRateSatsPerKvB=5000;},r=>{r.mempool.feeDiagnosticsBound=false;r.feeDiagnosticsBound=false;r.bitcoinCoreCrossCheckProven=false;}]) {
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([rehashReceipt(valid,edit)]).ok,false);
+ }
+});

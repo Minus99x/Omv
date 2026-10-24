@@ -342,6 +342,17 @@ function validateChainedCoreAuthority(evidence, index, errors) {
   )) {
     errors.push(`${prefix} rejected mempool result carries successful diagnostics.`);
   }
+  if (allowed === true) {
+    try {
+      if (bound !== true || evidence.mempool.rejectReason !== null ||
+          typeof evidence.mempool.baseFeeBtc !== 'string' ||
+          btcToSats(evidence.mempool.baseFeeBtc, 'mempool.baseFeeBtc') !== evidence.extractedFeeSats ||
+          typeof evidence.mempool.effectiveFeeRateSatsPerKvB !== 'string' ||
+          !/^(0|[1-9][0-9]*)$/.test(evidence.mempool.effectiveFeeRateSatsPerKvB)) {
+        errors.push(`${prefix} has contradictory accepted mempool fee diagnostics.`);
+      }
+    } catch { errors.push(`${prefix} has invalid accepted mempool decimal fee.`); }
+  }
   const proven = source === 'bitcoin-core-rpc' && allowed === true && bound === true;
   if (evidence.bitcoinCoreCrossCheckProven !== proven) {
     errors.push(`${prefix} has forged Bitcoin Core cross-check provenance.`);
