@@ -29,6 +29,10 @@ export function evmProbePreflight({ networkId, observedChainIdHex, checks = {}, 
   const chainMatches = typeof observedChainIdHex === 'string' &&
     /^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(observedChainIdHex) &&
     observedChainIdHex.toLowerCase() === network.chainIdHex?.toLowerCase();
+  if (!checks || typeof checks !== 'object' || Array.isArray(checks))
+    throw new TypeError('EVM compatibility checks must be an object.');
+  if (!Array.isArray(warnings) || !Array.isArray(errors))
+    throw new TypeError('EVM warnings and errors must be arrays.');
   const mergedErrors = [...errors];
   if (!chainMatches) mergedErrors.push(`Observed chain ${observedChainIdHex ?? 'unknown'} does not match expected ${network.chainIdHex}.`);
   const allChecks = { 'chain-id-match': chainMatches, ...checks };
