@@ -93,7 +93,9 @@ export function createDeploymentVerificationReport({
   const expectedContacts = normalizeContactSet(expected.trustedContacts);
   const observedContacts = normalizeContactSet(observed.trustedContacts);
   const checks = Object.freeze({
-    chainIdMatched: String(observed.chainIdHex ?? '').toLowerCase() === String(network.chainIdHex).toLowerCase(),
+    chainIdMatched: typeof observed.chainIdHex==='string' &&
+      /^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(observed.chainIdHex) &&
+      observed.chainIdHex.toLowerCase() === network.chainIdHex.toLowerCase(),
     runtimeCodeMatched: runtimeCodeMatches(compiledRuntimeBytecode, liveRuntimeBytecode, immutableReferences),
     ownerMatched: addressesMatch(expected.owner, observed.owner),
     destinationMatched: addressesMatch(expected.rescueDestination, observed.rescueDestination),
