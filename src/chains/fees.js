@@ -59,8 +59,12 @@ export function reconcileFeeEvidence(estimate, observed) {
   for (const key of ['chainId', 'networkRef', 'feePayer', 'feeAsset']) {
     if (estimate[key] !== observed[key]) throw new Error(`Fee evidence mismatch for ${key}.`);
   }
-  const estimated = BigInt(estimate.total);
-  const actual = BigInt(observed.total);
+  if (estimate.transactionRef != null && estimate.transactionRef !== observed.transactionRef)
+    throw new Error('Fee evidence mismatch for transactionRef.');
+  if (typeof observed.transactionRef !== 'string' || !observed.transactionRef.trim())
+    throw new TypeError('Observed fee evidence requires transactionRef.');
+  const estimated = BigInt(integerString(estimate.total,'estimated fee total'));
+  const actual = BigInt(integerString(observed.total,'observed fee total'));
   return Object.freeze({
     estimated: estimated.toString(),
     actual: actual.toString(),
