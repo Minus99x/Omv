@@ -1,4 +1,5 @@
 import { assertClassicAddress } from './signer-list.js';
+import { calculateXrplEscrowFinishFeeDrops } from './escrow-fee.js';
 
 export const TOKEN_ESCROW_AMENDMENT_ID = '138B968F25822EFBF54C00F97031221C47B1EAB8321D93C7C2AEAF85F04EC5DF';
 
@@ -110,7 +111,7 @@ export function createXrplEscrowRecoveryPlan({ owner, rescueDestination, amount 
   });
 }
 
-export function createXrplEscrowFinishPlan({ submitter, owner, escrowSequence, condition = null, fulfillment = null }) {
+export function createXrplEscrowFinishPlan({ submitter, owner, escrowSequence, condition = null, fulfillment = null, baseFeeDrops = null, signerCount = 0 }) {
   assertClassicAddress(submitter, 'submitter');
   assertClassicAddress(owner, 'owner');
   if (!Number.isInteger(escrowSequence) || escrowSequence <= 0 || escrowSequence > 0xffffffff) throw new TypeError('escrowSequence must be a positive integer.');
@@ -126,5 +127,7 @@ export function createXrplEscrowFinishPlan({ submitter, owner, escrowSequence, c
     tx.Condition = condition.toUpperCase();
     tx.Fulfillment = fulfillment.toUpperCase();
   }
-  return Object.freeze({ transaction: Object.freeze(tx), submitterCanBeAnyAccount: true, finalityEvidence: Object.freeze(['validated ledger', 'tesSUCCESS transaction result', 'escrow object absent after successful finish', 'destination balance/state change independently observed']) });
+  const feeEvidence=baseFeeDrops==null ? null : calculateXrplEscrowFinishFeeDrops({baseFeeDrops,fulfillmentHex:tx.Fulfillment ?? null,signerCount});
+  if(feeEvidence) tx.Fee=feeEvidence.minimumFeeDrops;
+  return Object.freeze({ transaction: Object.freeze(tx), feeEvidence, submitterCanBeAnyAccount: true, finalityEvidence: Object.freeze(['validated ledger', 'tesSUCCESS transaction result', 'escrow object absent after successful finish', 'destination balance/state change independently observed']) });
 }

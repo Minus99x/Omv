@@ -289,3 +289,15 @@ test('XRPL EscrowFinish fee calculator includes crypto-condition and multisign w
   assert.throws(()=>fee({fulfillmentHex:'XYZ'}),/hexadecimal/);
   assert.throws(()=>fee({signerCount:-1}),/signerCount/);
 });
+
+
+test('XRPL EscrowFinish optional fee planning uses exact structural floor and identifies missing network load evidence',()=>{
+  const params={submitter:a,owner,escrowSequence:123,baseFeeDrops:'10',signerCount:2};
+  const simple=createXrplEscrowFinishPlan(params);
+  assert.equal(simple.transaction.Fee,'30');
+  assert.equal(simple.feeEvidence.loadScaledFeeEstablished,false);
+  const conditional=createXrplEscrowFinishPlan({...params,condition:'AABB',fulfillment:'A0028000'});
+  assert.equal(conditional.transaction.Fee,'350');
+  assert.equal(conditional.feeEvidence.fulfillmentBytes,4);
+  assert.equal(createXrplEscrowFinishPlan({submitter:a,owner,escrowSequence:123}).feeEvidence,null);
+});
