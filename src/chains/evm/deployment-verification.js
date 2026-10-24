@@ -12,7 +12,10 @@ function assertHex(value, label) {
 }
 
 export function maskImmutableReferences(bytecode, immutableReferences = {}) {
+  if (!immutableReferences || typeof immutableReferences!=='object' || Array.isArray(immutableReferences))
+    throw new TypeError('Immutable references must be a compiled byte-offset map.');
   const chars = [...assertHex(bytecode, 'runtime bytecode')];
+  const masked=new Set();
   for (const refs of Object.values(immutableReferences ?? {})) {
     for (const ref of refs ?? []) {
       // Solidity immutable references use byte offsets/lengths. Reject malformed
