@@ -53,12 +53,16 @@ export function compareIndependentStateSnapshots(a, b, fields) {
     fields.some(field=>typeof field!=='string'||!field.trim()||['__proto__','prototype','constructor'].includes(field))||
     new Set(fields).size!==fields.length)
     throw new TypeError('fields must be distinct safe field identifiers.');
-  const comparisons = fields.map(field => Object.freeze({
-    field,
-    matches: JSON.stringify(stable(a.observations?.[field])) === JSON.stringify(stable(b.observations?.[field])),
-    a: structuredClone(a.observations?.[field]),
-    b: structuredClone(b.observations?.[field])
-  }));
+  const comparisons = fields.map(field => {
+    const hasA=a.observations!==null&&typeof a.observations==='object'&&Object.hasOwn(a.observations,field);
+    const hasB=b.observations!==null&&typeof b.observations==='object'&&Object.hasOwn(b.observations,field);
+    const left=hasA?a.observations[field]:undefined;
+    const right=hasB?b.observations[field]:undefined;
+    return Object.freeze({
+      field, matches:hasA&&hasB&&JSON.stringify(stable(left))===JSON.stringify(stable(right)),
+      a:structuredClone(left),b:structuredClone(right)
+    });
+  });
   return Object.freeze({
     chainId: a.chainId,
     networkRef: a.networkRef,
