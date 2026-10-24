@@ -14,7 +14,8 @@ export function digestIntent(intent) {
 }
 
 export function createPreflightResult({ chainId, networkRef, operation, status = 'blocked', observedNetwork = null, requiredSigners = [], fee = null, finalityTarget = null, checks = {}, warnings = [], errors = [], transactionIntent = null }) {
-  if (!chainId || !networkRef || !operation) throw new TypeError('Preflight requires chainId, networkRef and operation.');
+  if ([chainId,networkRef,operation].some(value=>typeof value!=='string'||!value.trim()))
+    throw new TypeError('Preflight requires chainId, networkRef and operation.');
   if (!STATUSES.has(status)) throw new TypeError('Unknown preflight status.');
   const result = {
     version: 1, chainId, networkRef, operation, status,
