@@ -46,9 +46,9 @@ export function defineAdapter(spec) {
     }
     if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
         ![Object.prototype, null].includes(Object.getPrototypeOf(entry)))
-      throw new TypeError(`Adapter proofNetworks[${index}] must be a plain network descriptor.`);
+      throw new TypeError(`Adapter proofNetworks[${index}] entries must be non-empty strings or plain network descriptors.`);
     if (typeof entry.id !== 'string' || !entry.id.trim())
-      throw new TypeError(`Adapter proofNetworks[${index}].id must be non-empty text.`);
+      throw new TypeError(`Adapter proofNetworks[${index}].id must be a non-empty string.`);
     if (entry.name !== undefined && (typeof entry.name !== 'string' || !entry.name.trim()))
       throw new TypeError(`Adapter proofNetworks[${index}].name must be non-empty text.`);
     if (entry.testOnly !== undefined && typeof entry.testOnly !== 'boolean')
