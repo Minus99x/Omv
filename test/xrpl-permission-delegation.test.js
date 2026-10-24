@@ -226,3 +226,13 @@ test('XRPL DelegateSet rejects unverified amendment metadata and coercive fee in
   assert.equal(buildXrplDelegateSet({...base,feeDrops:12n}).transaction.Fee,'12');
   assert.equal(buildXrplDelegateSet({...base,feeDrops:'0'}).transaction.Fee,'0');
 });
+
+
+test('XRPL DelegateSet freezes permission entries so recovery authority cannot change after planning',()=>{
+  const built=buildXrplDelegateSet({owner,delegate,permissions:['Payment','EscrowFinish'],
+    sequence:10,permissionDelegationFeature:enabledFeature()});
+  assert.equal(Object.isFrozen(built.transaction.Permissions),true);
+  assert.equal(Object.isFrozen(built.transaction.Permissions[0]),true);
+  assert.equal(Object.isFrozen(built.transaction.Permissions[0].Permission),true);
+  assert.throws(()=>built.transaction.Permissions.pop(),TypeError);
+});

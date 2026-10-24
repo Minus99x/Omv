@@ -113,7 +113,7 @@ export function buildXrplDelegateSet({
     TransactionType:'DelegateSet',
     Account:owner,
     Authorize:delegate,
-    Permissions:normalized.map(PermissionValue=>({ Permission:{ PermissionValue } })),
+    Permissions:Object.freeze(normalized.map(PermissionValue=>Object.freeze({ Permission:Object.freeze({ PermissionValue }) }))),
     ...normalizeXrplSequenceBinding({ sequence,ticketSequence })
   };
   if(feeDrops!=null){
