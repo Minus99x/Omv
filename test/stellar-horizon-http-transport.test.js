@@ -465,3 +465,10 @@ test('Horizon transport rejects padded ledger and eligibility integer identifier
  }
  assert.equal(calls,0);
 });
+
+test('Horizon eligibility rejects out-of-range sequence and latest ledger observations',async()=>{
+ for(const both of [false,true]) {
+  const transport=createStellarTestnetHorizonHttpTransport({fetchImpl:async url=>jsonResponse(url.includes('/accounts/')?{account_id:G(1),sequence:'1001',sequence_time:'1760000000',sequence_ledger:both?'4294967296':599}:{_embedded:{records:[{sequence:'4294967296',closed_at:'2025-10-09T10:13:20Z'}]}})});
+  await assert.rejects(transport.waitUntilEligible(eligibilityArguments()),/uint32/);
+ }
+});

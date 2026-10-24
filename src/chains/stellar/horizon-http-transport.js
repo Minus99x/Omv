@@ -198,6 +198,9 @@ export function createStellarTestnetHorizonHttpTransport({
         const sequenceLedger = integerString(accountState.sequence_ledger, 'account.sequence_ledger', { positive: true });
         const closedAt = isoTime(latestLedger?.closed_at, 'latestLedger.closed_at');
         const latestLedgerSequence = integerString(latestLedger?.sequence, 'latestLedger.sequence', { positive: true });
+        if (BigInt(sequenceLedger) > 0xffffffffn || BigInt(latestLedgerSequence) > 0xffffffffn) {
+          throw new RangeError('Horizon eligibility ledger identifiers exceed uint32.');
+        }
         if (BigInt(latestLedgerSequence) < BigInt(sequenceLedger)) {
           throw new Error('Horizon latest-ledger response predates the account sequence observation.');
         }
