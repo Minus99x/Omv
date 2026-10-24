@@ -69,7 +69,7 @@ export function normalizeXrplFeeDrops(value, label='feeDrops') {
       (typeof value==='number' && !Number.isSafeInteger(value)) ||
       !/^(0|[1-9]\d*)$/.test(String(value)) ||
       BigInt(String(value))>100000000000000000n) {
-    throw new TypeError(`${label} must be a canonical non-negative XRP drop amount within supply.`);
+    throw new TypeError(`${label} must be a canonical non-negative primitive integer XRP drop amount within supply.`);
   }
   return String(value);
 }

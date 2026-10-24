@@ -320,3 +320,10 @@ test('XRPL MPT escrow unit count stays inside the signed-int64 amount domain',()
   assert.equal(createXrplEscrowRecoveryPlan({...params,amount}).transaction.Amount.value,amount.value);
   assert.throws(()=>createXrplEscrowRecoveryPlan({...params,amount:{...amount,value:'9223372036854775808'}}),/signed-int64/);
 });
+
+
+test('XRPL shared fee parser preserves caller-visible canonical primitive validation contract',()=>{
+  for(const input of [true,{},'0007',Number.MAX_SAFE_INTEGER+1]){
+    assert.throws(()=>buildXrplSignerListSet({owner,contacts:[a,b],quorum:2,sequence:12,feeDrops:input}),/canonical non-negative primitive integer/);
+  }
+});
