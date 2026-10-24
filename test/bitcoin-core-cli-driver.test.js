@@ -89,3 +89,13 @@ test('Bitcoin Signet Core mempool acceptance remains exactly one boolean decisio
   const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:'[{"allowed":false}]'})});
   assert.equal((await driver.testMempoolAccept({rawTransactions:['ab'],maxFeeRate:0,networkRef:'bitcoin:signet'}))[0].allowed,false);
 });
+
+
+test('Bitcoin Core decoded transaction requires a 32-byte txid identity',async()=>{
+  for(const response of [null,[],{},'string',{txid:'abc'},{txid:15}]){
+    const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify(response)})});
+    await assert.rejects(()=>driver.decodeRawTransaction({rawHex:'ab',networkRef:'bitcoin:signet'}),/malformed decoded transaction identity/);
+  }
+  const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify({txid:'ab'.repeat(32)})})});
+  assert.equal((await driver.decodeRawTransaction({rawHex:'ab',networkRef:'bitcoin:signet'})).txid,'ab'.repeat(32));
+});

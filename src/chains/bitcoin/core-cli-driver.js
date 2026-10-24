@@ -55,9 +55,14 @@ export function createBitcoinSignetCoreCliDriver({ execute = execFileAsync } = {
       }
       return info;
     },
-    decodeRawTransaction:({rawHex,networkRef}) => {
+    decodeRawTransaction:async ({rawHex,networkRef}) => {
       if (networkRef !== 'bitcoin:signet') throw new Error('Bitcoin Core CLI is Signet-only.');
-      return query(METHODS.decodeRawTransaction,[raw(rawHex,'rawHex')]);
+      const decoded=await query(METHODS.decodeRawTransaction,[raw(rawHex,'rawHex')]);
+      if (!decoded || typeof decoded!=='object' || Array.isArray(decoded) ||
+          typeof decoded.txid!=='string' || !/^[a-fA-F0-9]{64}$/.test(decoded.txid)) {
+        throw new Error('Bitcoin Core returned malformed decoded transaction identity.');
+      }
+      return decoded;
     },
     testMempoolAccept:async ({rawTransactions,maxFeeRate,networkRef}) => {
       if (networkRef !== 'bitcoin:signet' || maxFeeRate !== 0 ||
