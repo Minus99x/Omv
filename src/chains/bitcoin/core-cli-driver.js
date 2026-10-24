@@ -54,6 +54,9 @@ export function createBitcoinSignetCoreCliDriver({ execute = execFileAsync } = {
       if (!info || typeof info!=='object' || info.chain!=='signet') {
         throw new Error('Bitcoin Core CLI response is not Signet chain identity.');
       }
+      if(info.initialblockdownload!==false) {
+        throw new Error('Bitcoin Core CLI requires a synchronized Signet tip with coherent block identity.');
+      }
       return info;
     },
     decodeRawTransaction:({rawHex,networkRef}) => {
