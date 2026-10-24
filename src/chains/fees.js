@@ -26,7 +26,10 @@ export function createFeeEvidence({
   if (!chainId || !networkRef || !feePayer || !feeAsset) throw new TypeError('Fee evidence requires chainId, networkRef, feePayer and feeAsset.');
   if (!FEE_STATUSES.has(status)) throw new TypeError('Fee evidence status must be estimate or observed.');
   const normalizedTotal = integerString(total, 'fee total');
-  if (status === 'observed' && !transactionRef) throw new TypeError('Observed fee evidence requires transactionRef.');
+  if (status === 'observed' && (typeof transactionRef !== 'string' || !transactionRef.trim()))
+    throw new TypeError('Observed fee evidence requires transactionRef.');
+  if (transactionRef != null && (typeof transactionRef !== 'string' || !transactionRef.trim()))
+    throw new TypeError('Fee transactionRef must be primitive non-empty text.');
   const normalizedComponents = {};
   for (const [key, value] of Object.entries(components ?? {})) {
     normalizedComponents[key] = integerString(value, `fee component ${key}`);
