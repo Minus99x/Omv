@@ -658,3 +658,10 @@ test('Core runner rejects invalid receipt context before RPC access',async()=>{c
   assert.deepEqual(calls,[]);
  }
 });
+
+test('Core runner refuses wrong chain before decoding or mempool inspection',async()=>{const tx=transaction(),input=observations(tx),calls=[];
+ const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return {chain:'signet'};},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
+ driver.getBlockchainInfo=async()=>({chain:'main'});
+ await assert.rejects(runBitcoinCoreCrossCheck({driver,transaction:tx}),/Signet chain identity/);
+ assert.equal(calls.includes('decode'),false);assert.equal(calls.includes('mempool'),false);
+});
