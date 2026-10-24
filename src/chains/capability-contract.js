@@ -70,6 +70,8 @@ export function createCapabilityMaturityContract({ adapter, networks = [], stage
   const chainId = requiredText(adapter.id, 'adapter.id');
   if (!CONTRACT_STAGES.includes(stage)) throw new TypeError(`Unknown capability-contract stage: ${stage}`);
   if (!Array.isArray(networks)) throw new TypeError('networks must be an array.');
+  if (!gateEvidence || typeof gateEvidence!=='object' || Array.isArray(gateEvidence))
+    throw new TypeError('gateEvidence must be an object.');
   const normalizedNetworks = Object.freeze(networks.map(network => {
     const normalized = normalizeNetwork(network);
     if (normalized.chainId !== chainId) throw new TypeError(`Network ${normalized.id} does not belong to adapter ${chainId}.`);
