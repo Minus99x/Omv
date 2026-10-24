@@ -45,7 +45,7 @@ export function createApothemReadOnlyDeploymentBudget({
   compiledCreationBytecode,estimatedGasHex=null,providerGasPriceHex,baseFeePerGasHex=null,
   compilerVersion,codeSizeBytes,maxBudgetWei=MAX_BUDGET_WEI
 }){
-  if(typeof compilerVersion!=='string'||!/^0\.8\.24(?:\+|$)/.test(compilerVersion))throw new Error('Deployment bytecode must be compiled with pinned solc 0.8.24');
+  if(typeof compilerVersion!=='string'||!/^0\.8\.24\+commit\.e11b9ed9(?:\.[A-Za-z0-9.]+)?$/.test(compilerVersion))throw new Error('Deployment bytecode must be compiled with pinned solc 0.8.24');
   if(typeof compiledCreationBytecode!=='string'||!BYTECODE.test(compiledCreationBytecode))throw new TypeError('Missing canonical compiled deployment bytecode');
   if(!Number.isInteger(codeSizeBytes)||codeSizeBytes<1||codeSizeBytes>24576)throw new Error('Runtime bytecode exceeds size policy');
   if(!Array.isArray(providerGasPriceHex)||providerGasPriceHex.length!==2)throw new TypeError('Two gas-price observations required');
