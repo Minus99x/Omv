@@ -59,11 +59,17 @@ export function createBitcoinSignetCoreCliDriver({ execute = execFileAsync } = {
       if (networkRef !== 'bitcoin:signet') throw new Error('Bitcoin Core CLI is Signet-only.');
       return query(METHODS.decodeRawTransaction,[raw(rawHex,'rawHex')]);
     },
-    testMempoolAccept:({rawTransactions,maxFeeRate,networkRef}) => {
+    testMempoolAccept:async ({rawTransactions,maxFeeRate,networkRef}) => {
       if (networkRef !== 'bitcoin:signet' || maxFeeRate !== 0 ||
           !Array.isArray(rawTransactions) || rawTransactions.length !== 1)
         throw new Error('Bitcoin Core CLI accepts only a single Signet read-only testmempoolaccept call.');
-      return query(METHODS.testMempoolAccept,[JSON.stringify([raw(rawTransactions[0],'rawTransactions[0]')]),'0']);
+      const outcome=await query(METHODS.testMempoolAccept,[JSON.stringify([raw(rawTransactions[0],'rawTransactions[0]')]),'0']);
+      if (!Array.isArray(outcome) || outcome.length!==1 || !outcome[0] ||
+          typeof outcome[0]!=='object' || Array.isArray(outcome[0]) ||
+          typeof outcome[0].allowed!=='boolean') {
+        throw new Error('Bitcoin Core returned malformed single-transaction mempool acceptance evidence.');
+      }
+      return outcome;
     }
   });
 }

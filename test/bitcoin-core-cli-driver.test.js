@@ -79,3 +79,13 @@ test('Bitcoin Core CLI validates node version and protocol metadata before evide
   const valid=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify(base)})});
   assert.equal((await valid.getNetworkInfo()).version,310100);
 });
+
+
+test('Bitcoin Signet Core mempool acceptance remains exactly one boolean decision',async()=>{
+  for(const response of [[],{},[{}],[{allowed:'false'}],[{allowed:true},{allowed:false}],null]){
+    const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify(response)})});
+    await assert.rejects(()=>driver.testMempoolAccept({rawTransactions:['ab'],maxFeeRate:0,networkRef:'bitcoin:signet'}),/malformed single-transaction/);
+  }
+  const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:'[{"allowed":false}]'})});
+  assert.equal((await driver.testMempoolAccept({rawTransactions:['ab'],maxFeeRate:0,networkRef:'bitcoin:signet'}))[0].allowed,false);
+});
