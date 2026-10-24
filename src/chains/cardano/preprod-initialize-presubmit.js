@@ -11,9 +11,9 @@ function refKey(reference) {
 }
 
 function normalizedTip(tip) {
-  const hash = String(tip?.hash ?? '').toLowerCase();
+  const hash = typeof tip?.hash === 'string' ? tip.hash.toLowerCase() : '';
   const slot = tip?.slot;
-  if (!HEX_32.test(hash) || typeof slot !== 'number' || !Number.isSafeInteger(slot) || slot < 0) {
+  if (!HEX_32.test(hash) || /^0{64}$/.test(hash) || typeof slot !== 'number' || !Number.isSafeInteger(slot) || slot < 0) {
     throw new TypeError('A current stable Cardano Preprod tip hash/slot is required.');
   }
   return Object.freeze({ hash, slot });

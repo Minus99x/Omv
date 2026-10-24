@@ -393,3 +393,10 @@ test('Cardano pre-submit treats invalidHereafter upper slot as already expired',
     /validity interval has expired/
   );
 });
+
+test('Cardano presubmit refuses coercible and zero current tip identities',()=>{
+ const input=fixture();
+ for(const hash of [Object(input.currentTip.hash),{toString:()=>input.currentTip.hash},'00'.repeat(32)]) {
+  assert.throws(()=>createCardanoPreprodInitializePreSubmitEvidence({...input,recoveryConfig,currentTip:{...input.currentTip,hash}}),/current stable Cardano/);
+ }
+});
