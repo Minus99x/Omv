@@ -702,3 +702,16 @@ test('Horizon classic-asset recovery reads require full payment authorization ra
     accountResponse:accountResponse(), asset:{ type:'native' }, expectedAccount:G(1)
   }), '1000000000');
 });
+
+
+test('Horizon sequences and ledger identifiers reject noncanonical zero-padded evidence',()=>{
+  for(const sequence of ['00','0001','001001']){
+    assert.throws(()=>normalizeHorizonAccountSnapshot({accountResponse:accountResponse({sequence})}),/canonical non-negative integer/);
+  }
+  const hash='aa'.repeat(32);
+  for(const ledger of ['00','0001','00501']){
+    assert.throws(()=>normalizeHorizonSubmissionSuccess({response:{hash,successful:true,created_at:'2026-10-03T00:04:00Z',ledger}}),/canonical non-negative integer/);
+  }
+  const valid=normalizeHorizonSubmissionSuccess({response:{hash,successful:true,created_at:'2026-10-03T00:04:00Z',ledger:501}});
+  assert.equal(valid.ledger,'501');
+});
