@@ -52,6 +52,10 @@ export function createApothemReadOnlyDeploymentBudget({
   const quotes=providerGasPriceHex.map((v,i)=>quantity(v,'provider '+i+' gas price'));
   if(quotes.some(v=>v<=0n))throw new Error('Non-positive RPC gas quote');
   const price=quotes[0]>quotes[1]?quotes[0]:quotes[1];
+  if(typeof maxBudgetWei!=='bigint' &&
+    !(typeof maxBudgetWei==='number'&&Number.isSafeInteger(maxBudgetWei)) &&
+    !(typeof maxBudgetWei==='string'&&/^(0|[1-9][0-9]*)$/.test(maxBudgetWei)))
+    throw new TypeError('Testnet budget cap must be an exact primitive integer');
   const budgetMax=BigInt(maxBudgetWei);
   if(budgetMax<=0n||budgetMax>MAX_BUDGET_WEI)throw new Error('Testnet budget cap cannot exceed 5 fake TXDC');
   const baseFee=baseFeePerGasHex==null?null:quantity(baseFeePerGasHex,'block base fee');
