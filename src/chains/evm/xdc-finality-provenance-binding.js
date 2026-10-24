@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
 import { createEvmBlockFinalityEvidence, evmFinalityMatchesProof } from './finality-evidence.js';
 
@@ -169,7 +170,7 @@ export function xdcProvenancePackageMatchesProof(bundle, observation, proof, kin
     const expected = createXdcProvenanceBoundFinality({observation,proof,kind});
     // Check the entire exact package, not only separately supplied digests.
     if (!keysMatch(bundle,Object.keys(expected))) return false;
-    return JSON.stringify(bundle)===JSON.stringify(expected);
+    return isDeepStrictEqual(bundle, expected);
   } catch {
     return false;
   }

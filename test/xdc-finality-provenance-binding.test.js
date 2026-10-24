@@ -323,3 +323,10 @@ test('shared EVM XDC finality rejects coercible chain IDs and receipt statuses w
   }
   assert.equal(coercions, 0, 'untrusted identity and status coercion hooks must not execute');
 });
+
+test('XDC package verifier rejects nested serialization spoofing and accepts reordered keys',()=>{
+ const o=observation(),p=proof(),valid=createXdcProvenanceBoundFinality({observation:o,proof:p,kind:'native-recovery'});
+ assert.equal(xdcProvenancePackageMatchesProof(Object.fromEntries(Object.entries(valid).reverse()),o,p,'native-recovery'),true);
+ const forged={...valid,finalityEvidence:{...valid.finalityEvidence,networkRef:'ethereum:mainnet',toJSON:()=>valid.finalityEvidence}};
+ assert.equal(xdcProvenancePackageMatchesProof(forged,o,p,'native-recovery'),false);
+});
