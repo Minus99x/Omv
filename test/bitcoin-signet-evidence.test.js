@@ -617,3 +617,9 @@ test('Signet padded block heights cannot bypass equal-height hash consistency',(
  args.minimumConfirmations=1;args.transaction.confirmations='1';args.chainTip.blockHeight='0'+args.transaction.blockHeight;args.chainTip.blockHash='99'.repeat(32);
  assert.throws(()=>createBitcoinSignetObservationEvidence(args),/integer|hash/);
 });
+
+test('Signet tip cannot reuse an inclusion block hash at a higher height',()=>{const {finalizer,finalTransaction}=finalizerArtifacts();const args={finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,...observations(finalizer)};
+ assert.ok(BigInt(args.chainTip.blockHeight)>BigInt(args.transaction.blockHeight));
+ args.chainTip.blockHash=args.transaction.blockHash;
+ assert.throws(()=>createBitcoinSignetObservationEvidence(args),/reuse/);
+});

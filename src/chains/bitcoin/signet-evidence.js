@@ -146,6 +146,9 @@ export function createBitcoinSignetObservationEvidence({
   if (tipHeight === blockHeight && tipHash !== blockHash) {
     throw new Error('Bitcoin chain tip hash does not match the transaction block at equal height.');
   }
+  if (tipHeight !== blockHeight && tipHash === blockHash) {
+    throw new Error('Bitcoin chain tip cannot reuse the transaction block hash at a different height.');
+  }
   const derivedConfirmations = BigInt(tipHeight) - BigInt(blockHeight) + 1n;
   if (derivedConfirmations.toString() !== confirmations) throw new Error('Bitcoin confirmation count does not match the bound chain tip.');
   if (Date.parse(tipObservedAt) < Date.parse(observedAt)) throw new Error('Bitcoin chain-tip observation is stale relative to the transaction observation.');
