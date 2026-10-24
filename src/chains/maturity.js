@@ -14,7 +14,10 @@ export function createMaturityRecord({ chainId, stage = 'scaffold', gates = {} }
 }
 
 export function canPromoteToLiveProof(record) {
-  return PROMOTION_GATES.every(gate => record?.gates?.[gate] === true);
+  if (!record || typeof record.chainId !== 'string' || !record.chainId.trim() ||
+      !['planned','scaffold','live-proof'].includes(record.stage) ||
+      !record.gates || typeof record.gates !== 'object' || Array.isArray(record.gates)) return false;
+  return PROMOTION_GATES.every(gate => Object.hasOwn(record.gates,gate) && record.gates[gate] === true);
 }
 
 export function missingPromotionGates(record) {
