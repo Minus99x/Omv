@@ -543,3 +543,40 @@ test('Bitcoin Core receipt chain rejects digest-rewritten successful diagnostics
     assert.ok(result.errors.some(error=>/rejected mempool result carries successful diagnostics/.test(error)));
   }
 });
+
+test('Bitcoin Core timestamps reject calendar rollover and ambiguous timezone', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  for (const observedAt of [
+    '2026-02-30T05:20:00Z', '2026-13-01T05:20:00Z',
+    '2026-10-07T24:00:00Z', '2026-10-07T05:20:00',
+    '2026-10-07', '2026-10-07 05:20:00Z',
+    '2026-10-07T05:20:00+24:00', '2026-10-07T05:20:00+05:60'
+  ]) {
+    assert.throws(() => createBitcoinCoreCrossCheckEvidence({
+      transaction:tx, ...input, observationContext:context(1, observedAt)
+    }), /valid ISO-8601 timestamp.*real calendar.*timezone/);
+  }
+  const observedAt = '2024-02-29T05:20:00+05:30';
+  const receipt = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input, observationContext:context(1, observedAt)
+  });
+  assert.equal(receipt.observationContext.observedAt, observedAt);
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([receipt]).ok, true);
+});
+
+test('Bitcoin Core chained receipts reject digest-rewritten invalid observation timestamps', () => {
+  const tx = transaction(), input = observations(tx);
+  const authentic = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input,
+    observationContext:context(1, '2026-10-07T05:20:00Z')
+  });
+  for (const observedAt of ['2026-02-30T05:20:00Z', '2026-10-07T05:20:00', '2026-10-07T24:00:00Z']) {
+    const forged = rehashReceipt(authentic, receipt => {
+      receipt.observationContext.observedAt = observedAt;
+    });
+    const result = verifyBitcoinCoreCrossCheckEvidenceChain([forged]);
+    assert.equal(result.ok, false, observedAt);
+    assert.ok(result.errors.some(message => /observationContext is invalid/.test(message)));
+  }
+});
