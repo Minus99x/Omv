@@ -644,3 +644,9 @@ test('Core chain freshness reports invalid clocks without throwing',()=>{const t
   assert.equal(result.ok,false);
  }
 });
+
+test('Core runner rejects altered transaction before contacting a driver',async()=>{const tx=transaction(),input=observations(tx),calls=[];
+ const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return {chain:'signet'};},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
+ await assert.rejects(runBitcoinCoreCrossCheck({driver,transaction:{...tx,rawHex:'00'}}),/wtxid/);
+ assert.deepEqual(calls,[]);
+});

@@ -448,6 +448,7 @@ export async function runBitcoinCoreCrossCheck({
   previousEvidenceSha256 = null,
   now = () => new Date().toISOString()
 }) {
+  requireTransaction(transaction);
   for (const method of ['getNetworkInfo', 'getBlockchainInfo', 'decodeRawTransaction', 'testMempoolAccept']) requireMethod(driver, method);
   const [network, blockchain] = await Promise.all([driver.getNetworkInfo(), driver.getBlockchainInfo()]);
   const node = { version:network?.version, subversion:network?.subversion, protocolVersion:network?.protocolversion, chain:blockchain?.chain };
