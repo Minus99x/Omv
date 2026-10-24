@@ -681,3 +681,10 @@ test('Core amount observations require primitive numbers or decimal strings',()=
  }
  assert.equal(createBitcoinCoreCrossCheckEvidence({transaction:tx,...input}).mempool.allowed,true);
 });
+
+test('Core rejected mempool observations reject coerced reasons',()=>{
+ const tx=transaction(),input=observations(tx);
+ for(const reason of [42,true,{toString:()=> 'missing-inputs'}]) {
+  assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,mempoolResult:{txid:tx.txid,wtxid:tx.wtxid,allowed:false,'reject-reason':reason}}),/reject-reason/);
+ }
+});

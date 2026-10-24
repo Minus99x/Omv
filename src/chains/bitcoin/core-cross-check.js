@@ -172,7 +172,8 @@ function normalizeMempool(transaction, result) {
   if (result['package-error'] !== undefined) throw new Error('Single-transaction Bitcoin Core mempool result must not contain package-error.');
 
   if (!result.allowed) {
-    const rejectReason = String(result['reject-reason'] ?? '').trim();
+    if (typeof result['reject-reason'] !== 'string') throw new TypeError('Rejected Bitcoin Core mempool result requires textual reject-reason.');
+    const rejectReason = result['reject-reason'].trim();
     if (!rejectReason) throw new Error('Rejected Bitcoin Core mempool result requires reject-reason.');
     if (result.vsize !== undefined || result.fees !== undefined) {
       throw new Error('Rejected Bitcoin Core mempool result must not carry successful fee/vsize diagnostics.');
