@@ -366,7 +366,7 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
   let previous = null;
   let identity = null;
   let provenance = null;
-  evidences.forEach((evidence, index) => {
+  Array.from(evidences).forEach((evidence, index) => {
     if (!evidence || evidence.schema !== 'omegavault.bitcoin.core-cross-check-evidence.v2') {
       errors.push(`Evidence ${index} has an unsupported schema.`);
       return;

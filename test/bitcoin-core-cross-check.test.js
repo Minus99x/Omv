@@ -630,3 +630,10 @@ test('Accepted Core receipt chains recheck decimal fees and rejection status',()
   assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([rehashReceipt(valid,edit)]).ok,false);
  }
 });
+
+test('Core evidence chain cannot skip array holes',()=>{const tx=transaction(), input=observations(tx); const valid=createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,observationContext:context(1,'2026-10-07T05:20:00Z')});
+ assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([valid]).ok,true);
+ assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain(new Array(1)).ok,false);
+ const chain=[valid];chain.length=2;
+ assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain(chain).ok,false);
+});
