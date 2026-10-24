@@ -29,6 +29,9 @@ export function defineAdapter(spec) {
   const unknown = spec.capabilities.filter(cap => !capabilitySet.has(cap));
   if (unknown.length) throw new TypeError(`Unknown adapter capabilities: ${unknown.join(', ')}`);
 
+  for (const [field,values] of [['proofNetworks',spec.proofNetworks],['securityNotes',spec.securityNotes]]) {
+    if (values != null && !Array.isArray(values)) throw new TypeError(`Adapter ${field} must be an array.`);
+  }
   const frozen = {
     ...spec,
     capabilities: Object.freeze([...spec.capabilities]),
