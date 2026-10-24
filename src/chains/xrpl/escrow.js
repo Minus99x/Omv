@@ -42,7 +42,7 @@ export function evaluateXrplFeature({ featureResponse, featureName = 'TokenEscro
 export function createXrplEscrowRecoveryPlan({ owner, rescueDestination, amount = null, amountDrops = null, finishAfterRippleTime, cancelAfterRippleTime = null, tokenEscrowFeature = null }) {
   assertClassicAddress(owner, 'owner');
   assertClassicAddress(rescueDestination, 'rescueDestination');
-  if (!Number.isInteger(finishAfterRippleTime) || finishAfterRippleTime <= 0) throw new TypeError('finishAfterRippleTime must be a positive Ripple-epoch timestamp.');
+  if (!Number.isInteger(finishAfterRippleTime) || finishAfterRippleTime <= 0 || finishAfterRippleTime > 0xffffffff) throw new TypeError('finishAfterRippleTime must be a positive Ripple-epoch timestamp.');
   const normalized = normalizeAmount(amount ?? amountDrops);
   if (normalized.requiresTokenEscrow) {
     if (tokenEscrowFeature?.known !== true ||
@@ -52,10 +52,10 @@ export function createXrplEscrowRecoveryPlan({ owner, rescueDestination, amount 
         tokenEscrowFeature?.amendmentId !== TOKEN_ESCROW_AMENDMENT_ID) {
       throw new TypeError('Fungible-token escrow requires the TokenEscrow amendment to be supported and enabled on the target XRPL network.');
     }
-    if (!Number.isInteger(cancelAfterRippleTime) || cancelAfterRippleTime <= finishAfterRippleTime) {
+    if (!Number.isInteger(cancelAfterRippleTime) || cancelAfterRippleTime > 0xffffffff || cancelAfterRippleTime <= finishAfterRippleTime) {
       throw new TypeError('Fungible-token escrow requires CancelAfter later than FinishAfter.');
     }
-  } else if (cancelAfterRippleTime != null && (!Number.isInteger(cancelAfterRippleTime) || cancelAfterRippleTime <= finishAfterRippleTime)) {
+  } else if (cancelAfterRippleTime != null && (!Number.isInteger(cancelAfterRippleTime) || cancelAfterRippleTime > 0xffffffff || cancelAfterRippleTime <= finishAfterRippleTime)) {
     throw new TypeError('cancelAfterRippleTime must be later than finishAfterRippleTime.');
   }
 
@@ -96,7 +96,7 @@ export function createXrplEscrowRecoveryPlan({ owner, rescueDestination, amount 
 export function createXrplEscrowFinishPlan({ submitter, owner, escrowSequence, condition = null, fulfillment = null }) {
   assertClassicAddress(submitter, 'submitter');
   assertClassicAddress(owner, 'owner');
-  if (!Number.isInteger(escrowSequence) || escrowSequence <= 0) throw new TypeError('escrowSequence must be a positive integer.');
+  if (!Number.isInteger(escrowSequence) || escrowSequence <= 0 || escrowSequence > 0xffffffff) throw new TypeError('escrowSequence must be a positive integer.');
   if ((condition == null) !== (fulfillment == null)) throw new TypeError('condition and fulfillment must be provided together.');
   const tx = { TransactionType: 'EscrowFinish', Account: submitter, Owner: owner, OfferSequence: escrowSequence };
   if (condition != null) { tx.Condition = condition; tx.Fulfillment = fulfillment; }

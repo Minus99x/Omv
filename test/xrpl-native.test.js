@@ -134,3 +134,14 @@ test('XRPL token escrow construction refuses unverified capability booleans', ()
     assert.throws(()=>createXrplEscrowRecoveryPlan({...params,tokenEscrowFeature}),/requires the TokenEscrow amendment/);
   }
 });
+
+
+test('XRPL Ripple-epoch and escrow sequence parameters fit protocol UInt32', () => {
+  const params={owner,rescueDestination:rescue,amountDrops:'1',finishAfterRippleTime:4294967295};
+  assert.equal(createXrplEscrowRecoveryPlan(params).transaction.FinishAfter,4294967295);
+  for(const invalid of [4294967296,Number.MAX_SAFE_INTEGER,-1,1.5]){
+    assert.throws(()=>createXrplEscrowRecoveryPlan({...params,finishAfterRippleTime:invalid}),/positive Ripple-epoch/);
+    assert.throws(()=>createXrplEscrowRecoveryPlan({...params,finishAfterRippleTime:900000000,cancelAfterRippleTime:invalid}),/later than/);
+    assert.throws(()=>createXrplEscrowFinishPlan({submitter:a,owner,escrowSequence:invalid}),/positive integer/);
+  }
+});
