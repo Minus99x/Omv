@@ -637,3 +637,10 @@ test('Core evidence chain cannot skip array holes',()=>{const tx=transaction(), 
  const chain=[valid];chain.length=2;
  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain(chain).ok,false);
 });
+
+test('Core chain freshness reports invalid clocks without throwing',()=>{const tx=transaction(), input=observations(tx); const valid=createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,observationContext:context(1,'2026-10-07T05:20:00Z')});
+ for(const now of ['invalid','2026-02-30T00:00:00Z',{},42]) {
+  let result;assert.doesNotThrow(()=>{result=verifyBitcoinCoreCrossCheckEvidenceChain([valid],{now,maxAgeMs:1000});});
+  assert.equal(result.ok,false);
+ }
+});

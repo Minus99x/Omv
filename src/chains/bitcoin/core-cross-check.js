@@ -424,7 +424,10 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
   if (now != null || maxAgeMs != null) {
     if (now == null || !Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0) errors.push('now and non-negative maxAgeMs must be supplied together for freshness enforcement.');
     else if (previous?.observationContext) {
-      const nowMs = Date.parse(iso(now, 'now'));
+      let nowMs;
+      try { nowMs = Date.parse(iso(now, 'now')); }
+      catch (error) { errors.push(String(error.message || error)); }
+
       const observedMs = Date.parse(previous.observationContext.observedAt);
       if (observedMs > nowMs) errors.push('Latest Bitcoin Core observation is from the future.');
       else if (nowMs - observedMs > maxAgeMs) errors.push('Latest Bitcoin Core observation is stale.');
