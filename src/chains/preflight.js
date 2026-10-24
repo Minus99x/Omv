@@ -36,5 +36,7 @@ export function createPreflightResult({ chainId, networkRef, operation, status =
     intentDigest: transactionIntent ? digestIntent(transactionIntent) : null
   };
   if (status === 'ready' && errors.length) throw new TypeError('A ready preflight cannot contain errors.');
+  if (status === 'ready' && Object.values(checks).some(value => value !== true))
+    throw new TypeError('Ready preflight cannot contain unsuccessful checks.');
   return Object.freeze(result);
 }
