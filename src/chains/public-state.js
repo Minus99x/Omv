@@ -28,12 +28,16 @@ export function verifyPublicState({ chainId, networkRef, mechanismRef, observedA
     new Set(ids).size!==ids.length)
     throw new TypeError('Public-state checks require unique safe identifiers.');
   const results = checks.map(check => {
-    const actual = observations?.[check.id];
+    const present=observations!==null&&typeof observations==='object'&&
+      Object.hasOwn(observations,check.id);
+    const actual = present ? observations[check.id] : undefined;
     let ok = false;
     if (check.comparator === 'equal') ok = JSON.stringify(stable(actual)) === JSON.stringify(stable(check.expected));
     else if (check.comparator === 'contains') ok = Array.isArray(actual) && actual.includes(check.expected);
     else if (check.comparator === 'truthy') ok = Boolean(actual) === Boolean(check.expected ?? true);
     else if (check.comparator === 'custom') ok = actual === true;
+    // Missing state cannot equal missing expectations or inherited values.
+    ok=present&&ok;
     return Object.freeze({ id: check.id, required: check.required, ok, expected: structuredClone(check.expected), actual: structuredClone(actual) });
   });
   const verified = results.every(item => !item.required || item.ok);
