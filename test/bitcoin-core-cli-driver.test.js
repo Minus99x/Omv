@@ -6,7 +6,7 @@ test('Bitcoin Core CLI driver restricts local commands to four read-only Signet 
   const calls=[];
   const outputs={
     getnetworkinfo:{version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016},
-    getblockchaininfo:{chain:'signet'},
+    getblockchaininfo:{chain:'signet',initialblockdownload:false,blocks:300000,headers:300000,bestblockhash:'ab'.repeat(32)},
     decoderawtransaction:{txid:'ab'.repeat(32)},
     testmempoolaccept:[{allowed:false,'reject-reason':'missing-inputs'}]
   };
@@ -65,7 +65,7 @@ test('Bitcoin Core CLI requires Signet identity even when invoked through a Sign
     const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify(observed)})});
     await assert.rejects(()=>driver.getBlockchainInfo(),/not Signet chain identity/);
   }
-  const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:'{"chain":"signet"}'})});
+  const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify({chain:'signet',initialblockdownload:false,blocks:300000,headers:300000,bestblockhash:'ab'.repeat(32)})})});
   assert.equal((await driver.getBlockchainInfo()).chain,'signet');
 });
 
