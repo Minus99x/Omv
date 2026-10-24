@@ -17,6 +17,10 @@ function freezeNetwork(spec) {
     if(spec[field]!=null && !Array.isArray(spec[field]))
       throw new TypeError(`Network ${field} must be an array.`);
   }
+  for(const field of ['rpcUrls','explorerUrls','notes']) {
+    if(spec[field]?.some(value=>typeof value!=='string'||!value.trim()))
+      throw new TypeError(`Network ${field} must contain primitive nonempty strings.`);
+  }
   return Object.freeze({
     ...spec,
     rpcUrls: Object.freeze([...(spec.rpcUrls ?? [])]),
