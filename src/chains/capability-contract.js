@@ -43,6 +43,8 @@ function normalizeRefs(refs, label) {
 
 function normalizeGateEvidence(gate, input = {}) {
   const minimumEvidence = GATE_MINIMUM_EVIDENCE[gate];
+  if (!input || typeof input !== 'object' || Array.isArray(input))
+    throw new TypeError(`Gate ${gate} evidence must be a record object.`);
   const level = input.level ?? 'none';
   if (!evidenceRank.has(level)) throw new TypeError(`Unknown evidence level for ${gate}: ${level}`);
   const refs = normalizeRefs(input.refs, `gateEvidence.${gate}.refs`);
