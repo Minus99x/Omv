@@ -1,0 +1,56 @@
+name: OmegaVault Autonomous Engineering Occurrence Observer
+
+# Independent of chat sessions. Records only GitHub-attested execution facts.
+# Does not modify D1, product source, secrets or the existing engineering schedule.
+on:
+  workflow_run:
+    workflows:
+      - OmegaVault Frequent AI Engineering Launcher
+    types: [completed]
+  schedule:
+    # Audit the complete hour that ended at least one hour ago.
+    - cron: '13 * * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/omegavault-occurrence-observer.yml'
+
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+concurrency:
+  group: omegavault-occurrence-observer
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  record-occurrence:
+    name: Test observer and append GitHub evidence to issue 3
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout trusted default-branch observer only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Run offline observer regression tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s .github/tests -p 'test_occurrence_observer.py' -v
+
+      - name: Record actual completion or schedule shortfall
+        if: github.event_name != 'push'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/omegavault_occurrence_observer.py
