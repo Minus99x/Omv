@@ -23,6 +23,10 @@ function currentUtxoByReference(queriedUtxo) {
   if (!Array.isArray(queriedUtxo)) throw new TypeError('currentQueriedUtxo must be an array.');
   const result = new Map();
   for (const [index, utxo] of queriedUtxo.entries()) {
+    if (typeof utxo?.transaction?.id !== 'string' || !HEX_32.test(utxo.transaction.id) ||
+        !Number.isSafeInteger(utxo?.index) || utxo.index < 0 || utxo.index > 0xffff) {
+      throw new TypeError(`currentQueriedUtxo[${index}] has an invalid output reference.`);
+    }
     const key = refKey(utxo);
     if (!/^[0-9a-f]{64}#\d+$/i.test(key)) throw new TypeError(`currentQueriedUtxo[${index}] has an invalid output reference.`);
     if (result.has(key)) throw new Error(`Current UTxO query returned duplicate output reference ${key}.`);

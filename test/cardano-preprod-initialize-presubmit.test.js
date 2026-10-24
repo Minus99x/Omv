@@ -400,3 +400,11 @@ test('Cardano presubmit refuses coercible and zero current tip identities',()=>{
   assert.throws(()=>createCardanoPreprodInitializePreSubmitEvidence({...input,recoveryConfig,currentTip:{...input.currentTip,hash}}),/current stable Cardano/);
  }
 });
+
+test('Cardano presubmit does not accept coerced output-reference identity',()=>{
+ const input=fixture();
+ for(const edit of [u=>{u.index=String(u.index);},u=>{u.index=[u.index];},u=>{u.transaction.id=Object(u.transaction.id);},u=>{u.transaction.id={toString:()=>input.currentQueriedUtxo[0].transaction.id};}]) {
+  const utxos=structuredClone(input.currentQueriedUtxo);edit(utxos[0]);
+  assert.throws(()=>createCardanoPreprodInitializePreSubmitEvidence({...input,recoveryConfig,currentQueriedUtxo:utxos}),/invalid output reference/);
+ }
+});
