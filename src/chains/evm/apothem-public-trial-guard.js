@@ -25,10 +25,18 @@ export function validateApothemTrialRoles(roles){
  return Object.freeze(Object.fromEntries(ROLES.map((r,i)=>[r,a[i]])));
 }
 export function requirePublicApothemChainId(value){
- let chain;
- try{chain=BigInt(value);}catch{throw new TypeError('RPC chain ID invalid.');}
- if(chain!==51n)throw new Error('Live proof limited to XDC Apothem chain ID 51; mismatched/mainnet network refused.');
+ // EIP-1474 Quantity: primitive 0x-prefixed hexadecimal with no leading zeroes.
+ if(typeof value!=='string'||!/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(value))
+  throw new TypeError('RPC chain ID invalid; canonical 0x quantity required.');
+ if(BigInt(value)!==51n)throw new Error('Live proof limited to XDC Apothem chain ID 51; mismatched/mainnet network refused.');
  return 51;
+}
+function unsignedExact(value,label){
+ if(typeof value==='bigint'&&value>=0n)return value;
+ if(typeof value==='number'&&Number.isSafeInteger(value)&&value>=0)return BigInt(value);
+ if(typeof value==='string'&&(/^(?:0|[1-9][0-9]*)$/.test(value)||/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(value)))
+  return BigInt(value);
+ throw new TypeError(label+' must be an exact non-negative primitive integer.');
 }
 export function boundedApothemFee({estimatedGas,gasPriceWei,spentFeeWei=0n,capWei=XDC_PUBLIC_TRIAL_FEE_LIMIT_WEI}){
  const gas=BigInt(estimatedGas),price=BigInt(gasPriceWei),spent=BigInt(spentFeeWei),cap=BigInt(capWei);
