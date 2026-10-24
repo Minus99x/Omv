@@ -21,5 +21,5 @@ export function canPromoteToLiveProof(record) {
 }
 
 export function missingPromotionGates(record) {
-  return PROMOTION_GATES.filter(gate => record?.gates?.[gate] !== true);
+  return PROMOTION_GATES.filter(gate => !record?.gates || !Object.hasOwn(record.gates,gate) || record.gates[gate] !== true);
 }
