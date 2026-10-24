@@ -90,8 +90,8 @@ export function createXrplTestnetPrimitiveEvidencePlan({
   if(new Set(primitives).size!==primitives.length) throw new TypeError('primitives must be unique.');
 
   const selected=Object.freeze(primitives.map((name,index)=>{
-    const primitive=PRIMITIVES[name];
-    if(!primitive) throw new TypeError(`primitives[${index}] is unknown: ${name}`);
+    const primitive=typeof name==='string' && Object.hasOwn(PRIMITIVES,name) ? PRIMITIVES[name] : null;
+    if(!primitive) throw new TypeError(`primitives[${index}] is unknown: ${String(name)}`);
     return primitive;
   }));
 
@@ -127,6 +127,6 @@ export function createXrplTestnetPrimitiveEvidencePlan({
 }
 
 export function getXrplPrimitiveEvidenceSpec(name){
-  const primitive=PRIMITIVES[name];
+  const primitive=typeof name==='string' && Object.hasOwn(PRIMITIVES,name) ? PRIMITIVES[name] : null;
   return primitive ? structuredClone(primitive) : null;
 }

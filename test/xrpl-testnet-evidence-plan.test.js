@@ -49,3 +49,12 @@ test('XRPL Batch evidence retains non-delegable outer transaction caution',()=>{
   assert.match(batch.caution,/non-delegable/i);
   assert.ok(batch.doesNotProve.includes('immutable-rescue'));
 });
+
+
+test('XRPL primitive evidence plans reject inherited Object property names and non-string keys',()=>{
+  for(const name of ['constructor','toString','valueOf','__proto__','hasOwnProperty',42,{},null]){
+    assert.throws(()=>createXrplTestnetPrimitiveEvidencePlan({primitives:[name]}),/is unknown/);
+    assert.equal(getXrplPrimitiveEvidenceSpec(name),null);
+  }
+  assert.equal(getXrplPrimitiveEvidenceSpec('escrow').id,'escrow');
+});
