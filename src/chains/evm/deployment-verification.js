@@ -29,7 +29,11 @@ export function maskImmutableReferences(bytecode, immutableReferences = {}) {
       }
       const start = startByte * 2;
       const end = (startByte + lengthBytes) * 2;
-      for (let i = start; i < end; i++) chars[i] = '0';
+      for (let i = start; i < end; i++) {
+        if(masked.has(i))throw new TypeError('Overlapping immutable compiler references cannot hide runtime differences.');
+        masked.add(i);
+        chars[i] = '0';
+      }
     }
   }
   return chars.join('');
