@@ -6,10 +6,11 @@ export const XRPL_RECOVERY_MODES = Object.freeze({
 
 export function assessXrplRecoverySemantics({ mode, token = false } = {}) {
   if (!Object.values(XRPL_RECOVERY_MODES).includes(mode)) throw new TypeError('Unknown XRPL recovery mode.');
+  if(typeof token!=='boolean')throw new TypeError('XRPL token flag must be a primitive boolean.');
   if (mode === XRPL_RECOVERY_MODES.FIXED_TIME_ESCROW) return Object.freeze({
     mode, native: true, exactResettableInactivity: false,
     mechanism: 'EscrowCreate/FinishAfter',
-    tokenEscrowCapabilityRequired: Boolean(token),
+    tokenEscrowCapabilityRequired: token,
     reason: 'FinishAfter and CancelAfter are immutable absolute Ripple-epoch times; heartbeat activity cannot move an existing escrow maturity.'
   });
   if (mode === XRPL_RECOVERY_MODES.SIGNER_QUORUM) return Object.freeze({
