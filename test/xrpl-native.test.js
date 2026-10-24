@@ -57,7 +57,9 @@ test('XRPL escrow plan supports XRP and capability-gated fungible tokens without
   assert.equal(xrp.securitySemantics.resettableInactivityOnChain, false);
   assert.match(xrp.scope, /absolute not-before/);
 
-  const feature = { supported: true, enabled: true };
+  const feature = evaluateXrplFeature({ featureResponse:{ result:{
+    [TOKEN_ESCROW_AMENDMENT_ID]:{ name:'TokenEscrow', supported:true, enabled:true }
+  } } });
   const token = createXrplEscrowRecoveryPlan({
     owner, rescueDestination: rescue,
     amount: { currency: 'USD', issuer: a, value: '12.5' },
@@ -117,4 +119,18 @@ test('XRPL TokenEscrow amendment lookup cannot be spoofed by a name-only record'
   } } });
   assert.equal(observed.known,true);
   assert.equal(observed.enabled,true);
+});
+
+
+test('XRPL token escrow construction refuses unverified capability booleans', () => {
+  const params={ owner, rescueDestination:rescue,
+    amount:{ currency:'USD', issuer:a, value:'1' },
+    finishAfterRippleTime:900000000, cancelAfterRippleTime:900000600 };
+  for (const tokenEscrowFeature of [
+    {supported:true,enabled:true},
+    {known:true,supported:true,enabled:true,featureName:'TokenEscrow',amendmentId:'A'.repeat(64)},
+    {known:true,supported:true,enabled:true,featureName:'Other',amendmentId:TOKEN_ESCROW_AMENDMENT_ID}
+  ]) {
+    assert.throws(()=>createXrplEscrowRecoveryPlan({...params,tokenEscrowFeature}),/requires the TokenEscrow amendment/);
+  }
 });

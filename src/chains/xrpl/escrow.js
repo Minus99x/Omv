@@ -45,7 +45,13 @@ export function createXrplEscrowRecoveryPlan({ owner, rescueDestination, amount 
   if (!Number.isInteger(finishAfterRippleTime) || finishAfterRippleTime <= 0) throw new TypeError('finishAfterRippleTime must be a positive Ripple-epoch timestamp.');
   const normalized = normalizeAmount(amount ?? amountDrops);
   if (normalized.requiresTokenEscrow) {
-    if (!tokenEscrowFeature?.enabled || !tokenEscrowFeature?.supported) throw new TypeError('Fungible-token escrow requires the TokenEscrow amendment to be supported and enabled on the target XRPL network.');
+    if (tokenEscrowFeature?.known !== true ||
+        tokenEscrowFeature?.enabled !== true ||
+        tokenEscrowFeature?.supported !== true ||
+        tokenEscrowFeature?.featureName !== 'TokenEscrow' ||
+        tokenEscrowFeature?.amendmentId !== TOKEN_ESCROW_AMENDMENT_ID) {
+      throw new TypeError('Fungible-token escrow requires the TokenEscrow amendment to be supported and enabled on the target XRPL network.');
+    }
     if (!Number.isInteger(cancelAfterRippleTime) || cancelAfterRippleTime <= finishAfterRippleTime) {
       throw new TypeError('Fungible-token escrow requires CancelAfter later than FinishAfter.');
     }
