@@ -29,7 +29,9 @@ export function evaluateChainSupport({ capabilityContract, invariantEvidence = {
       Object.hasOwn(invariantEvidence,id) ? invariantEvidence[id] : null, chainId)])
   ));
 
-  const promotionEligible = capabilityContract?.promotion?.eligible === true;
+  const promotionEligible = capabilityContract?.promotion?.eligible === true &&
+    capabilityContract?.promotion?.missingGates?.length===0 &&
+    capabilityContract?.promotion?.insufficientEvidenceGates?.length===0;
   const noBlockers = Array.isArray(capabilityContract?.blockers) && capabilityContract.blockers.length === 0;
   const insufficientInvariants = Object.freeze(
     CORE_INVARIANT_IDS.filter(id => evidence[id].sufficient !== true)
