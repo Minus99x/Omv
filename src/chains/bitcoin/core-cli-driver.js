@@ -43,7 +43,8 @@ export function createBitcoinSignetCoreCliDriver({ execute = execFileAsync } = {
       const info=await query(METHODS.getNetworkInfo);
       if (!Number.isSafeInteger(info?.version) || info.version<=0 ||
           !Number.isSafeInteger(info?.protocolversion) || info.protocolversion<=0 ||
-          typeof info?.subversion!=='string' || !info.subversion.trim()) {
+          typeof info?.subversion!=='string' || !info.subversion.trim() ||
+          /[\u0000-\u001f\u007f]/.test(info.subversion)) {
         throw new Error('Bitcoin Core returned invalid node version/protocol metadata.');
       }
       return info;
