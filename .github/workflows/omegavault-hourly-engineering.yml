@@ -4,15 +4,10 @@ name: OmegaVault Frequent AI Engineering Launcher
 # dev/0.6.60-reconcile-overnight-bitcoin. No production code is modified.
 on:
   schedule:
-    # Three unattended engineering runs per hour, at :07, :27, :47 Arizona.
+    # One substantive unattended engineering run per hour, at :07 Arizona.
+    # Longer bounded worker replaces three overlapping small attempts.
     - cron: '7 * * * *'
-    - cron: '27 * * * *'
-    - cron: '47 * * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/omegavault-hourly-engineering.yml'
 
 permissions:
   contents: read
@@ -20,7 +15,7 @@ permissions:
 concurrency:
   group: omegavault-main-cron-single-worker
   cancel-in-progress: false
-  queue: max
+  queue: single
 
 jobs:
   trigger-receipt:
@@ -68,14 +63,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ffa2e5274fc065f9bf6e85a60c8c15d3eb67d4bb
+          ref: e7c6ffc49ffdb95715be58fe2e4a766de5a8c7b3
           persist-credentials: false
       - run: python3 .github/tests/test_worker_controls.py
 
   autonomous-engineering:
     name: Trigger isolated AI worker on scheduler-only branch
     needs: verify-worker-controls
-    uses: Minus99x/Omegavault/.github/workflows/omegavault-hourly-engineering.yml@ffa2e5274fc065f9bf6e85a60c8c15d3eb67d4bb
+    uses: Minus99x/Omegavault/.github/workflows/omegavault-hourly-engineering.yml@e7c6ffc49ffdb95715be58fe2e4a766de5a8c7b3
     permissions:
       contents: write
       copilot-requests: write
