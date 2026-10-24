@@ -13,6 +13,10 @@ function freezeNetwork(spec) {
       throw new TypeError(`Network ${key} is required.`);
   }
   if (!NETWORK_STAGES.has(spec.implementationStage)) throw new TypeError(`Unknown network stage: ${spec.implementationStage}`);
+  for(const field of ['rpcUrls','explorerUrls','notes']) {
+    if(spec[field]!=null && !Array.isArray(spec[field]))
+      throw new TypeError(`Network ${field} must be an array.`);
+  }
   return Object.freeze({
     ...spec,
     rpcUrls: Object.freeze([...(spec.rpcUrls ?? [])]),
