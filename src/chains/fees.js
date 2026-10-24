@@ -1,8 +1,10 @@
 const FEE_STATUSES = new Set(['estimate', 'observed']);
 
 function integerString(value, label, { allowZero = true } = {}) {
-  const normalized = typeof value === 'bigint' ? value.toString() : String(value ?? '');
-  if (!/^\d+$/.test(normalized)) throw new TypeError(`${label} must be a non-negative integer string.`);
+  const normalized = typeof value === 'bigint' ? value.toString() :
+    typeof value === 'number' && Number.isSafeInteger(value) ? value.toString() :
+    typeof value === 'string' ? value : '';
+  if (!/^(0|[1-9]\d*)$/.test(normalized)) throw new TypeError(`${label} must be a canonical non-negative primitive integer string.`);
   if (!allowZero && BigInt(normalized) === 0n) throw new TypeError(`${label} must be greater than zero.`);
   return normalized;
 }
