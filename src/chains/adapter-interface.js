@@ -19,7 +19,7 @@ export function defineAdapter(spec) {
   if (!spec || typeof spec !== 'object') throw new TypeError('Adapter spec is required.');
   const requiredStrings = ['id', 'family', 'name', 'accountModel', 'transactionModel', 'signingModel', 'recoveryMechanism', 'implementationStage'];
   for (const key of requiredStrings) {
-    if (!spec[key] || typeof spec[key] !== 'string') throw new TypeError(`Adapter ${key} is required.`);
+    if (typeof spec[key] !== 'string' || !spec[key].trim()) throw new TypeError(`Adapter ${key} is required.`);
   }
   if (!ADAPTER_STAGES.includes(spec.implementationStage)) throw new TypeError('Unknown adapter implementation stage.');
   if (typeof spec.validateAccount !== 'function') throw new TypeError('Adapter validateAccount(account) is required.');
