@@ -4,6 +4,10 @@ export function defineFinalityPolicy(input) {
   if (typeof input?.chainId !== 'string' || !input.chainId.trim() ||
       typeof input?.networkRef !== 'string' || !input.networkRef.trim() ||
       !MODELS.has(input?.model)) throw new TypeError('Finality policy requires chainId, networkRef and a supported model.');
+  if (input.evidenceFields != null && !Array.isArray(input.evidenceFields))
+    throw new TypeError('Finality evidenceFields must be an array.');
+  if (input.notes != null && !Array.isArray(input.notes))
+    throw new TypeError('Finality notes must be an array.');
   const policy = {
     chainId: input.chainId,
     networkRef: input.networkRef,
