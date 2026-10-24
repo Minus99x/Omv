@@ -40,7 +40,13 @@ export function createBitcoinSignetCoreCliDriver({ execute = execFileAsync } = {
   return Object.freeze({
     provenance:'bitcoin-core-rpc',
     getNetworkInfo:() => query(METHODS.getNetworkInfo),
-    getBlockchainInfo:() => query(METHODS.getBlockchainInfo),
+    getBlockchainInfo:async () => {
+      const info=await query(METHODS.getBlockchainInfo);
+      if (!info || typeof info!=='object' || info.chain!=='signet') {
+        throw new Error('Bitcoin Core CLI response is not Signet chain identity.');
+      }
+      return info;
+    },
     decodeRawTransaction:({rawHex,networkRef}) => {
       if (networkRef !== 'bitcoin:signet') throw new Error('Bitcoin Core CLI is Signet-only.');
       return query(METHODS.decodeRawTransaction,[raw(rawHex,'rawHex')]);

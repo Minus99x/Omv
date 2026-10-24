@@ -58,3 +58,13 @@ test('Bitcoin Core CLI driver rejects non-JSON responses and strips machine-spec
     return true;
   });
 });
+
+
+test('Bitcoin Core CLI requires Signet identity even when invoked through a Signet CLI flag',async()=>{
+  for(const observed of [{chain:'main'},{chain:'test'},{}]){
+    const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify(observed)})});
+    await assert.rejects(()=>driver.getBlockchainInfo(),/not Signet chain identity/);
+  }
+  const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:'{"chain":"signet"}'})});
+  assert.equal((await driver.getBlockchainInfo()).chain,'signet');
+});
