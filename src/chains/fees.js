@@ -30,6 +30,9 @@ export function createFeeEvidence({
     throw new TypeError('Observed fee evidence requires transactionRef.');
   if (transactionRef != null && (typeof transactionRef !== 'string' || !transactionRef.trim()))
     throw new TypeError('Fee transactionRef must be primitive non-empty text.');
+  if (components != null && (typeof components !== 'object' || Array.isArray(components)))
+    throw new TypeError('Fee components must be an object.');
+  if (!Array.isArray(notes) && notes != null) throw new TypeError('Fee notes must be an array.');
   const normalizedComponents = {};
   for (const [key, value] of Object.entries(components ?? {})) {
     normalizedComponents[key] = integerString(value, `fee component ${key}`);
