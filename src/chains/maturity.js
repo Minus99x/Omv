@@ -6,7 +6,7 @@ export const PROMOTION_GATES = Object.freeze([
 
 export function createMaturityRecord({ chainId, stage = 'scaffold', gates = {} }) {
   if (typeof chainId !== 'string' || !chainId.trim()) throw new TypeError('chainId is required.');
-  if (!['planned','scaffold','live-proof'].includes(stage)) throw new TypeError('Unknown chain maturity stage.');
+  if (!['catalogued','planned','scaffold','source-verified','offline-verified','compatibility-ready','legacy-live-proof','live-proof','reduced-semantics','parked','blocked'].includes(stage)) throw new TypeError('Unknown chain maturity stage.');
   if (!gates || typeof gates !== 'object' || Array.isArray(gates)) throw new TypeError('Maturity gates must be an object.');
   const normalized = {};
   for (const gate of PROMOTION_GATES) normalized[gate] = Object.hasOwn(gates,gate) && gates[gate] === true;
@@ -15,7 +15,7 @@ export function createMaturityRecord({ chainId, stage = 'scaffold', gates = {} }
 
 export function canPromoteToLiveProof(record) {
   if (!record || typeof record.chainId !== 'string' || !record.chainId.trim() ||
-      !['planned','scaffold','live-proof'].includes(record.stage) ||
+      !['catalogued','planned','scaffold','source-verified','offline-verified','compatibility-ready','legacy-live-proof','live-proof','reduced-semantics','parked','blocked'].includes(record.stage) ||
       !record.gates || typeof record.gates !== 'object' || Array.isArray(record.gates)) return false;
   return PROMOTION_GATES.every(gate => Object.hasOwn(record.gates,gate) && record.gates[gate] === true);
 }
