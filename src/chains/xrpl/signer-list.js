@@ -123,11 +123,18 @@ export function coordinateXrplMultisign({ transaction, signerList, signatures, b
   const tx = { ...transaction, SigningPubKey: '', Signers: signers };
   delete tx.TxnSignature;
 
+  // Do not pass coercible, fractional or unbounded fees into an offline
+  // multisign package. Signing cannot safely auto-fill a missing fee.
+  if (tx.Fee != null) tx.Fee = normalizeXrplFeeDrops(tx.Fee, 'transaction.Fee');
   let minimumFeeDrops = null;
   if (baseFeeDrops != null) {
-    if (!/^\d+$/.test(String(baseFeeDrops))) throw new TypeError('baseFeeDrops must be a non-negative integer string/number.');
-    minimumFeeDrops = BigInt(baseFeeDrops) * BigInt(signatures.length + 1);
-    if (tx.Fee != null && BigInt(tx.Fee) < minimumFeeDrops) {
+    const baseFee = normalizeXrplFeeDrops(baseFeeDrops, 'baseFeeDrops');
+    minimumFeeDrops = BigInt(baseFee) * BigInt(signatures.length + 1);
+    if (minimumFeeDrops > 100000000000000000n) {
+      throw new TypeError('XRPL multisign minimum fee exceeds available XRP supply.');
+    }
+    if (tx.Fee == null) throw new TypeError('XRPL multisign Fee must be fixed before offline signature coordination.');
+    if (BigInt(tx.Fee) < minimumFeeDrops) {
       throw new TypeError(`XRPL multi-signed Fee is below the structural minimum of ${minimumFeeDrops} drops for ${signatures.length} signatures.`);
     }
   }

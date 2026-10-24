@@ -206,3 +206,19 @@ test('XRPL SignerListSet Fee does not coerce unsafe or over-supply drop amounts'
     assert.throws(()=>buildXrplSignerListSet({...cfg,feeDrops}),/canonical non-negative/);
   }
 });
+
+
+test('XRPL multisign Fee is exact and fixed before signature coordination',()=>{
+  const signerList={owner,signerEntries:[{account:a,weight:1},{account:b,weight:1}],quorum:2};
+  const signatures=[{account:a,signingPubKey:'EDA',txnSignature:'AAA'},
+    {account:b,signingPubKey:'EDB',txnSignature:'BBB'}];
+  const base={TransactionType:'Payment',Account:owner,Destination:rescue,Amount:'1',Sequence:10};
+  const run=(fee,baseFeeDrops='10')=>coordinateXrplMultisign({
+    transaction:{...base,...(fee===undefined?{}:{Fee:fee})},signerList,signatures,baseFeeDrops
+  });
+  assert.equal(run('30').minimumFeeDrops,'30');
+  for(const fee of [undefined,'029',{},true,'100000000000000001',Number.MAX_SAFE_INTEGER+1]){
+    assert.throws(()=>run(fee),/Fee|fee/);
+  }
+  assert.throws(()=>run('30',{}),/baseFeeDrops/);
+});
