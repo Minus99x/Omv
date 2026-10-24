@@ -706,3 +706,10 @@ test('Core decoded witness comparison cannot be spoofed by serialization hooks',
  input.decodedTransaction.vin[0].txinwitness={toJSON:()=>tx.witnesses[0].stackItems};
  assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input}),/decoded witness/);
 });
+
+test('Core observation context refuses coercible predecessor digests',()=>{
+ const tx=transaction(),input=observations(tx);
+ for(const previous of [Object('aa'.repeat(32)),{toString:()=> 'aa'.repeat(32)}]) {
+  assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,observationContext:context(2,'2026-10-07T05:20:00Z',previous)}),/hexadecimal/);
+ }
+});

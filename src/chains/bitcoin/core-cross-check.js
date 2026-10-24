@@ -37,7 +37,8 @@ function positiveInteger(value, label) {
 }
 
 function sha256Hex(value, label) {
-  const text = String(value ?? '').toLowerCase();
+  if (typeof value !== 'string') throw new TypeError(`${label} must be 32-byte hexadecimal.`);
+  const text = value.toLowerCase();
   if (!/^[0-9a-f]{64}$/.test(text)) throw new TypeError(`${label} must be 32-byte hexadecimal.`);
   return text;
 }
