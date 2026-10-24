@@ -38,6 +38,9 @@ export function evmProbePreflight({ networkId, observedChainIdHex, checks = {}, 
   // Caller-supplied checks cannot override observed RPC network identity.
   const allChecks = { ...checks, 'chain-id-match': chainMatches };
   if (network.chainId === 'xdc') allChecks[XDC_AUTHENTICATED_FINALITY_GATE] = false;
+  for (const [name,result] of Object.entries(allChecks)) {
+    if (typeof result !== 'boolean') throw new TypeError(`EVM compatibility check ${name} must be boolean.`);
+  }
   const required = createEvmCompatibilityProbe(networkId).requiredChecks;
   const ready = mergedErrors.length === 0 && required.every(key => allChecks[key] === true);
   return createPreflightResult({
