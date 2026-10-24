@@ -449,6 +449,9 @@ export async function runBitcoinCoreCrossCheck({
   now = () => new Date().toISOString()
 }) {
   requireTransaction(transaction);
+  positiveInteger(observationSequence, 'observationSequence');
+  if (previousEvidenceSha256 !== null) sha256Hex(previousEvidenceSha256, 'previousEvidenceSha256');
+  if (typeof now !== 'function') throw new TypeError('now must be a clock function.');
   for (const method of ['getNetworkInfo', 'getBlockchainInfo', 'decodeRawTransaction', 'testMempoolAccept']) requireMethod(driver, method);
   const [network, blockchain] = await Promise.all([driver.getNetworkInfo(), driver.getBlockchainInfo()]);
   const node = { version:network?.version, subversion:network?.subversion, protocolVersion:network?.protocolversion, chain:blockchain?.chain };
