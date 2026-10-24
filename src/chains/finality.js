@@ -25,7 +25,12 @@ export function defineFinalityPolicy(input) {
 }
 
 export function createFinalityObservation({ policy, transactionRef, observedAt, status, evidence = {} }) {
-  if (!policy || !transactionRef || !observedAt) throw new TypeError('Finality observation requires policy, transactionRef and observedAt.');
+  if (!policy || !MODELS.has(policy.model) ||
+      typeof policy.chainId !== 'string' || !policy.chainId.trim() ||
+      typeof policy.networkRef !== 'string' || !policy.networkRef.trim() ||
+      typeof transactionRef !== 'string' || !transactionRef.trim() ||
+      typeof observedAt !== 'string' || !observedAt.trim())
+    throw new TypeError('Finality observation requires policy, transactionRef and observedAt.');
   if (!['pending', 'included', 'finalized', 'failed'].includes(status)) throw new TypeError('Unsupported finality status.');
   return Object.freeze({
     chainId: policy.chainId, networkRef: policy.networkRef, model: policy.model,
