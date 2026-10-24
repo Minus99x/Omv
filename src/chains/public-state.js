@@ -67,7 +67,9 @@ export function compareIndependentStateSnapshots(a, b, fields) {
     chainId: a.chainId,
     networkRef: a.networkRef,
     mechanismRef: a.mechanismRef,
-    independent: a.source !== b.source,
+    // Different labels do not prove independent provider infrastructure.
+    distinctSourceLabels:typeof a.source==='string'&&typeof b.source==='string'&&a.source!==b.source,
+    independent:false,
     matches: comparisons.every(item => item.matches),
     comparisons: Object.freeze(comparisons)
   });
