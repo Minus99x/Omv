@@ -35,7 +35,7 @@ function integer(value, label, { positive = false } = {}) {
     throw new TypeError(`${label} must be a non-negative integer primitive.`);
   }
   const text = typeof value === 'string' ? value : value.toString();
-  if (!/^\d+$/.test(text)) throw new TypeError(`${label} must be a non-negative integer.`);
+  if (!/^(0|[1-9]\d*)$/.test(text)) throw new TypeError(`${label} must be a non-negative integer.`);
   if (positive && BigInt(text) === 0n) throw new TypeError(`${label} must be greater than zero.`);
   return text;
 }

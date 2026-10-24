@@ -612,3 +612,8 @@ test('Signet observation verification rejects serialization spoofing and accepts
  const spoof={...valid,publicSignetObservationProven:true,toJSON:()=>valid};
  assert.equal(verifyBitcoinSignetObservationEvidence({...args,evidence:spoof}).ok,false);
 });
+
+test('Signet padded block heights cannot bypass equal-height hash consistency',()=>{const {finalizer,finalTransaction}=finalizerArtifacts();const args={finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,...observations(finalizer)};
+ args.minimumConfirmations=1;args.transaction.confirmations='1';args.chainTip.blockHeight='0'+args.transaction.blockHeight;args.chainTip.blockHash='99'.repeat(32);
+ assert.throws(()=>createBitcoinSignetObservationEvidence(args),/integer|hash/);
+});
