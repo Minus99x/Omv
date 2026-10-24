@@ -29,11 +29,14 @@ function normalizeAmount(amount) {
 
 export function evaluateXrplFeature({ featureResponse, featureName = 'TokenEscrow', amendmentId = TOKEN_ESCROW_AMENDMENT_ID }) {
   const result = featureResponse?.result ?? featureResponse ?? {};
-  const entries = Object.entries(result);
-  const match = entries.find(([id, feature]) => id.toUpperCase() === amendmentId || feature?.name === featureName);
-  if (!match) return Object.freeze({ known: false, supported: false, enabled: false, amendmentId, featureName });
-  const [id, feature] = match;
-  return Object.freeze({ known: true, supported: feature?.supported === true, enabled: feature?.enabled === true, amendmentId: id.toUpperCase(), featureName: feature?.name ?? featureName });
+  // Do not trust a matching human-readable name when the amendment ID differs.
+  // The ID and name must identify the same unique protocol amendment.
+  const entries = Object.entries(result).filter(([id, feature]) =>
+    /^[a-fA-F0-9]{64}$/.test(id) && id.toUpperCase() === amendmentId && feature?.name === featureName
+  );
+  if (entries.length !== 1) return Object.freeze({ known: false, supported: false, enabled: false, amendmentId, featureName });
+  const [id, feature] = entries[0];
+  return Object.freeze({ known: true, supported: feature?.supported === true, enabled: feature?.enabled === true, amendmentId: id.toUpperCase(), featureName });
 }
 
 export function createXrplEscrowRecoveryPlan({ owner, rescueDestination, amount = null, amountDrops = null, finishAfterRippleTime, cancelAfterRippleTime = null, tokenEscrowFeature = null }) {

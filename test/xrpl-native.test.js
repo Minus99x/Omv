@@ -100,3 +100,21 @@ test('XRPL exact resettable inactivity remains unsupported until a verified mech
   assert.equal(result.exactResettableInactivity, false);
   assert.equal(result.mechanism, null);
 });
+
+
+test('XRPL TokenEscrow amendment lookup cannot be spoofed by a name-only record', () => {
+  for (const result of [
+    { ['A'.repeat(64)]: { name:'TokenEscrow', supported:true, enabled:true } },
+    { [TOKEN_ESCROW_AMENDMENT_ID]: { name:'DifferentAmendment', supported:true, enabled:true } },
+    { TokenEscrow: { name:'TokenEscrow', supported:true, enabled:true } }
+  ]) {
+    const observed = evaluateXrplFeature({ featureResponse:{ result } });
+    assert.equal(observed.known,false);
+    assert.equal(observed.enabled,false);
+  }
+  const observed = evaluateXrplFeature({ featureResponse:{ result:{
+    [TOKEN_ESCROW_AMENDMENT_ID]: { name:'TokenEscrow', supported:true, enabled:true }
+  } } });
+  assert.equal(observed.known,true);
+  assert.equal(observed.enabled,true);
+});
