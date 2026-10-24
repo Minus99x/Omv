@@ -17,6 +17,8 @@ test('EVM network identity does not coerce hex-number masqueraders',()=>{
    checks:{...checks,'chain-id-match':true}});
   assert.equal(result.status,'blocked');
   assert.equal(result.checks['chain-id-match'],false);
+  if (typeof observedChainIdHex !== 'string')
+    assert.equal(result.observedNetwork.chainIdHex, null);
  }
 });
 test('EVM preflight refuses control matrix with unknown outcome types',()=>{
@@ -29,4 +31,16 @@ test('XDC authenticated finality remains forced false despite caller claims',()=
    checks:{...checks,[XDC_AUTHENTICATED_FINALITY_GATE]:true}});
  assert.equal(result.checks[XDC_AUTHENTICATED_FINALITY_GATE],false);
  assert.notEqual(result.status,'ready');
+});
+
+test('non-string EVM chain observations cannot execute hostile coercion methods', () => {
+  const hostile = { toString() { throw new Error('coercion invoked'); } };
+  const result = evmProbePreflight({
+    networkId: 'base:sepolia', observedChainIdHex: hostile,
+    checks: { ...checks, 'chain-id-match': true }
+  });
+  assert.equal(result.status, 'blocked');
+  assert.equal(result.observedNetwork.chainIdHex, null);
+  assert.equal(result.checks['chain-id-match'], false);
+  assert.match(result.errors.join(' '), /invalid non-string/);
 });

@@ -33,8 +33,12 @@ export function evmProbePreflight({ networkId, observedChainIdHex, checks = {}, 
     throw new TypeError('EVM compatibility checks must be an object.');
   if (!Array.isArray(warnings) || !Array.isArray(errors))
     throw new TypeError('EVM warnings and errors must be arrays.');
+  // A malicious/coerced observation can carry functions or throwing
+  // toString methods. Never interpolate or clone it into public evidence.
+  const observedChainIdForEvidence = typeof observedChainIdHex === 'string'
+    ? observedChainIdHex : null;
   const mergedErrors = [...errors];
-  if (!chainMatches) mergedErrors.push(`Observed chain ${observedChainIdHex ?? 'unknown'} does not match expected ${network.chainIdHex}.`);
+  if (!chainMatches) mergedErrors.push(`Observed chain ${observedChainIdForEvidence ?? 'invalid non-string'} does not match expected ${network.chainIdHex}.`);
   // Caller-supplied checks cannot override observed RPC network identity.
   const allChecks = { ...checks, 'chain-id-match': chainMatches };
   if (network.chainId === 'xdc') allChecks[XDC_AUTHENTICATED_FINALITY_GATE] = false;
@@ -45,7 +49,7 @@ export function evmProbePreflight({ networkId, observedChainIdHex, checks = {}, 
   const ready = mergedErrors.length === 0 && required.every(key => allChecks[key] === true);
   return createPreflightResult({
     chainId: network.chainId, networkRef: network.id, operation: 'evm.compatibility-proof', status: ready ? 'ready' : (mergedErrors.length ? 'blocked' : 'warning'),
-    observedNetwork: { chainIdHex: observedChainIdHex }, checks: allChecks, warnings, errors: mergedErrors,
+    observedNetwork: { chainIdHex: observedChainIdForEvidence }, checks: allChecks, warnings, errors: mergedErrors,
     transactionIntent: { purpose: 'OmegaVault EVM compatibility proof', networkId: network.id, expectedChainIdHex: network.chainIdHex }
   });
 }

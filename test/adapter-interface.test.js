@@ -45,3 +45,31 @@ test('only Ethereum is marked as a live proof connector in the current baseline'
     assert.equal(getChain(id).proofAdapter, false);
   }
 });
+
+test('adapter proof networks preserve structured identity and are deeply immutable', () => {
+  const ethereum = getChain('ethereum');
+  assert.deepEqual(ethereum.proofNetworks, [
+    { id: '0xaa36a7', name: 'Sepolia', testOnly: true }
+  ]);
+  assert.ok(Object.isFrozen(ethereum.proofNetworks));
+  assert.ok(Object.isFrozen(ethereum.proofNetworks[0]));
+  const listed = listChains().find(item => item.id === 'ethereum');
+  assert.deepEqual(listed.proofNetworks, ethereum.proofNetworks);
+});
+
+test('adapter network metadata rejects malformed, duplicate and coercible descriptors', async () => {
+  const { defineAdapter } = await import('../src/chains/adapter-interface.js');
+  const valid = getChain('ethereum');
+  const attempts = [
+    ['x'], [null], [{}], [{ id: 17 }], [{ id: '' }],
+    [{ id: 'valid', testOnly: 'true' }],
+    [{ id: 'valid', name: '' }],
+    [{ id: 'valid', extra: true }],
+    [{ id: 'same' }, { id: 'same' }],
+    [{ id: 'safe', toString() { return 'unsafe'; } }]
+  ];
+  for (const proofNetworks of attempts) {
+    assert.throws(() => defineAdapter({ ...valid, proofNetworks }), /proofNetworks/);
+  }
+  assert.throws(() => defineAdapter({ ...valid, securityNotes: [null] }), /securityNotes/);
+});

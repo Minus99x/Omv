@@ -210,7 +210,7 @@ test('read-only Signet Core subprocess integrates prepared PSBT with fixed node 
         version:checks.node.version,subversion:checks.node.subversion,
         protocolversion:checks.node.protocolVersion
       },
-      getblockchaininfo:{chain:'signet'},
+      getblockchaininfo:{chain:'signet',initialblockdownload:false,blocks:300000,headers:300000,bestblockhash:'ab'.repeat(32)},
       decoderawtransaction:checks.decodedTransaction,
       testmempoolaccept:[checks.mempoolResult]
     }));
