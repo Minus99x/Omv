@@ -158,7 +158,7 @@ function validateDecoded(transaction, decoded) {
   });
   const expectedOutputs = transaction.finalizerEvidence.outputs;
   if (!Array.isArray(decoded?.vout) || decoded.vout.length !== expectedOutputs.length) throw new Error('Bitcoin Core decoded output count does not match extraction.');
-  decoded.vout.forEach((output, index) => {
+  Array.from(decoded.vout).forEach((output, index) => {
     const expected = expectedOutputs[index];
     if (output?.n !== index) throw new Error(`Bitcoin Core decoded output ${index} index is not canonical.`);
     if (btcToSats(output?.value, `decoded.vout[${index}].value`) !== expected.amountSats) throw new Error(`Bitcoin Core decoded output ${index} amount does not match extraction.`);

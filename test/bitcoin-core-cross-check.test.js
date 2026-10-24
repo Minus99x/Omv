@@ -694,3 +694,9 @@ test('Core decoded transaction cannot omit input records through array holes',()
  input.decodedTransaction.vin=new Array(1);
  assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input}),/decoded input/);
 });
+
+test('Core decoded transaction cannot omit output records through array holes',()=>{
+ const tx=transaction(),input=observations(tx);
+ input.decodedTransaction.vout=new Array(1);
+ assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input}),/decoded output/);
+});
