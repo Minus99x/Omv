@@ -140,6 +140,7 @@ export function createBitcoinSignetObservationEvidence({
 
   if (chainTip?.networkRef !== 'bitcoin:signet') throw new Error('Bitcoin chain-tip observation is not bound to Signet.');
   const tipHash = sha256Hex(chainTip?.blockHash, 'chainTip.blockHash');
+  if (/^0{64}$/.test(blockHash) || /^0{64}$/.test(tipHash)) throw new Error('Bitcoin observed block hashes cannot be all-zero.');
   const tipHeight = integer(chainTip?.blockHeight, 'chainTip.blockHeight', { positive:true });
   const tipObservedAt = iso(chainTip?.observedAt, 'chainTip.observedAt');
   if (BigInt(tipHeight) < BigInt(blockHeight)) throw new Error('Bitcoin chain tip predates the observed transaction block.');

@@ -623,3 +623,10 @@ test('Signet tip cannot reuse an inclusion block hash at a higher height',()=>{c
  args.chainTip.blockHash=args.transaction.blockHash;
  assert.throws(()=>createBitcoinSignetObservationEvidence(args),/reuse/);
 });
+
+test('Signet block observations reject zero hash sentinels',()=>{const {finalizer,finalTransaction}=finalizerArtifacts();const args={finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,...observations(finalizer)};
+ for(const field of ['transaction','chainTip']) {
+  const changed=structuredClone(args);changed[field].blockHash='00'.repeat(32);
+  assert.throws(()=>createBitcoinSignetObservationEvidence(changed),/zero/);
+ }
+});
