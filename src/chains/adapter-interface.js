@@ -36,6 +36,8 @@ export function defineAdapter(spec) {
     if (values != null && values.some(value=>typeof value!=='string' || !value.trim()))
       throw new TypeError(`Adapter ${field} entries must be non-empty strings.`);
   }
+  if (spec.proofNetworks != null && new Set(spec.proofNetworks).size !== spec.proofNetworks.length)
+    throw new TypeError('Adapter proofNetworks cannot contain duplicate entries.');
   const frozen = {
     ...spec,
     capabilities: Object.freeze([...spec.capabilities]),
