@@ -713,3 +713,11 @@ test('Core observation context refuses coercible predecessor digests',()=>{
   assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,observationContext:context(2,'2026-10-07T05:20:00Z',previous)}),/hexadecimal/);
  }
 });
+
+test('Core receipt verifier returns structured failure for cyclic and bigint payloads',()=>{const tx=transaction(), input=observations(tx); const valid=createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,observationContext:context(1,'2026-10-07T05:20:00Z')});
+ for(const edit of [r=>{r.extra=r;},r=>{r.extra=1n;}]) {
+  const malformed=structuredClone(valid);edit(malformed);
+  let result;assert.doesNotThrow(()=>{result=verifyBitcoinCoreCrossCheckEvidenceChain([malformed]);});
+  assert.equal(result.ok,false);
+ }
+});

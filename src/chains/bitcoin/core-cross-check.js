@@ -378,7 +378,12 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
     let normalizedSha;
     try { normalizedSha = sha256Hex(evidenceSha256, `evidence[${index}].sha256`); }
     catch (error) { errors.push(String(error.message || error)); return; }
-    if (normalizedSha !== digest(core)) errors.push(`Evidence ${index} digest is invalid.`);
+    try {
+      if (normalizedSha !== digest(core)) errors.push(`Evidence ${index} digest is invalid.`);
+    } catch {
+      errors.push(`Evidence ${index} contains nonserializable receipt data.`);
+      return;
+    }
     validateChainedCoreAuthority(evidence,index,errors);
     if (seen.has(normalizedSha)) errors.push(`Evidence ${index} replays a previously observed receipt.`);
     seen.add(normalizedSha);
