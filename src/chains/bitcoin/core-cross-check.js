@@ -152,7 +152,7 @@ function validateDecoded(transaction, decoded) {
       throw new Error(`Bitcoin Core decoded input ${index} does not match extraction.`);
     }
     if (input?.scriptSig?.hex !== '') throw new Error(`Bitcoin Core decoded input ${index} must have an empty native scriptSig.`);
-    if (JSON.stringify(input?.txinwitness) !== JSON.stringify(transaction.witnesses[index].stackItems)) {
+    if (!isDeepStrictEqual(input?.txinwitness, transaction.witnesses[index].stackItems)) {
       throw new Error(`Bitcoin Core decoded witness ${index} does not match extraction.`);
     }
   });

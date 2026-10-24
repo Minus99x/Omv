@@ -700,3 +700,9 @@ test('Core decoded transaction cannot omit output records through array holes',(
  input.decodedTransaction.vout=new Array(1);
  assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input}),/decoded output/);
 });
+
+test('Core decoded witness comparison cannot be spoofed by serialization hooks',()=>{
+ const tx=transaction(),input=observations(tx);
+ input.decodedTransaction.vin[0].txinwitness={toJSON:()=>tx.witnesses[0].stackItems};
+ assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input}),/decoded witness/);
+});
