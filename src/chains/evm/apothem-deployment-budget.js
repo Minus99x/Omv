@@ -24,6 +24,7 @@ export function encodeRecoveryVaultConstructor({owner,contacts,rescue,threshold,
   if(!Number.isInteger(threshold)||threshold<1||threshold>contacts.length)throw new TypeError('Threshold exceeds available guardians');
   if(!Number.isInteger(inactivitySeconds)||inactivitySeconds<1||!Number.isSafeInteger(inactivitySeconds))throw new TypeError('Invalid inactivity seconds');
   const destination=address(rescue,'rescue');
+  if(owner.toLowerCase()===rescue.toLowerCase())throw new Error('Owner and rescue must be distinct accounts');
   const unique=new Set([owner.toLowerCase(),rescue.toLowerCase()]);
   const encodedContacts=contacts.map(x=>{
     const normalized='0x'+address(x,'contact').slice(-40);
