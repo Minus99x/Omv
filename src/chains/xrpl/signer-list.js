@@ -73,7 +73,7 @@ export function buildXrplSignerListSet({ owner, signerEntries, contacts = null, 
     TransactionType: 'SignerListSet',
     Account: owner,
     SignerQuorum: quorum,
-    SignerEntries: config.signerEntries.map(({ account, weight }) => ({ SignerEntry: { Account: account, SignerWeight: weight } })),
+    SignerEntries: Object.freeze(config.signerEntries.map(({ account, weight }) => Object.freeze({ SignerEntry: Object.freeze({ Account: account, SignerWeight: weight }) }))),
     ...normalizeXrplSequenceBinding({ sequence, ticketSequence })
   };
   if (feeDrops != null) {

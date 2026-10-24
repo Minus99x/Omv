@@ -229,3 +229,12 @@ test('XRPL exact-inactivity claim retains fail-closed semantics across every nat
     assert.throws(()=>assertXrplProductClaim({mode,claim:'resettable-inactivity'}),/must not be advertised/);
   }
 });
+
+
+test('XRPL SignerList transaction freezes every signer entry and the list',()=>{
+  const tx=buildXrplSignerListSet({owner,contacts:[a,b],quorum:2,sequence:12}).transaction;
+  assert.equal(Object.isFrozen(tx.SignerEntries),true);
+  assert.equal(Object.isFrozen(tx.SignerEntries[0]),true);
+  assert.equal(Object.isFrozen(tx.SignerEntries[0].SignerEntry),true);
+  assert.throws(()=>tx.SignerEntries.push({SignerEntry:{Account:rescue,SignerWeight:50}}),TypeError);
+});
