@@ -6,7 +6,7 @@ const ADDR=/^0x[0-9a-fA-F]{40}$/;
 const BYTECODE=/^(?:[a-fA-F0-9]{2})+$/;
 const MAX_BUDGET_WEI=5n*10n**18n; // 5 disposable TXDC
 function quantity(value,label){
-  if(typeof value!=='string'|| !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(value))throw new TypeError(label+' must be canonical hex quantity');
+  if(typeof value!=='string'|| !/^0x(?:0|[1-9a-fA-F][0-9a-fA-F]{0,63})$/.test(value))throw new TypeError(label+' must be canonical uint256 hex quantity');
   return BigInt(value);
 }
 function address(addr,label){
