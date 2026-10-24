@@ -8,6 +8,12 @@ export function defineErc20Asset({ chainId, networkRef, address, symbol = null, 
     throw new TypeError('ERC-20 address is invalid.');
   if (typeof chainId!=='string'||!chainId.trim()||typeof networkRef!=='string'||!networkRef.trim())
     throw new TypeError('ERC-20 asset requires primitive chain and network identity.');
+  if (decimals!=null && (!Number.isInteger(decimals)||decimals<0||decimals>255))
+    throw new TypeError('ERC-20 decimals must be a uint8 integer.');
+  for (const [label,value] of [['symbol',symbol],['name',name]]) {
+    if(value!=null&&(typeof value!=='string'||!value.trim()))
+      throw new TypeError(`ERC-20 ${label} must be non-empty primitive text.`);
+  }
   return Object.freeze({
     chainId,
     networkRef,
