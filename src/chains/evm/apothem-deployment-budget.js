@@ -74,7 +74,7 @@ export function createApothemReadOnlyDeploymentBudget({
     bufferedGasLimit:gasWithBuffer?.toString()??null,
     conservativeTxFeeBudgetWei:budgetWei?.toString()??null,
     maxAllowedFakeTxdcWei:budgetMax.toString(),
-    withinFeeCap:budgetWei!=null&&budgetWei<=budgetMax,
+    withinFeeCap:budgetWei!=null&&budgetWei<=budgetMax&&(baseFee==null||price>=baseFee),
     deploymentEligible: false, // Funding, chain deployment and security checks remain separate
     transactionSigned:false,transactionBroadcast:false,realMoneyUsed:false
   });
