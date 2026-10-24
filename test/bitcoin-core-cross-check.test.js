@@ -665,3 +665,10 @@ test('Core runner refuses wrong chain before decoding or mempool inspection',asy
  await assert.rejects(runBitcoinCoreCrossCheck({driver,transaction:tx}),/Signet chain identity/);
  assert.equal(calls.includes('decode'),false);assert.equal(calls.includes('mempool'),false);
 });
+
+test('Core runner rejects provider identity drift during comparison',async()=>{const tx=transaction(),input=observations(tx),calls=[];
+ const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return {chain:'signet'};},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
+ let networkReads=0;driver.getNetworkInfo=async()=>({version:++networkReads===1?310100:310000,subversion:'/Satoshi:31.1.0/',protocolversion:70016});
+ await assert.rejects(runBitcoinCoreCrossCheck({driver,transaction:tx}),/pinned value/);
+ assert.equal(networkReads,2);
+});

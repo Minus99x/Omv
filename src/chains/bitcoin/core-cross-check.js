@@ -459,6 +459,12 @@ export async function runBitcoinCoreCrossCheck({
   const decodedTransaction = await driver.decodeRawTransaction({ rawHex:transaction.rawHex, networkRef:'bitcoin:signet' });
   const results = await driver.testMempoolAccept({ rawTransactions:[transaction.rawHex], maxFeeRate:0, networkRef:'bitcoin:signet' });
   if (!Array.isArray(results) || results.length !== 1) throw new Error('Bitcoin Core testmempoolaccept must return exactly one result.');
+  const [finalNetwork, finalBlockchain] = await Promise.all([driver.getNetworkInfo(), driver.getBlockchainInfo()]);
+  const finalNode = normalizeNode({ version:finalNetwork?.version, subversion:finalNetwork?.subversion,
+    protocolVersion:finalNetwork?.protocolversion, chain:finalBlockchain?.chain }, expectedNodeVersion);
+  if (!isDeepStrictEqual(finalNode, normalizeNode(node, expectedNodeVersion))) {
+    throw new Error('Bitcoin Core node identity changed during the comparison.');
+  }
   const observationContext = {
     sequence:observationSequence,
     observedAt:now(),
