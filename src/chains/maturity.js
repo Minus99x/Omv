@@ -5,7 +5,8 @@ export const PROMOTION_GATES = Object.freeze([
 ]);
 
 export function createMaturityRecord({ chainId, stage = 'scaffold', gates = {} }) {
-  if (!chainId) throw new TypeError('chainId is required.');
+  if (typeof chainId !== 'string' || !chainId.trim()) throw new TypeError('chainId is required.');
+  if (!['planned','scaffold','live-proof'].includes(stage)) throw new TypeError('Unknown chain maturity stage.');
   const normalized = {};
   for (const gate of PROMOTION_GATES) normalized[gate] = gates[gate] === true;
   return Object.freeze({ chainId, stage, gates: Object.freeze(normalized), completed: Object.values(normalized).filter(Boolean).length, total: PROMOTION_GATES.length });
