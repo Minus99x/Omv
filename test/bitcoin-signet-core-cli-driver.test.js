@@ -148,3 +148,14 @@ test('Signet chain tip rejects a reported header height behind the active block 
   await assert.rejects(()=>fixture({getblockchaininfo:{...info,headers:'300005'}}).driver.readChainTip({networkRef:'bitcoin:signet'}),/contradictory/);
   assert.equal((await fixture({getblockchaininfo:{...info,headers:300005}}).driver.readChainTip({networkRef:'bitcoin:signet'})).blockHeight,300005);
 });
+
+
+test('Signet observation timestamp rejects rolled-over dates and retains valid offsets',async()=>{
+  const observed={chain:'signet',initialblockdownload:false,blocks:300005,bestblockhash:TIP};
+  for(const time of ['2026-02-30T18:00:00Z','2026-02-30T19:00:00+01:00','2026-10-22T18:00:00']){
+    const driver=createBitcoinSignetObservationCoreCliDriver({now:()=>time,execute:async()=>({stdout:JSON.stringify(observed)})});
+    await assert.rejects(()=>driver.readChainTip({networkRef:'bitcoin:signet'}),/clock/);
+  }
+  const driver=createBitcoinSignetObservationCoreCliDriver({now:()=> '2026-10-22T19:00:00+01:00',execute:async()=>({stdout:JSON.stringify(observed)})});
+  assert.equal((await driver.readChainTip({networkRef:'bitcoin:signet'})).observedAt,'2026-10-22T19:00:00+01:00');
+});

@@ -66,9 +66,20 @@ function network(value) {
 }
 function clock(now) {
   const result = now();
-  if (typeof result !== 'string' || !Number.isFinite(Date.parse(result)) ||
-      !/(?:Z|[+-]\d{2}:\d{2})$/.test(result)) {
+  const match=typeof result==='string' ? /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.exec(result) : null;
+  const parsed=match ? Date.parse(result) : NaN;
+  if (!match || !Number.isFinite(parsed)) {
     throw new TypeError('Bitcoin Core observation clock must return an ISO timestamp with timezone.');
+  }
+  const zone=match[2];
+  const offset=zone==='Z' ? 0 :
+    (zone[0]==='+' ? 1 : -1)*(Number(zone.slice(1,3))*60+Number(zone.slice(4,6)));
+  if (zone!=='Z' && (Number(zone.slice(1,3))>23 || Number(zone.slice(4,6))>59)) {
+    throw new TypeError('Bitcoin Core observation clock has invalid timezone offset.');
+  }
+  // Date.parse accepts impossible dates by rolling into the next month.
+  if(new Date(parsed+offset*60000).toISOString().slice(0,19)!==match[1]) {
+    throw new TypeError('Bitcoin Core observation clock has invalid calendar fields.');
   }
   return result;
 }
