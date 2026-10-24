@@ -10,6 +10,9 @@ from urllib.request import Request, urlopen
 
 ISSUE = 3
 WORKFLOW = "omegavault-hourly-engineering.yml"
+EXPECTED_PER_HOUR = 1
+# The schedule changed during 05:00-06:00 UTC. Audit only full new-cadence hours.
+CUTOFF_UTC = "2026-10-24T06:00:00Z"
 
 
 def parse_time(value):
@@ -95,20 +98,23 @@ def observe_completion(repo, token, event, seen):
 
 def observe_schedule(repo, token, now, seen):
     start, end = audited_hour(now)  # Entire hour finished over 60 minutes ago.
+    if start < parse_time(CUTOFF_UTC):
+        print("Historical or transition hour: no post-change cadence inference.", iso(start))
+        return
     query = urlencode({"event": "schedule",
                        "created": iso(start) + ".." + iso(end - timedelta(seconds=1)),
                        "per_page": 100})
     runs = api("GET", repo, "actions/workflows/" + WORKFLOW + "/runs?" + query, token).get("workflow_runs", [])
     actual = count_scheduled(runs, start, end)
-    missing = max(0, 3 - actual)
+    missing = max(0, EXPECTED_PER_HOUR - actual)
     print(json.dumps({"audited_start_utc": iso(start), "audited_end_utc": iso(end),
-                      "expected": 3, "observed": actual, "shortfall": missing,
+                      "expected": EXPECTED_PER_HOUR, "observed": actual, "shortfall": missing,
                       "matching_run_ids": [x.get("id") for x in runs]}))
     if missing:
         body = (
             "### Scheduled-run count shortfall\n"
             "- UTC window: " + iso(start) + " to " + iso(end) + "\n"
-            "- Expected GitHub schedule-triggered runs: 3\n"
+            "- Expected GitHub schedule-triggered runs: " + str(EXPECTED_PER_HOUR) + "\n"
             "- Observed schedule-triggered runs created in window: " + str(actual) + "\n"
             "- Shortfall: " + str(missing) + "\n"
             "- Observed run IDs: " + str([x.get("id") for x in runs]) + "\n\n"
