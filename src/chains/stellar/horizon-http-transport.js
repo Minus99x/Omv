@@ -215,6 +215,9 @@ export function createStellarTestnetHorizonHttpTransport({
         previousAccountSequenceLedger = BigInt(sequenceLedger);
         const eligibleAtSeconds = BigInt(sequenceTime) + BigInt(minimumAge);
         const ledgerClosedSeconds = BigInt(Math.floor(Date.parse(closedAt) / 1000));
+        if (BigInt(sequenceTime) > ledgerClosedSeconds) {
+          throw new Error('Horizon account sequence timestamp is after the latest ledger close time.');
+        }
         const ledgerNumber = BigInt(latestLedgerSequence);
         // A later observation must not trust a rolled-back ledger, a reversed
         // close time, or conflicting close times for the same ledger.

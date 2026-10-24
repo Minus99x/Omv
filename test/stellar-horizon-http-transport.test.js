@@ -472,3 +472,10 @@ test('Horizon eligibility rejects out-of-range sequence and latest ledger observ
   await assert.rejects(transport.waitUntilEligible(eligibilityArguments()),/uint32/);
  }
 });
+
+test('Horizon polling rejects future sequence time immediately without sleeping',async()=>{
+ let sleeps=0;
+ const transport=createStellarTestnetHorizonHttpTransport({maxEligibilityAttempts:2,sleep:async()=>{sleeps++;},fetchImpl:async url=>jsonResponse(url.includes('/accounts/')?{account_id:G(1),sequence:'1001',sequence_time:'1760004801',sequence_ledger:599}:{_embedded:{records:[{sequence:600,closed_at:'2025-10-09T10:13:20Z'}]}})});
+ await assert.rejects(transport.waitUntilEligible(eligibilityArguments()),/sequence timestamp.*after/);
+ assert.equal(sleeps,0);
+});
