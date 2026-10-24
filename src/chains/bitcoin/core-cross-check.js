@@ -333,6 +333,9 @@ function validateChainedCoreAuthority(evidence, index, errors) {
     errors.push(`${prefix} mempool fee, size or effective-includes do not bind the transaction.`);
   }
   if (allowed === false && (
+    typeof evidence.mempool?.rejectReason !== 'string' || !evidence.mempool.rejectReason.trim() ||
+    evidence.mempool?.baseFeeBtc !== null || evidence.mempool?.effectiveFeeRateSatsPerKvB !== null ||
+    !Array.isArray(evidence.mempool?.effectiveIncludes) ||
     bound !== false || evidence.mempool?.feeSats !== null ||
     evidence.mempool?.vsize !== null ||
     evidence.mempool?.effectiveIncludes?.length !== 0

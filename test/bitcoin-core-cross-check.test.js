@@ -614,3 +614,12 @@ test('Core receipt chains reject coordinated malformed extracted fees',()=>{cons
   assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([forged]).ok,false,String(value));
  }
 });
+
+test('Rejected Core receipt chains require a reason and no successful fee rate',()=>{
+ const tx=transaction(),input=observations(tx);
+ const valid=createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,mempoolResult:{txid:tx.txid,wtxid:tx.wtxid,allowed:false,'reject-reason':'missing-inputs'},observationContext:context(1,'2026-10-07T05:20:00Z')});
+ assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([valid]).ok,true);
+ for(const edit of [r=>{r.mempool.rejectReason='';},r=>{r.mempool.rejectReason=42;},r=>{r.mempool.baseFeeBtc='1';},r=>{r.mempool.effectiveFeeRateSatsPerKvB='1';},r=>{r.mempool.effectiveIncludes={length:0};}]) {
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([rehashReceipt(valid,edit)]).ok,false);
+ }
+});
