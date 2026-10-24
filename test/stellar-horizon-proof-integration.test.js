@@ -59,7 +59,7 @@ function accountState(inputs, { sequence, recovered = false, vault = true }) {
     ],
     balances:[
       { asset_type:'native', balance:vault ? (recovered ? '90.0000000' : '100.0000000') : (recovered ? '15.0000000' : '5.0000000') },
-      { asset_type:'credit_alphanum4', asset_code:'USDC', asset_issuer:G(6), balance:vault ? (recovered ? '29.5000000' : '50.0000000') : (recovered ? '21.5000000' : '1.0000000') }
+      { asset_type:'credit_alphanum4', asset_code:'USDC', asset_issuer:G(6), is_authorized:true, balance:vault ? (recovered ? '29.5000000' : '50.0000000') : (recovered ? '21.5000000' : '1.0000000') }
     ]
   };
 }
