@@ -3,7 +3,8 @@ import { CORE_INVARIANT_IDS } from '../core/invariants.js';
 export const SUPPORT_EVIDENCE_LEVEL = 'public-testnet';
 
 function normalizeEvidenceRecord(id, value, chainId) {
-  const refs = Array.isArray(value?.refs) ? value.refs.filter(ref => typeof ref === 'string' && ref.trim()) : [];
+  const refs = Array.isArray(value?.refs) && value.refs.every(ref=>typeof ref==='string'&&ref.trim()) &&
+    new Set(value.refs).size===value.refs.length ? [...value.refs] : [];
   const chainScoped = Boolean(chainId && value?.chainId === chainId);
   const passed = value?.passed === true;
   const level = value?.level ?? 'none';
