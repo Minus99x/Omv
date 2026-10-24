@@ -20,7 +20,10 @@ function normalizeEvidenceRecord(id, value, chainId) {
 }
 
 export function evaluateChainSupport({ capabilityContract, invariantEvidence = {} }) {
-  const chainId = capabilityContract?.chainId ?? null;
+  const chainId = typeof capabilityContract?.chainId === 'string' && capabilityContract.chainId.trim()
+    ? capabilityContract.chainId : null;
+  if (invariantEvidence == null || typeof invariantEvidence!=='object' || Array.isArray(invariantEvidence))
+    throw new TypeError('Invariant support evidence must be a record object.');
   const evidence = Object.freeze(Object.fromEntries(
     CORE_INVARIANT_IDS.map(id => [id, normalizeEvidenceRecord(id, invariantEvidence[id], chainId)])
   ));
