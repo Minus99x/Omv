@@ -116,6 +116,15 @@ export function createXrplEscrowFinishPlan({ submitter, owner, escrowSequence, c
   if (!Number.isInteger(escrowSequence) || escrowSequence <= 0 || escrowSequence > 0xffffffff) throw new TypeError('escrowSequence must be a positive integer.');
   if ((condition == null) !== (fulfillment == null)) throw new TypeError('condition and fulfillment must be provided together.');
   const tx = { TransactionType: 'EscrowFinish', Account: submitter, Owner: owner, OfferSequence: escrowSequence };
-  if (condition != null) { tx.Condition = condition; tx.Fulfillment = fulfillment; }
+  if (condition != null) {
+    // XRPL Crypto-Conditions use hex-serialized, nonempty byte blobs.
+    for (const [value,label] of [[condition,'condition'],[fulfillment,'fulfillment']]) {
+      if (typeof value!=='string' || !/^(?:[A-Fa-f0-9]{2})+$/.test(value)) {
+        throw new TypeError(`${label} must be nonempty, even-length hexadecimal bytes.`);
+      }
+    }
+    tx.Condition = condition.toUpperCase();
+    tx.Fulfillment = fulfillment.toUpperCase();
+  }
   return Object.freeze({ transaction: Object.freeze(tx), submitterCanBeAnyAccount: true, finalityEvidence: Object.freeze(['validated ledger', 'tesSUCCESS transaction result', 'escrow object absent after successful finish', 'destination balance/state change independently observed']) });
 }

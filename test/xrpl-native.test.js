@@ -263,3 +263,15 @@ test('XRPL non-ticket transaction sequence keeps validated AccountTxnID anti-rep
   assert.throws(()=>normalizeXrplSequenceBinding({accountTxnId:hash}),/requires an ordinary/);
   assert.throws(()=>normalizeXrplSequenceBinding({ticketSequence:55,accountTxnId:hash}),/cannot be combined/);
 });
+
+
+test('XRPL EscrowFinish condition and fulfillment require encoded complete hex bytes',()=>{
+  const params={submitter:a,owner,escrowSequence:123};
+  const tx=createXrplEscrowFinishPlan({...params,condition:'aabb',fulfillment:'a0028000'}).transaction;
+  assert.equal(tx.Condition,'AABB');
+  assert.equal(tx.Fulfillment,'A0028000');
+  for(const value of ['', 'A', 'GG', 'xyz', 42,{},[]]){
+    assert.throws(()=>createXrplEscrowFinishPlan({...params,condition:value,fulfillment:'A0028000'}),/hexadecimal bytes/);
+    assert.throws(()=>createXrplEscrowFinishPlan({...params,condition:'AABB',fulfillment:value}),/hexadecimal bytes/);
+  }
+});
