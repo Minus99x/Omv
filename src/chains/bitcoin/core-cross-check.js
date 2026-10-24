@@ -296,6 +296,11 @@ function validateChainedCoreAuthority(evidence, index, errors) {
       evidence.virtualBytes !== Math.ceil(evidence.weight / 4)) {
     errors.push(`${prefix} has inconsistent transaction byte, weight or virtual size metadata.`);
   }
+  if (typeof evidence.extractedFeeSats !== 'string' ||
+      !/^(0|[1-9][0-9]{0,15})$/.test(evidence.extractedFeeSats) ||
+      BigInt(evidence.extractedFeeSats) > 2100000000000000n) {
+    errors.push(`${prefix} has invalid extracted fee satoshis.`);
+  }
   const source = evidence.observationSource;
   if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(source)) {
     errors.push(`${prefix} has unsupported observation provenance.`);

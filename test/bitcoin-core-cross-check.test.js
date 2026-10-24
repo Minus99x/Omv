@@ -606,3 +606,11 @@ test('Core receipt chains reject coordinated impossible byte and weight metadata
   assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([rehashReceipt(valid,edit)]).ok,false);
  }
 });
+
+test('Core receipt chains reject coordinated malformed extracted fees',()=>{const tx=transaction(), input=observations(tx); const valid=createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,observationContext:context(1,'2026-10-07T05:20:00Z')});
+ assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([valid]).ok,true);
+ for(const value of ['-1','01','1.5','2100000000000001',null,1000]) {
+  const forged=rehashReceipt(valid,r=>{r.extractedFeeSats=value;r.mempool.feeSats=value;});
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([forged]).ok,false,String(value));
+ }
+});
