@@ -7,6 +7,7 @@ export function calculateXrplEscrowFinishFeeDrops({
   baseFeeDrops, fulfillmentHex=null, signerCount=0
 }={}) {
   const base=BigInt(normalizeXrplFeeDrops(baseFeeDrops,'baseFeeDrops'));
+  if(base===0n) throw new TypeError('XRPL EscrowFinish requires a positive reference base fee.');
   if (!Number.isInteger(signerCount) || signerCount<0 || signerCount>32) {
     throw new TypeError('XRPL signerCount must be a non-negative integer at most 32.');
   }

@@ -301,3 +301,11 @@ test('XRPL EscrowFinish optional fee planning uses exact structural floor and id
   assert.equal(conditional.feeEvidence.fulfillmentBytes,4);
   assert.equal(createXrplEscrowFinishPlan({submitter:a,owner,escrowSequence:123}).feeEvidence,null);
 });
+
+
+test('XRPL EscrowFinish fee floor cannot be calculated from a zero reference fee',()=>{
+  for(const fulfillmentHex of [null,'A0028000']){
+    assert.throws(()=>calculateXrplEscrowFinishFeeDrops({baseFeeDrops:'0',fulfillmentHex}),/positive reference base fee/);
+  }
+  assert.equal(calculateXrplEscrowFinishFeeDrops({baseFeeDrops:'10'}).minimumFeeDrops,'10');
+});
