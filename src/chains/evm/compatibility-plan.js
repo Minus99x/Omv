@@ -26,7 +26,9 @@ export function createEvmCompatibilityProbe(networkId) {
 export function evmProbePreflight({ networkId, observedChainIdHex, checks = {}, warnings = [], errors = [] }) {
   const network = getNetwork(networkId);
   if (!network || network.rpcProtocol !== 'evm-json-rpc') throw new TypeError('An EVM JSON-RPC network profile is required.');
-  const chainMatches = observedChainIdHex?.toLowerCase() === network.chainIdHex?.toLowerCase();
+  const chainMatches = typeof observedChainIdHex === 'string' &&
+    /^0x(?:0|[1-9a-fA-F][0-9a-fA-F]*)$/.test(observedChainIdHex) &&
+    observedChainIdHex.toLowerCase() === network.chainIdHex?.toLowerCase();
   const mergedErrors = [...errors];
   if (!chainMatches) mergedErrors.push(`Observed chain ${observedChainIdHex ?? 'unknown'} does not match expected ${network.chainIdHex}.`);
   const allChecks = { 'chain-id-match': chainMatches, ...checks };
