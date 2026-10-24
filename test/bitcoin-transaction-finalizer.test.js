@@ -127,6 +127,29 @@ test('Bitcoin extraction rejects descriptor, CSV and rescue-output substitution'
   );
 });
 
+test('Bitcoin finalization rejects additional outputs even when change-output checks are explicitly disabled', () => {
+  const psbt = signedPsbt({ overrides:{
+    outputs:[
+      { amountSats:'98000', scriptPubKey:rescueScriptPubKey },
+      { amountSats:'1000', scriptPubKey:`0014${'22'.repeat(20)}` }
+    ]
+  } });
+  const options = {
+    psbt,
+    descriptor,
+    rescueScriptPubKey,
+    strictSingleRescueOutput:false
+  };
+  assert.throws(
+    () => extractBitcoinRecoveryTransaction(options),
+    /does not support unbound change outputs/i
+  );
+  assert.throws(
+    () => createBitcoinFinalTransactionEvidence(options),
+    /does not support unbound change outputs/i
+  );
+});
+
 test('Bitcoin extraction rejects non-canonical contact order before witness construction', () => {
   const psbt = signedPsbt();
   assert.throws(
@@ -220,4 +243,3 @@ test('transaction-finalizer rejects serialization hooks hiding altered evidence'
  const reordered=Object.fromEntries(Object.entries(expected).reverse());
  assert.equal(verifyBitcoinFinalTransactionEvidence({...options,evidence:reordered}).ok,true);
 });
-

@@ -113,7 +113,7 @@ test('Bitcoin finalizer evidence rejects unexpected recovery signer', () => {
   );
 });
 
-test('Bitcoin finalizer evidence rejects additional outputs in strict rescue mode', () => {
+test('Bitcoin finalizer evidence rejects unbound additional outputs', () => {
   const outputs = [
     { amountSats:'98000', scriptPubKey:rescueScriptPubKey },
     { amountSats:'1000', scriptPubKey:`0014${'22'.repeat(20)}` }
@@ -123,13 +123,15 @@ test('Bitcoin finalizer evidence rejects additional outputs in strict rescue mod
     () => createBitcoinFinalizerEvidence({ psbt, descriptor, rescueScriptPubKey }),
     /forbids additional outputs/i
   );
-  const evidence = createBitcoinFinalizerEvidence({
-    psbt,
-    descriptor,
-    rescueScriptPubKey,
-    strictSingleRescueOutput:false
-  });
-  assert.equal(evidence.outputTotalSats, '99000');
+  assert.throws(
+    () => createBitcoinFinalizerEvidence({
+      psbt,
+      descriptor,
+      rescueScriptPubKey,
+      strictSingleRescueOutput:false
+    }),
+    /does not support unbound change outputs/i
+  );
 });
 
 test('tampered Bitcoin finalizer evidence fails closed', () => {
@@ -175,4 +177,3 @@ test('finalizer-evidence rejects serialization hooks hiding altered evidence', (
  const reordered=Object.fromEntries(Object.entries(expected).reverse());
  assert.equal(verifyBitcoinFinalizerEvidence({...options,evidence:reordered}).ok,true);
 });
-

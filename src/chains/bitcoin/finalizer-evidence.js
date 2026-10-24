@@ -95,8 +95,11 @@ export function createBitcoinFinalizerEvidence({
   const rescueOutputs = decoded.outputs.filter(output => output.scriptPubKey === rescue);
   if (rescueOutputs.length !== 1) throw new Error('Bitcoin finalizer evidence requires exactly one configured rescue output.');
   if (BigInt(rescueOutputs[0].amountSats) === 0n) throw new Error('Bitcoin recovery requires a positive-value rescue output; no fee-only recovery.');
-  if (strictSingleRescueOutput && decoded.outputs.length !== 1) {
-    throw new Error('Bitcoin finalizer evidence forbids additional outputs in strict rescue mode.');
+  if (decoded.outputs.length !== 1) {
+    if (!strictSingleRescueOutput) {
+      throw new Error('Bitcoin recovery does not support unbound change outputs.');
+    }
+    throw new Error('Bitcoin finalizer evidence forbids additional outputs without an explicitly bound change policy.');
   }
 
   const inputTotal = decoded.inputs.reduce((sum, input) => sum + BigInt(input.amountSats), 0n);
@@ -155,4 +158,3 @@ export function verifyBitcoinFinalizerEvidence({
   if (!isDeepStrictEqual(evidence, expected)) errors.push('Bitcoin finalizer evidence does not match the supplied PSBT and policy.');
   return Object.freeze({ ok:errors.length === 0, errors:Object.freeze(errors) });
 }
-
