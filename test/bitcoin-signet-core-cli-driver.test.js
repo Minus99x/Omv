@@ -131,3 +131,12 @@ test('Bitcoin Core UTXO rejects malformed confirmation and bestblock responses',
     );
   }
 });
+
+
+test('Bitcoin Signet rescue UTXO refuses immature declared coinbase outputs',async()=>{
+  const base={bestblock:TIP,confirmations:99,value:'0.00099000',scriptPubKey:{hex:'51'},coinbase:true};
+  await assert.rejects(()=>fixture({gettxout:base}).driver.readTxOut({transactionId:TXID,vout:0,networkRef:'bitcoin:signet'}),/100-block maturity/);
+  await assert.rejects(()=>fixture({gettxout:{...base,coinbase:'true'}}).driver.readTxOut({transactionId:TXID,vout:0,networkRef:'bitcoin:signet'}),/coinbase evidence must be boolean/);
+  const mature=await fixture({gettxout:{...base,confirmations:100}}).driver.readTxOut({transactionId:TXID,vout:0,networkRef:'bitcoin:signet'});
+  assert.equal(mature.amountSats,'99000');
+});

@@ -152,6 +152,12 @@ export function createBitcoinSignetObservationCoreCliDriver({
         throw new TypeError('Bitcoin Core gettxout returned an invalid record.');
       }
       confirmations(result.confirmations, 'gettxout.confirmations');
+      if (result.coinbase != null && typeof result.coinbase!=='boolean') {
+        throw new TypeError('Bitcoin Core gettxout coinbase evidence must be boolean.');
+      }
+      if (result.coinbase===true && result.confirmations<100) {
+        throw new Error('Bitcoin Core coinbase UTXO has not reached 100-block maturity.');
+      }
       hash(result.bestblock, 'gettxout.bestblock');
       const script = result.scriptPubKey?.hex;
       if (typeof script !== 'string' || !/^[0-9a-f]+$/i.test(script) || script.length % 2) {
