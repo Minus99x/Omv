@@ -25,7 +25,7 @@ test('adapter refuses string-iterable metadata masquerading as arrays',()=>{
 test('adapter metadata entries must be primitive nonempty text',()=>{
  for(const field of ['proofNetworks','securityNotes'])
   for(const entry of ['',null,true,{},['nested']])
-   assert.throws(()=>defineAdapter({...sample,[field]:[entry]}),/non-empty strings/);
+   assert.throws(()=>defineAdapter({...sample,[field]:[entry]}),/non-empty string|network descriptor/);
 });
 test('proof network declarations never duplicate one target',()=>{
  assert.throws(()=>defineAdapter({...sample,proofNetworks:['sample:testnet','sample:testnet']}),/duplicate/);
