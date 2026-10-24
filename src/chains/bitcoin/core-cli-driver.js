@@ -56,7 +56,9 @@ export function createBitcoinSignetCoreCliDriver({ execute = execFileAsync } = {
       }
       if(info.initialblockdownload!==false ||
           !Number.isSafeInteger(info.blocks) || info.blocks<1 ||
-          !Number.isSafeInteger(info.headers) || info.headers<info.blocks) {
+          !Number.isSafeInteger(info.headers) || info.headers<info.blocks ||
+          typeof info.bestblockhash!=='string' || !/^[0-9a-f]{64}$/i.test(info.bestblockhash) ||
+          /^0{64}$/i.test(info.bestblockhash)) {
         throw new Error('Bitcoin Core CLI requires a synchronized Signet tip with coherent block identity.');
       }
       return info;
