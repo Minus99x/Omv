@@ -8,6 +8,10 @@ on:
     # Longer bounded worker replaces three overlapping small attempts.
     - cron: '7 * * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/omegavault-hourly-engineering.yml'
 
 permissions:
   contents: read
@@ -70,7 +74,7 @@ jobs:
   autonomous-engineering:
     name: Trigger isolated AI worker on scheduler-only branch
     needs: verify-worker-controls
-    uses: Minus99x/Omegavault/.github/workflows/omegavault-hourly-engineering.yml@e7c6ffc49ffdb95715be58fe2e4a766de5a8c7b3
+    uses: Minus99x/Omv/.github/workflows/omegavault-hourly-engineering.yml@e7c6ffc49ffdb95715be58fe2e4a766de5a8c7b3
     permissions:
       contents: write
       copilot-requests: write
