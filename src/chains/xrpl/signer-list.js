@@ -56,6 +56,16 @@ export function normalizeXrplSequenceBinding({ sequence = null, ticketSequence =
   return Object.freeze({ Sequence: sequence });
 }
 
+export function normalizeXrplFeeDrops(value, label='feeDrops') {
+  if (!['string','number','bigint'].includes(typeof value) ||
+      (typeof value==='number' && !Number.isSafeInteger(value)) ||
+      !/^(0|[1-9]\d*)$/.test(String(value)) ||
+      BigInt(String(value))>100000000000000000n) {
+    throw new TypeError(`${label} must be a canonical non-negative XRP drop amount within supply.`);
+  }
+  return String(value);
+}
+
 export function buildXrplSignerListSet({ owner, signerEntries, contacts = null, quorum, sequence = null, ticketSequence = null, feeDrops = null, lastLedgerSequence = null }) {
   const entries = signerEntries ?? contacts?.map(account => ({ account, weight: 1 }));
   const config = validateXrplSignerList({ owner, signerEntries: entries, quorum });
@@ -67,8 +77,7 @@ export function buildXrplSignerListSet({ owner, signerEntries, contacts = null, 
     ...normalizeXrplSequenceBinding({ sequence, ticketSequence })
   };
   if (feeDrops != null) {
-    if (!/^\d+$/.test(String(feeDrops)) || BigInt(feeDrops) < 0n) throw new TypeError('feeDrops must be a non-negative integer string/number.');
-    tx.Fee = String(feeDrops);
+    tx.Fee = normalizeXrplFeeDrops(feeDrops);
   }
   if (lastLedgerSequence != null) {
     assertUInt(lastLedgerSequence, UINT32_MAX, 'lastLedgerSequence');

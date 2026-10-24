@@ -195,3 +195,14 @@ test('XRPL product-claim assertions refuse unknown and mismatched recovery seman
   assert.throws(()=>assertXrplProductClaim({mode:XRPL_RECOVERY_MODES.FIXED_TIME_ESCROW,claim:XRPL_RECOVERY_MODES.SIGNER_QUORUM}),/does not match/);
   assert.equal(assertXrplProductClaim({mode:XRPL_RECOVERY_MODES.FIXED_TIME_ESCROW,claim:XRPL_RECOVERY_MODES.FIXED_TIME_ESCROW}),true);
 });
+
+
+test('XRPL SignerListSet Fee does not coerce unsafe or over-supply drop amounts',()=>{
+  const cfg={owner,contacts:[a,b],quorum:2,sequence:12};
+  for(const feeDrops of ['0','10','100000000000000000']){
+    assert.equal(buildXrplSignerListSet({...cfg,feeDrops}).transaction.Fee,feeDrops);
+  }
+  for(const feeDrops of ['001',1.5,Number.MAX_SAFE_INTEGER+1,{},new Number(1),true,'100000000000000001']){
+    assert.throws(()=>buildXrplSignerListSet({...cfg,feeDrops}),/canonical non-negative/);
+  }
+});
