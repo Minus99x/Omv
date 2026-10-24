@@ -39,7 +39,8 @@ function unsignedExact(value,label){
  throw new TypeError(label+' must be an exact non-negative primitive integer.');
 }
 export function boundedApothemFee({estimatedGas,gasPriceWei,spentFeeWei=0n,capWei=XDC_PUBLIC_TRIAL_FEE_LIMIT_WEI}){
- const gas=BigInt(estimatedGas),price=BigInt(gasPriceWei),spent=BigInt(spentFeeWei),cap=BigInt(capWei);
+ const gas=unsignedExact(estimatedGas,'estimatedGas'),price=unsignedExact(gasPriceWei,'gasPriceWei');
+ const spent=unsignedExact(spentFeeWei,'spentFeeWei'),cap=unsignedExact(capWei,'capWei');
  if(gas<21000n||gas>3000000n||price<1n||price>1000000000000n)
   throw new Error('Public Apothem gas or gas-price bounds failed.');
  if(spent<0n||cap<=0n||cap>XDC_PUBLIC_TRIAL_FEE_LIMIT_WEI||spent>cap)
