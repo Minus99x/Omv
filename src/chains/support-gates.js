@@ -5,7 +5,7 @@ export const SUPPORT_EVIDENCE_LEVEL = 'public-testnet';
 function normalizeEvidenceRecord(id, value, chainId) {
   const refs = Array.isArray(value?.refs) && value.refs.every(ref=>typeof ref==='string'&&ref.trim()) &&
     new Set(value.refs).size===value.refs.length ? [...value.refs] : [];
-  const chainScoped = Boolean(chainId && value?.chainId === chainId);
+  const chainScoped = typeof chainId === 'string' && chainId.trim().length > 0 && value?.chainId === chainId;
   const passed = value?.passed === true;
   const level = value?.level ?? 'none';
   const sufficient = passed && level === SUPPORT_EVIDENCE_LEVEL && refs.length > 0 && chainScoped;
