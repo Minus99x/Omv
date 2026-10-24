@@ -4,7 +4,8 @@ function normalizeAddress(value) {
 
 export function defineErc20Asset({ chainId, networkRef, address, symbol = null, name = null, decimals = null, identityVerified = false }) {
   const assetRef = normalizeAddress(address);
-  if (!/^0x[a-f0-9]{40}$/.test(assetRef || '')) throw new TypeError('ERC-20 address is invalid.');
+  if (!/^0x[a-f0-9]{40}$/.test(assetRef || '') || assetRef==='0x'+'0'.repeat(40))
+    throw new TypeError('ERC-20 address is invalid.');
   return Object.freeze({
     chainId,
     networkRef,
