@@ -35,6 +35,8 @@ export function createFeeEvidence({
   if (!Array.isArray(notes) && notes != null) throw new TypeError('Fee notes must be an array.');
   const normalizedComponents = {};
   for (const [key, value] of Object.entries(components ?? {})) {
+    if (!key.trim() || ['__proto__','prototype','constructor'].includes(key))
+      throw new TypeError('Fee component name must be a nonreserved identifier.');
     normalizedComponents[key] = integerString(value, `fee component ${key}`);
   }
   return Object.freeze({
