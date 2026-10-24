@@ -21,6 +21,10 @@ export function createPreflightResult({ chainId, networkRef, operation, status =
     throw new TypeError('Preflight signer, warning and error collections must be arrays.');
   if (!checks || typeof checks !== 'object' || Array.isArray(checks))
     throw new TypeError('Preflight checks must be an object.');
+  if (requiredSigners.some(value=>typeof value!=='string'||!value.trim()) ||
+      warnings.some(value=>typeof value!=='string'||!value.trim()) ||
+      errors.some(value=>typeof value!=='string'||!value.trim()))
+    throw new TypeError('Preflight signer, warning and error entries must be nonempty text.');
   const result = {
     version: 1, chainId, networkRef, operation, status,
     observedNetwork: observedNetwork ? structuredClone(observedNetwork) : null,
