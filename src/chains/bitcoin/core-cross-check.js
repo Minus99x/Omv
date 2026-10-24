@@ -289,6 +289,13 @@ function validateChainedCoreAuthority(evidence, index, errors) {
       errors.push(`${prefix} has invalid ${field} hash identity.`);
     }
   }
+  if (!Number.isSafeInteger(evidence.bytes) || evidence.bytes < 1 ||
+      !Number.isSafeInteger(evidence.weight) || evidence.weight < evidence.bytes ||
+      evidence.weight > evidence.bytes * 4 ||
+      !Number.isSafeInteger(evidence.virtualBytes) ||
+      evidence.virtualBytes !== Math.ceil(evidence.weight / 4)) {
+    errors.push(`${prefix} has inconsistent transaction byte, weight or virtual size metadata.`);
+  }
   const source = evidence.observationSource;
   if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(source)) {
     errors.push(`${prefix} has unsupported observation provenance.`);

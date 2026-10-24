@@ -599,3 +599,10 @@ test('Core receipt chains reject malformed hash identities even after rehash',()
   }
  }
 });
+
+test('Core receipt chains reject coordinated impossible byte and weight metadata',()=>{const tx=transaction(), input=observations(tx); const valid=createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,observationContext:context(1,'2026-10-07T05:20:00Z')});
+ assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([valid]).ok,true);
+ for(const edit of [r=>{r.bytes=0;},r=>{r.bytes='100';},r=>{r.weight=r.bytes-1;},r=>{r.weight=r.bytes*4+1;},r=>{r.virtualBytes+=1;r.mempool.vsize=r.virtualBytes;},r=>{r.weight=1.5;}]) {
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([rehashReceipt(valid,edit)]).ok,false);
+ }
+});
