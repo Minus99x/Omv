@@ -580,3 +580,12 @@ test('Bitcoin Core chained receipts reject digest-rewritten invalid observation 
     assert.ok(result.errors.some(message => /observationContext is invalid/.test(message)));
   }
 });
+
+test('Core evidence verifier ignores property order and rejects toJSON substitution',()=>{
+ const tx=transaction(),input=observations(tx);
+ const valid=createBitcoinCoreCrossCheckEvidence({transaction:tx,...input});
+ const reordered=Object.fromEntries(Object.entries(valid).reverse());
+ assert.equal(verifyBitcoinCoreCrossCheckEvidence({evidence:reordered,transaction:tx,...input}).ok,true);
+ const spoof={...valid,broadcastAuthorized:true,toJSON:()=>valid};
+ assert.equal(verifyBitcoinCoreCrossCheckEvidence({evidence:spoof,transaction:tx,...input}).ok,false);
+});

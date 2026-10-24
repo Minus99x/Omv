@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
 
 const SATOSHIS = 100_000_000n;
@@ -261,7 +262,7 @@ export function createBitcoinCoreCrossCheckEvidence({
 export function verifyBitcoinCoreCrossCheckEvidence({ evidence, ...inputs }) {
   try {
     const expected = createBitcoinCoreCrossCheckEvidence(inputs);
-    const ok = JSON.stringify(evidence) === JSON.stringify(expected);
+    const ok = isDeepStrictEqual(evidence, expected);
     return Object.freeze({ ok, errors:Object.freeze(ok ? [] : ['Bitcoin Core cross-check evidence does not match supplied observations.']) });
   } catch (error) {
     return Object.freeze({ ok:false, errors:Object.freeze([String(error?.message || error)]) });
