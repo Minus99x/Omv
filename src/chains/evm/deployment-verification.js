@@ -5,6 +5,7 @@ function strip0x(value) {
 }
 
 function assertHex(value, label) {
+  if(typeof value!=='string')throw new TypeError(`${label} must be even-length hex.`);
   const body = strip0x(value);
   if (!body || body.length % 2 || !/^[a-f0-9]+$/.test(body)) throw new TypeError(`${label} must be even-length hex.`);
   return body;
