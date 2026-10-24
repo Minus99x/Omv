@@ -214,6 +214,7 @@ export function createStellarTestnetHorizonHttpTransport({
         previousAccountSequenceTime = BigInt(sequenceTime);
         previousAccountSequenceLedger = BigInt(sequenceLedger);
         const eligibleAtSeconds = BigInt(sequenceTime) + BigInt(minimumAge);
+        if (eligibleAtSeconds > 0xffffffffffffffffn) throw new RangeError('Horizon eligibility timestamp exceeds uint64.');
         const ledgerClosedSeconds = BigInt(Math.floor(Date.parse(closedAt) / 1000));
         if (BigInt(sequenceTime) > ledgerClosedSeconds) {
           throw new Error('Horizon account sequence timestamp is after the latest ledger close time.');
