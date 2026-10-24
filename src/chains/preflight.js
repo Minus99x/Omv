@@ -19,6 +19,8 @@ export function createPreflightResult({ chainId, networkRef, operation, status =
   if (!STATUSES.has(status)) throw new TypeError('Unknown preflight status.');
   if (!Array.isArray(requiredSigners) || !Array.isArray(warnings) || !Array.isArray(errors))
     throw new TypeError('Preflight signer, warning and error collections must be arrays.');
+  if (!checks || typeof checks !== 'object' || Array.isArray(checks))
+    throw new TypeError('Preflight checks must be an object.');
   const result = {
     version: 1, chainId, networkRef, operation, status,
     observedNetwork: observedNetwork ? structuredClone(observedNetwork) : null,
