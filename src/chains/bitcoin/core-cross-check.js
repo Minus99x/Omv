@@ -73,6 +73,7 @@ function iso(value, label) {
 }
 
 function btcToSats(value, label) {
+  if (typeof value !== 'string' && typeof value !== 'number') throw new TypeError(`${label} must be a primitive BTC amount.`);
   let text;
   if (typeof value === 'number') {
     if (!Number.isFinite(value) || value < 0) throw new TypeError(`${label} must be a non-negative BTC amount.`);

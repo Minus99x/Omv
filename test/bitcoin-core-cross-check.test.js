@@ -672,3 +672,12 @@ test('Core runner rejects provider identity drift during comparison',async()=>{c
  await assert.rejects(runBitcoinCoreCrossCheck({driver,transaction:tx}),/pinned value/);
  assert.equal(networkReads,2);
 });
+
+test('Core amount observations require primitive numbers or decimal strings',()=>{
+ const tx=transaction(),input=observations(tx);
+ for(const value of [Object('0.00099000'),{toString:()=> '0.00099000'}]) {
+  const changed=structuredClone(input);changed.decodedTransaction.vout[0].value=value;
+  assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...changed}),/primitive/);
+ }
+ assert.equal(createBitcoinCoreCrossCheckEvidence({transaction:tx,...input}).mempool.allowed,true);
+});
