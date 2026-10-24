@@ -222,3 +222,10 @@ test('XRPL multisign Fee is exact and fixed before signature coordination',()=>{
   }
   assert.throws(()=>run('30',{}),/baseFeeDrops/);
 });
+
+
+test('XRPL exact-inactivity claim retains fail-closed semantics across every native mode',()=>{
+  for(const mode of Object.values(XRPL_RECOVERY_MODES)){
+    assert.throws(()=>assertXrplProductClaim({mode,claim:'resettable-inactivity'}),/must not be advertised/);
+  }
+});

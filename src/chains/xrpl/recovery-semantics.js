@@ -31,9 +31,9 @@ export function assertXrplProductClaim({ mode, claim }) {
   if (typeof claim !== 'string' || !Object.values(XRPL_RECOVERY_MODES).includes(claim)) {
     throw new TypeError('Unknown XRPL recovery product claim.');
   }
-  if (claim !== mode) throw new TypeError('XRPL product claim does not match the verified recovery mode.');
   if (claim === 'resettable-inactivity' && !assessment.exactResettableInactivity) {
     throw new TypeError(`XRPL ${mode} must not be advertised as resettable inactivity recovery.`);
   }
+  if (claim !== mode) throw new TypeError('XRPL product claim does not match the verified recovery mode.');
   return true;
 }
