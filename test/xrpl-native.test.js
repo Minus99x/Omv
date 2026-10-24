@@ -238,3 +238,15 @@ test('XRPL SignerList transaction freezes every signer entry and the list',()=>{
   assert.equal(Object.isFrozen(tx.SignerEntries[0].SignerEntry),true);
   assert.throws(()=>tx.SignerEntries.push({SignerEntry:{Account:rescue,SignerWeight:50}}),TypeError);
 });
+
+
+test('XRPL coordinated multisign records lock signer identity and signatures',()=>{
+  const signerList={owner,signerEntries:[{account:a,weight:1},{account:b,weight:1}],quorum:2};
+  const tx={TransactionType:'Payment',Account:owner,Destination:rescue,Amount:'1',Sequence:10,Fee:'30'};
+  const signatures=[{account:a,signingPubKey:'EDA',txnSignature:'AAA'},
+    {account:b,signingPubKey:'EDB',txnSignature:'BBB'}];
+  const result=coordinateXrplMultisign({transaction:tx,signerList,signatures,baseFeeDrops:'10'});
+  assert.equal(Object.isFrozen(result.transaction.Signers),true);
+  assert.equal(Object.isFrozen(result.transaction.Signers[0].Signer),true);
+  assert.throws(()=>result.transaction.Signers.push({Signer:{Account:rescue}}),TypeError);
+});

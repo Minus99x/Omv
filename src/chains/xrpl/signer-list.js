@@ -120,7 +120,7 @@ export function coordinateXrplMultisign({ transaction, signerList, signatures, b
   // XRPL binary multisigning requires Signers sorted by the numeric value of Account.
   // Classic-address lexical order is not equivalent, so final canonical sorting is delegated
   // to the pinned XRPL codec before binary serialization. Never claim this JSON is binary-ready.
-  const tx = { ...transaction, SigningPubKey: '', Signers: signers };
+  const tx = { ...transaction, SigningPubKey: '', Signers: Object.freeze(signers) };
   delete tx.TxnSignature;
 
   // Do not pass coercible, fractional or unbounded fees into an offline
