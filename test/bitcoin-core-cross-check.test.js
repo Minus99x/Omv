@@ -589,3 +589,13 @@ test('Core evidence verifier ignores property order and rejects toJSON substitut
  const spoof={...valid,broadcastAuthorized:true,toJSON:()=>valid};
  assert.equal(verifyBitcoinCoreCrossCheckEvidence({evidence:spoof,transaction:tx,...input}).ok,false);
 });
+
+test('Core receipt chains reject malformed hash identities even after rehash',()=>{const tx=transaction(), input=observations(tx); const valid=createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,observationContext:context(1,'2026-10-07T05:20:00Z')});
+ assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([valid]).ok,true);
+ for(const field of ['rawTransactionSha256','finalTransactionEvidenceSha256','txid','wtxid']) {
+  for(const value of ['',null,42,'ab','gg'.repeat(32)]) {
+   const forged=rehashReceipt(valid,r=>{r[field]=value;if(field==='txid')r.mempool.txid=value;if(field==='wtxid'){r.mempool.wtxid=value;r.mempool.effectiveIncludes=[value];}});
+   assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([forged]).ok,false,field+':'+value);
+  }
+ }
+});

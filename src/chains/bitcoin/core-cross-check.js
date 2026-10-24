@@ -284,6 +284,11 @@ function validateChainedCoreAuthority(evidence, index, errors) {
       !Number.isSafeInteger(evidence.node?.protocolVersion) || evidence.node.protocolVersion < 1) {
     errors.push(`${prefix} has invalid Bitcoin Core node version or protocol version.`);
   }
+  for (const field of ['rawTransactionSha256', 'finalTransactionEvidenceSha256', 'txid', 'wtxid']) {
+    if (typeof evidence[field] !== 'string' || !/^[0-9a-f]{64}$/.test(evidence[field])) {
+      errors.push(`${prefix} has invalid ${field} hash identity.`);
+    }
+  }
   const source = evidence.observationSource;
   if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(source)) {
     errors.push(`${prefix} has unsupported observation provenance.`);
