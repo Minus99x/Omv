@@ -49,7 +49,10 @@ export function compareIndependentStateSnapshots(a, b, fields) {
   if (!a || !b || a.chainId !== b.chainId || a.networkRef !== b.networkRef || a.mechanismRef !== b.mechanismRef) {
     throw new TypeError('Independent state snapshots must refer to the same mechanism on the same network.');
   }
-  if (!Array.isArray(fields) || !fields.length) throw new TypeError('fields are required.');
+  if (!Array.isArray(fields) || !fields.length ||
+    fields.some(field=>typeof field!=='string'||!field.trim()||['__proto__','prototype','constructor'].includes(field))||
+    new Set(fields).size!==fields.length)
+    throw new TypeError('fields must be distinct safe field identifiers.');
   const comparisons = fields.map(field => Object.freeze({
     field,
     matches: JSON.stringify(stable(a.observations?.[field])) === JSON.stringify(stable(b.observations?.[field])),
