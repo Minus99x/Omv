@@ -77,7 +77,8 @@ export function createCapabilityMaturityContract({ adapter, networks = [], stage
     if (normalized.chainId !== chainId) throw new TypeError(`Network ${normalized.id} does not belong to adapter ${chainId}.`);
     return normalized;
   }));
-  const normalizedGates = Object.freeze(Object.fromEntries(PROMOTION_GATES.map(gate => [gate, normalizeGateEvidence(gate, gateEvidence[gate])])));
+  const normalizedGates = Object.freeze(Object.fromEntries(PROMOTION_GATES.map(gate => [gate,
+    normalizeGateEvidence(gate, Object.hasOwn(gateEvidence,gate) ? gateEvidence[gate] : {})])));
   const blockerList = normalizeRefs(blockers, 'blockers');
   const noteList = normalizeRefs(notes, 'notes');
   const missingGates = Object.freeze(PROMOTION_GATES.filter(gate => !normalizedGates[gate].passed));
