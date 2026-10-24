@@ -65,7 +65,7 @@ export function createApothemReadOnlyDeploymentBudget({
   const budgetWei=gasWithBuffer==null?null:gasWithBuffer*price;
   return Object.freeze({
     schema:'omegavault.xdc.apothem-deployment-budget.v1',networkRef:'xdc:apothem',
-    compileVerified:true,compilerVersion,creationBytecodeBytes:compiledCreationBytecode.length/2,
+    compileVerified:false,compilerVersionChecked:true,compilerVersion,creationBytecodeBytes:compiledCreationBytecode.length/2,
     runtimeBytecodeBytes:codeSizeBytes,
     providerGasPriceWei:Object.freeze(quotes.map(String)),
     maxObservedGasPriceWei:String(price),
