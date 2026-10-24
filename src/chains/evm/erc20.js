@@ -31,7 +31,9 @@ export function erc20RecoveryAction({ chainId = 'ethereum', networkRef, vaultCon
   const token = normalizeAddress(tokenAddress);
   const contract = normalizeAddress(vaultContract);
   if (!/^0x[a-f0-9]{40}$/.test(token || '')) throw new TypeError('ERC-20 token address is invalid.');
-  if (!/^0x[a-f0-9]{40}$/.test(contract || '')) throw new TypeError('Vault contract address is invalid.');
+  if (!/^0x[a-f0-9]{40}$/.test(contract || '') || contract==='0x'+'0'.repeat(40))
+    throw new TypeError('Vault contract address is invalid.');
+  if (token==='0x'+'0'.repeat(40)) throw new TypeError('ERC-20 token address is invalid.');
   return Object.freeze({
     chainId,
     networkRef,
