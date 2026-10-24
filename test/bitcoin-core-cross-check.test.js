@@ -688,3 +688,9 @@ test('Core rejected mempool observations reject coerced reasons',()=>{
   assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input,mempoolResult:{txid:tx.txid,wtxid:tx.wtxid,allowed:false,'reject-reason':reason}}),/reject-reason/);
  }
 });
+
+test('Core decoded transaction cannot omit input records through array holes',()=>{
+ const tx=transaction(),input=observations(tx);
+ input.decodedTransaction.vin=new Array(1);
+ assert.throws(()=>createBitcoinCoreCrossCheckEvidence({transaction:tx,...input}),/decoded input/);
+});

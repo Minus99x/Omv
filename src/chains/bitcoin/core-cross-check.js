@@ -146,7 +146,7 @@ function validateDecoded(transaction, decoded) {
   }
   const expectedInputs = transaction.finalizerEvidence.inputs;
   if (!Array.isArray(decoded?.vin) || decoded.vin.length !== expectedInputs.length) throw new Error('Bitcoin Core decoded input count does not match extraction.');
-  decoded.vin.forEach((input, index) => {
+  Array.from(decoded.vin).forEach((input, index) => {
     const expected = expectedInputs[index];
     if (input?.txid !== expected.txid || input?.vout !== expected.vout || input?.sequence !== expected.sequence) {
       throw new Error(`Bitcoin Core decoded input ${index} does not match extraction.`);
