@@ -18,7 +18,7 @@ test('reuse gate matches installed exact-version dependencies and records candid
   assert.deepEqual(report.issues, []);
   assert.equal(report.ok, true);
   assert.equal(report.existing, 4);
-  assert.equal(report.candidates, 5);
+  assert.equal(report.candidates, 7);
   assert.equal(report.licenseReview, 3);
 
   const ids = new Set();
@@ -63,4 +63,29 @@ test('reuse catalog keeps OmegaVault policy distinct from ordinary wallet SDK pr
   assert.ok(OMEGAVAULT_DIFFERENTIATORS.some(value => value.includes('cross-chain')));
   assert.ok(OMEGAVAULT_DIFFERENTIATORS.some(value => value.includes('non-custodial')));
   assert.ok(UPSTREAM_REUSE_CATALOG.filter(x => x.decision === 'license-review').every(x => x.license.startsWith('LGPL-')));
+});
+
+
+test('Bitcoin PSBTv2 candidates explicitly distinguish BIP370 from bitcoinjs PSBTv0', () => {
+  const byId = new Map(UPSTREAM_REUSE_CATALOG.map(item => [item.id, item]));
+  const ledger = byId.get('ledger-psbtv2');
+  const rust = byId.get('rust-psbt');
+  const bitcoinjs = byId.get('bitcoinjs');
+  assert.equal(ledger.packageName, '@ledgerhq/psbtv2');
+  assert.equal(ledger.license, 'Apache-2.0');
+  assert.equal(ledger.decision, 'evaluate');
+  assert.match(ledger.purpose, /BIP370/);
+  assert.equal(rust.license, 'CC0-1.0');
+  assert.match(rust.purpose, /BIP370/);
+  assert.match(bitcoinjs.purpose, /PSBTv0/);
+  assert.match(bitcoinjs.purpose, /do not assume PSBTv2/i);
+  assert.equal(packageJson.dependencies?.['@ledgerhq/psbtv2'], undefined);
+});
+
+test('PSBTv2 upstream may not be silently installed before explicit review', () => {
+  const modified = structuredClone(installed);
+  modified.dependencies['@ledgerhq/psbtv2'] = '0.6.2';
+  const report = inspectReuseCatalog(modified);
+  assert.equal(report.ok, false);
+  assert.ok(report.issues.some(issue => issue.includes('@ledgerhq/psbtv2')));
 });
