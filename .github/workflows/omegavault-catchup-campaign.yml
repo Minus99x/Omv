@@ -1,14 +1,12 @@
 name: OmegaVault One-Time 24-Pass Engineering Campaign
 
-# A one-time batch triggered by creation of this workflow on main.
+# The original one-time campaign has already executed. Keep explicit
+# workflow_dispatch available for approved catch-up batches; do not
+# relaunch all 24 passes merely because this file is repaired after rename.
 # It uses the audited, SHA-pinned worker and preserves the development branch.
 # Individual passes are serial: a later pass sees prior verified commits.
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/omegavault-catchup-campaign.yml'
 
 permissions:
   contents: read
@@ -44,7 +42,7 @@ jobs:
         pass: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24]
     # This reusable worker checks out dev, writes src/chains and test only,
     # independently runs npm test and npm run check, then commits to dev only.
-    uses: Minus99x/Omegavault/.github/workflows/omegavault-hourly-engineering.yml@3189442e08aaf3a3e288376b65b2921558ff5be4
+    uses: Minus99x/Omv/.github/workflows/omegavault-hourly-engineering.yml@3189442e08aaf3a3e288376b65b2921558ff5be4
     permissions:
       contents: write
       copilot-requests: write
