@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
 
 function stable(value) {
@@ -236,7 +237,7 @@ export function verifyBitcoinSignetObservationEvidence({
   } catch (error) {
     return Object.freeze({ ok:false, errors:Object.freeze([String(error?.message || error)]) });
   }
-  const ok = JSON.stringify(evidence) === JSON.stringify(expected);
+  const ok = isDeepStrictEqual(evidence, expected);
   return Object.freeze({ ok, errors:Object.freeze(ok ? [] : ['Bitcoin Signet observation evidence does not match supplied observations.']) });
 }
 

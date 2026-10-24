@@ -603,3 +603,12 @@ test('Bitcoin Signet freshness guard rejects stale, future and digest-tampered o
   upgraded.sha256=createHash('sha256').update(JSON.stringify(stable(core))).digest('hex');
   assert.match(check('2026-10-04T00:01:15Z',120000,upgraded).errors[0],/authority claim/);
 });
+
+test('Signet observation verification rejects serialization spoofing and accepts reordered keys',()=>{
+ const {finalizer,finalTransaction}=finalizerArtifacts();
+ const args={finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,...observations(finalizer)};
+ const valid=createBitcoinSignetObservationEvidence(args);
+ assert.equal(verifyBitcoinSignetObservationEvidence({...args,evidence:Object.fromEntries(Object.entries(valid).reverse())}).ok,true);
+ const spoof={...valid,publicSignetObservationProven:true,toJSON:()=>valid};
+ assert.equal(verifyBitcoinSignetObservationEvidence({...args,evidence:spoof}).ok,false);
+});
