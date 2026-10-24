@@ -27,7 +27,15 @@ function normalizeAmount(amount) {
     return Object.freeze({ kind: 'mpt', amount: Object.freeze({ mpt_issuance_id: amount.mpt_issuance_id.toUpperCase(), value }), requiresTokenEscrow: true });
   }
   assertClassicAddress(amount.issuer, 'token issuer');
-  if (typeof amount.currency !== 'string' || amount.currency.length === 0) throw new TypeError('Trust-line token currency is required.');
+  const currency=amount.currency;
+  // XRPL accepts a 3-character standard code or a 160-bit hexadecimal code;
+  // XRP's reserved currency identity cannot denote an issued trust-line asset.
+  const standard=typeof currency==='string' && /^[A-Za-z0-9?!@#$%^&*<>(){}\[\]|]{3}$/.test(currency);
+  const hex=typeof currency==='string' && /^[A-Fa-f0-9]{40}$/.test(currency);
+  if ((!standard && !hex) || currency==='XRP' ||
+      (hex && (/^0{40}$/.test(currency) || currency.toUpperCase()==='0000000000000000000000005852500000000000'))) {
+    throw new TypeError('Trust-line token currency must be a valid non-XRP 3-character code or 160-bit hex code.');
+  }
   const value = positiveDecimalString(amount.value, 'trust-line token amount value');
   return Object.freeze({ kind: 'trustline-token', amount: Object.freeze({ currency: amount.currency, issuer: amount.issuer, value }), requiresTokenEscrow: true });
 }

@@ -154,3 +154,19 @@ test('XRPL XRP escrow drops stay canonical, exact, and within supply',()=>{
     assert.throws(()=>createXrplEscrowRecoveryPlan({...base,amountDrops}),/positive canonical integer/);
   }
 });
+
+
+test('XRPL escrow trust-line currencies reject invalid and reserved representations',()=>{
+  const base={owner,rescueDestination:rescue,finishAfterRippleTime:900000000,
+    cancelAfterRippleTime:900000600};
+  for(const currency of ['USD','EUR','FF'.repeat(20)]){
+    const planned=createXrplEscrowRecoveryPlan({...base,amount:{currency,issuer:a,value:'1'}});
+    assert.equal(planned.transaction.Amount.currency,currency);
+  }
+  for(const currency of ['XRP','US','four','0'.repeat(40),'0000000000000000000000005852500000000000',{},null]){
+    assert.throws(()=>createXrplEscrowRecoveryPlan({...base,amount:{currency,issuer:a,value:'1'},
+      tokenEscrowFeature:evaluateXrplFeature({featureResponse:{result:{
+        [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',enabled:true,supported:true}
+      }}})}),/currency/);
+  }
+});
