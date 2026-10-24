@@ -85,7 +85,10 @@ export function createDeploymentVerificationReport({
   sourceSha256,
   observedAt
 }) {
-  if (!network?.id || !network?.chainIdHex) throw new TypeError('Deployment verification requires an EVM network profile.');
+  if (typeof network?.id!=='string'||!network.id.trim()||
+      typeof network?.chainId!=='string'||!network.chainId.trim()||
+      typeof network?.chainIdHex!=='string'||!/^0x(?:0|[1-9a-f][0-9a-f]*)$/.test(network.chainIdHex))
+    throw new TypeError('Deployment verification requires an EVM network profile.');
   if (!expected || !observed || !observedAt) throw new TypeError('Deployment verification requires expected/observed configuration and observedAt.');
   const expectedContacts = normalizeContactSet(expected.trustedContacts);
   const observedContacts = normalizeContactSet(observed.trustedContacts);
