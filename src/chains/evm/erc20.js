@@ -6,6 +6,8 @@ export function defineErc20Asset({ chainId, networkRef, address, symbol = null, 
   const assetRef = normalizeAddress(address);
   if (!/^0x[a-f0-9]{40}$/.test(assetRef || '') || assetRef==='0x'+'0'.repeat(40))
     throw new TypeError('ERC-20 address is invalid.');
+  if (typeof chainId!=='string'||!chainId.trim()||typeof networkRef!=='string'||!networkRef.trim())
+    throw new TypeError('ERC-20 asset requires primitive chain and network identity.');
   return Object.freeze({
     chainId,
     networkRef,
