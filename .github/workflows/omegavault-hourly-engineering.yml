@@ -13,13 +13,13 @@ permissions:
 concurrency:
   group: omegavault-hourly-engineering-scheduler
   cancel-in-progress: false
-  queue: max
+  queue: single
 
 jobs:
   engineer:
     name: Free-plan engineering worker
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 35
     permissions:
       contents: read
       copilot-requests: write
@@ -43,7 +43,7 @@ jobs:
         run: npm install -g @github/copilot
 
       - name: Implement substantive offline engineering with adversarial tests
-        timeout-minutes: 12
+        timeout-minutes: 25
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
@@ -85,7 +85,7 @@ jobs:
     needs: engineer
     if: needs.engineer.outputs.has_patch == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
