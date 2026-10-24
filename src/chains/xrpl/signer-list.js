@@ -50,10 +50,18 @@ export function normalizeXrplSequenceBinding({ sequence = null, ticketSequence =
     if (accountTxnId != null) throw new TypeError('XRPL TicketSequence cannot be combined with AccountTxnID.');
     return Object.freeze({ Sequence: 0, TicketSequence: ticketSequence });
   }
-  if (sequence == null) return Object.freeze({});
+  if (sequence == null) {
+    if (accountTxnId != null) throw new TypeError('AccountTxnID requires an ordinary XRPL Sequence.');
+    return Object.freeze({});
+  }
   assertUInt(sequence, UINT32_MAX, 'sequence');
   if (sequence === 0) throw new TypeError('Sequence 0 is only valid when a TicketSequence is supplied.');
-  return Object.freeze({ Sequence: sequence });
+  if (accountTxnId == null) return Object.freeze({ Sequence: sequence });
+  if (typeof accountTxnId !== 'string' || !/^[A-Fa-f0-9]{64}$/.test(accountTxnId) ||
+      /^0{64}$/.test(accountTxnId)) {
+    throw new TypeError('AccountTxnID must be a nonzero 32-byte transaction hash.');
+  }
+  return Object.freeze({ Sequence: sequence, AccountTxnID: accountTxnId.toUpperCase() });
 }
 
 export function normalizeXrplFeeDrops(value, label='feeDrops') {

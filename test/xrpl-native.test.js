@@ -250,3 +250,16 @@ test('XRPL coordinated multisign records lock signer identity and signatures',()
   assert.equal(Object.isFrozen(result.transaction.Signers[0].Signer),true);
   assert.throws(()=>result.transaction.Signers.push({Signer:{Account:rescue}}),TypeError);
 });
+
+
+test('XRPL non-ticket transaction sequence keeps validated AccountTxnID anti-replay binding',()=>{
+  const hash='ab'.repeat(32);
+  assert.deepEqual(normalizeXrplSequenceBinding({sequence:55,accountTxnId:hash}),{
+    Sequence:55,AccountTxnID:hash.toUpperCase()});
+  for(const accountTxnId of ['ab','0'.repeat(64),{},null]){
+    if(accountTxnId==null) continue;
+    assert.throws(()=>normalizeXrplSequenceBinding({sequence:55,accountTxnId}),/AccountTxnID must/);
+  }
+  assert.throws(()=>normalizeXrplSequenceBinding({accountTxnId:hash}),/requires an ordinary/);
+  assert.throws(()=>normalizeXrplSequenceBinding({ticketSequence:55,accountTxnId:hash}),/cannot be combined/);
+});
