@@ -32,6 +32,10 @@ export function defineAdapter(spec) {
   for (const [field,values] of [['proofNetworks',spec.proofNetworks],['securityNotes',spec.securityNotes]]) {
     if (values != null && !Array.isArray(values)) throw new TypeError(`Adapter ${field} must be an array.`);
   }
+  for (const [field,values] of [['proofNetworks',spec.proofNetworks],['securityNotes',spec.securityNotes]]) {
+    if (values != null && values.some(value=>typeof value!=='string' || !value.trim()))
+      throw new TypeError(`Adapter ${field} entries must be non-empty strings.`);
+  }
   const frozen = {
     ...spec,
     capabilities: Object.freeze([...spec.capabilities]),
