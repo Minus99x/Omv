@@ -82,19 +82,25 @@ export function verifyApothemReceipt({receipt,transactionHash,expectedContract=n
 }
 export function verifyApothemRuntimeBytecode({compiledRuntime,immutableReferences={},actualRuntime}){
  if(typeof compiledRuntime!=='string'||!HEX.test(compiledRuntime)||compiledRuntime.length<4||
-    typeof actualRuntime!=='string'||!HEX.test(actualRuntime))
+    typeof actualRuntime!=='string'||!HEX.test(actualRuntime)||actualRuntime.length<4||
+    (compiledRuntime.length%2)!==0||(actualRuntime.length%2)!==0)
   throw new Error('Deployment runtime must be canonical 0x-bytecode.');
  const expected=compiledRuntime.slice(2).toLowerCase();
  const actual=actualRuntime.slice(2).toLowerCase();
  if(expected.length!==actual.length||expected.length%2!==0)throw new Error('Runtime bytecode size mismatch.');
  const ignored=new Set();
+ if(!immutableReferences||typeof immutableReferences!=='object'||Array.isArray(immutableReferences))
+  throw new Error('Malformed immutable reference offsets.');
  for(const slots of Object.values(immutableReferences)){
   if(!Array.isArray(slots))throw new Error('Malformed immutable reference offsets.');
   for(const slot of slots){
-   const start=Number(slot?.start),length=Number(slot?.length);
+   const start=slot?.start,length=slot?.length;
    if(!Number.isSafeInteger(start)||!Number.isSafeInteger(length)||start<0||length<=0||start+length>actual.length/2)
      throw new Error('Immutable reference extends outside compiled runtime.');
-   for(let i=start;i<start+length;i++)ignored.add(i);
+   for(let i=start;i<start+length;i++){
+    if(ignored.has(i))throw new Error('Overlapping immutable references may not mask additional runtime bytes.');
+    ignored.add(i);
+   }
   }
  }
  for(let i=0;i<expected.length/2;i++){
