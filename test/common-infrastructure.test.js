@@ -23,7 +23,8 @@ test('public-state verification is deterministic and can compare independent sou
   const a = createStateSnapshot({ chainId: 'ethereum', networkRef: 'ethereum:sepolia', mechanismRef: '0xvault', observedAt: '2026-09-28T00:00:00Z', source: 'rpc-a', observations: { recovered: true, balance: '0' } });
   const b = createStateSnapshot({ chainId: 'ethereum', networkRef: 'ethereum:sepolia', mechanismRef: '0xvault', observedAt: '2026-09-28T00:00:02Z', source: 'indexer-b', observations: { recovered: true, balance: '0' } });
   const comparison = compareIndependentStateSnapshots(a, b, ['recovered', 'balance']);
-  assert.equal(comparison.independent, true);
+  assert.equal(comparison.independent, false);
+  assert.equal(comparison.distinctSourceLabels, true);
   assert.equal(comparison.matches, true);
 });
 
