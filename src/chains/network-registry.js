@@ -21,6 +21,12 @@ function freezeNetwork(spec) {
     if(spec[field]?.some(value=>typeof value!=='string'||!value.trim()))
       throw new TypeError(`Network ${field} must contain primitive nonempty strings.`);
   }
+  for(const field of ['rpcUrls','explorerUrls']) {
+    if(spec[field]?.some(value=>!/^https?:\/\/|^wss:\/\//.test(value)))
+      throw new TypeError(`Network ${field} requires secure HTTP or WebSocket endpoints.`);
+    if(spec[field] && new Set(spec[field]).size!==spec[field].length)
+      throw new TypeError(`Network ${field} cannot contain duplicates.`);
+  }
   return Object.freeze({
     ...spec,
     rpcUrls: Object.freeze([...(spec.rpcUrls ?? [])]),
