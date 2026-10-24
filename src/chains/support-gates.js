@@ -25,7 +25,8 @@ export function evaluateChainSupport({ capabilityContract, invariantEvidence = {
   if (invariantEvidence == null || typeof invariantEvidence!=='object' || Array.isArray(invariantEvidence))
     throw new TypeError('Invariant support evidence must be a record object.');
   const evidence = Object.freeze(Object.fromEntries(
-    CORE_INVARIANT_IDS.map(id => [id, normalizeEvidenceRecord(id, invariantEvidence[id], chainId)])
+    CORE_INVARIANT_IDS.map(id => [id, normalizeEvidenceRecord(id,
+      Object.hasOwn(invariantEvidence,id) ? invariantEvidence[id] : null, chainId)])
   ));
 
   const promotionEligible = capabilityContract?.promotion?.eligible === true;
