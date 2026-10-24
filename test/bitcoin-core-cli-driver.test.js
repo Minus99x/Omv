@@ -68,3 +68,14 @@ test('Bitcoin Core CLI requires Signet identity even when invoked through a Sign
   const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:'{"chain":"signet"}'})});
   assert.equal((await driver.getBlockchainInfo()).chain,'signet');
 });
+
+
+test('Bitcoin Core CLI validates node version and protocol metadata before evidence promotion',async()=>{
+  const base={version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};
+  for(const changed of [{version:'310100'},{version:0},{protocolversion:0},{subversion:''},{subversion:{}}]){
+    const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify({...base,...changed})})});
+    await assert.rejects(()=>driver.getNetworkInfo(),/invalid node version/);
+  }
+  const valid=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify(base)})});
+  assert.equal((await valid.getNetworkInfo()).version,310100);
+});

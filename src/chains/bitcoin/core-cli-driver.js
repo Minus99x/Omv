@@ -39,7 +39,15 @@ export function createBitcoinSignetCoreCliDriver({ execute = execFileAsync } = {
   }
   return Object.freeze({
     provenance:'bitcoin-core-rpc',
-    getNetworkInfo:() => query(METHODS.getNetworkInfo),
+    getNetworkInfo:async () => {
+      const info=await query(METHODS.getNetworkInfo);
+      if (!Number.isSafeInteger(info?.version) || info.version<=0 ||
+          !Number.isSafeInteger(info?.protocolversion) || info.protocolversion<=0 ||
+          typeof info?.subversion!=='string' || !info.subversion.trim()) {
+        throw new Error('Bitcoin Core returned invalid node version/protocol metadata.');
+      }
+      return info;
+    },
     getBlockchainInfo:async () => {
       const info=await query(METHODS.getBlockchainInfo);
       if (!info || typeof info!=='object' || info.chain!=='signet') {
