@@ -145,3 +145,12 @@ test('XRPL Ripple-epoch and escrow sequence parameters fit protocol UInt32', () 
     assert.throws(()=>createXrplEscrowFinishPlan({submitter:a,owner,escrowSequence:invalid}),/positive integer/);
   }
 });
+
+
+test('XRPL XRP escrow drops stay canonical, exact, and within supply',()=>{
+  const base={owner,rescueDestination:rescue,finishAfterRippleTime:900000000};
+  assert.equal(createXrplEscrowRecoveryPlan({...base,amountDrops:'100000000000000000'}).transaction.Amount,'100000000000000000');
+  for(const amountDrops of ['0','0001','100000000000000001','999999999999999999999999',Number.MAX_SAFE_INTEGER+1,1.5]){
+    assert.throws(()=>createXrplEscrowRecoveryPlan({...base,amountDrops}),/positive canonical integer/);
+  }
+});

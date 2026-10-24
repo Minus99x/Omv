@@ -11,7 +11,12 @@ function positiveDecimalString(value, label) {
 function normalizeAmount(amount) {
   if (typeof amount === 'string' || typeof amount === 'number' || typeof amount === 'bigint') {
     const drops = String(amount);
-    if (!/^\d+$/.test(drops) || BigInt(drops) <= 0n) throw new TypeError('XRP escrow amount must be a positive integer number of drops.');
+    // XRPL Amount cannot exceed the XRP supply (100 billion XRP / 10^17 drops).
+    // Numbers beyond JS safe-integer precision must arrive as exact strings.
+    if ((typeof amount === 'number' && !Number.isSafeInteger(amount)) ||
+        !/^[1-9]\d*$/.test(drops) || BigInt(drops) > 100000000000000000n) {
+      throw new TypeError('XRP escrow amount must be a positive canonical integer number of drops within XRP supply.');
+    }
     return Object.freeze({ kind: 'xrp', amount: drops, requiresTokenEscrow: false });
   }
   if (!amount || typeof amount !== 'object' || Array.isArray(amount)) throw new TypeError('XRPL escrow amount must be XRP drops or a fungible-token amount object.');
