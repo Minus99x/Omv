@@ -46,8 +46,10 @@ function normalizePermission(value,index){
   const permission=typeof value==='string'
     ? value
     : value?.PermissionValue ?? value?.Permission?.PermissionValue;
-  if(typeof permission!=='string' || permission.length<1) {
-    throw new TypeError(`permissions[${index}] must identify a PermissionValue string.`);
+  // XRPL named permissions use canonical case-sensitive transaction or
+  // granular identifiers; malformed names must not enter authority plans.
+  if(typeof permission!=='string' || !/^[A-Z][A-Za-z0-9]*$/.test(permission)) {
+    throw new TypeError(`permissions[${index}] must identify a canonical PermissionValue string.`);
   }
   if(NON_DELEGABLE.has(permission)) {
     throw new TypeError(`XRPL permission ${permission} is non-delegable and cannot be placed in DelegateSet.`);

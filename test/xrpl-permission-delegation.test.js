@@ -245,3 +245,12 @@ test('XRPL DelegateSet Fee uses exact supply-bounded drop normalization',()=>{
     assert.throws(()=>buildXrplDelegateSet({...params,feeDrops}),/canonical non-negative/);
   }
 });
+
+
+test('XRPL PermissionValue names require canonical case-sensitive identifiers',()=>{
+  const base={owner,delegate,sequence:10,permissionDelegationFeature:enabledFeature()};
+  for(const permission of ['payment','Payment ','Payment\\n','__proto__','constructor','0']){
+    assert.throws(()=>buildXrplDelegateSet({...base,permissions:[permission]}),/canonical PermissionValue string/);
+  }
+  assert.equal(buildXrplDelegateSet({...base,permissions:['Payment']}).permissions[0],'Payment');
+});
