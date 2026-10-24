@@ -12,7 +12,10 @@ function digest(value) {
 }
 
 export function definePublicStateCheck({ id, description, expected, comparator = 'equal', required = true }) {
-  if (!id || !description) throw new TypeError('Public-state check requires id and description.');
+  if (typeof id !== 'string' || !id.trim() || typeof description !== 'string' || !description.trim())
+    throw new TypeError('Public-state check requires id and description.');
+  if (['__proto__','prototype','constructor'].includes(id))
+    throw new TypeError('Public-state check id is reserved.');
   if (!['equal', 'contains', 'truthy', 'custom'].includes(comparator)) throw new TypeError('Unsupported public-state comparator.');
   return Object.freeze({ id, description, expected: structuredClone(expected), comparator, required: required !== false });
 }
