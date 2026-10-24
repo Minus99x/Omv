@@ -456,3 +456,12 @@ test('eligibility cannot trust conflicting sequence time within the same ledger'
  await assert.rejects(transport.waitUntilEligible({sourceAccount:G(1),minAccountSequenceAge:'0',currentSequence:'1001',recoverySequence:'5000'}),/same ledger/);
 });
 
+
+test('Horizon transport rejects padded ledger and eligibility integer identifiers',async()=>{
+ let calls=0;const transport=createStellarTestnetHorizonHttpTransport({fetchImpl:async()=>{calls++;return jsonResponse({sequence:501});}});
+ await assert.rejects(transport.loadLedger('0501'),/integer string/);
+ for(const field of ['currentSequence','recoverySequence','minAccountSequenceAge']) {
+  await assert.rejects(transport.waitUntilEligible({...eligibilityArguments(),[field]:'0'+eligibilityArguments()[field]}),/integer string/);
+ }
+ assert.equal(calls,0);
+});

@@ -19,7 +19,7 @@ function integerString(value, label, { positive = false } = {}) {
     throw new TypeError(`${label} must use an exact integer string or safe integer number.`);
   }
   const text = String(value ?? '');
-  if (!/^\d+$/.test(text)) throw new TypeError(`${label} must be a non-negative integer string.`);
+  if (!/^(0|[1-9]\d*)$/.test(text)) throw new TypeError(`${label} must be a non-negative integer string.`);
   if (BigInt(text) > 0xffffffffffffffffn) throw new RangeError(`${label} exceeds uint64.`);
   if (positive && BigInt(text) === 0n) throw new TypeError(`${label} must be greater than zero.`);
   return text;
