@@ -3,8 +3,12 @@ import { assertClassicAddress } from './signer-list.js';
 export const TOKEN_ESCROW_AMENDMENT_ID = '138B968F25822EFBF54C00F97031221C47B1EAB8321D93C7C2AEAF85F04EC5DF';
 
 function positiveDecimalString(value, label) {
-  const text = String(value);
-  if (!/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(text) || Number(text) <= 0) throw new TypeError(`${label} must be a positive decimal string.`);
+  // Do not coerce unsafe numbers, objects or booleans into transaction intent.
+  // A decimal string retains the exact amount supplied by the owner.
+  const text = value;
+  if (typeof text !== 'string' || !/^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(text) || !/[1-9]/.test(text)) {
+    throw new TypeError(`${label} must be a positive decimal string.`);
+  }
   return text;
 }
 

@@ -159,8 +159,11 @@ test('XRPL XRP escrow drops stay canonical, exact, and within supply',()=>{
 test('XRPL escrow trust-line currencies reject invalid and reserved representations',()=>{
   const base={owner,rescueDestination:rescue,finishAfterRippleTime:900000000,
     cancelAfterRippleTime:900000600};
+  const enabled=evaluateXrplFeature({featureResponse:{result:{
+    [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',enabled:true,supported:true}
+  }}});
   for(const currency of ['USD','EUR','FF'.repeat(20)]){
-    const planned=createXrplEscrowRecoveryPlan({...base,amount:{currency,issuer:a,value:'1'}});
+    const planned=createXrplEscrowRecoveryPlan({...base,amount:{currency,issuer:a,value:'1'},tokenEscrowFeature:enabled});
     assert.equal(planned.transaction.Amount.currency,currency);
   }
   for(const currency of ['XRP','US','four','0'.repeat(40),'0000000000000000000000005852500000000000',{},null]){
@@ -168,5 +171,18 @@ test('XRPL escrow trust-line currencies reject invalid and reserved representati
       tokenEscrowFeature:evaluateXrplFeature({featureResponse:{result:{
         [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',enabled:true,supported:true}
       }}})}),/currency/);
+  }
+});
+
+
+test('XRPL token escrow preserves exact owner-specified decimal strings',()=>{
+  const enabled=evaluateXrplFeature({featureResponse:{result:{
+    [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',enabled:true,supported:true}
+  }}});
+  const params={owner,rescueDestination:rescue,finishAfterRippleTime:900000000,
+    cancelAfterRippleTime:900000600,tokenEscrowFeature:enabled};
+  assert.equal(createXrplEscrowRecoveryPlan({...params,amount:{currency:'USD',issuer:a,value:'0.0000000001'}}).transaction.Amount.value,'0.0000000001');
+  for(const value of [1,1n,true,{toString:()=> '1'},null,'0.000','0001']){
+    assert.throws(()=>createXrplEscrowRecoveryPlan({...params,amount:{currency:'USD',issuer:a,value}}),/positive decimal string/);
   }
 });
