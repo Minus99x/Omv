@@ -72,6 +72,10 @@ export function createCapabilityMaturityContract({ adapter, networks = [], stage
   if (!Array.isArray(networks)) throw new TypeError('networks must be an array.');
   if (!gateEvidence || typeof gateEvidence!=='object' || Array.isArray(gateEvidence))
     throw new TypeError('gateEvidence must be an object.');
+  if (adapter.capabilities != null && (!Array.isArray(adapter.capabilities) ||
+    adapter.capabilities.some(value=>typeof value!=='string'||!value.trim()) ||
+    new Set(adapter.capabilities).size!==adapter.capabilities.length))
+    throw new TypeError('Adapter declaredCapabilities must be distinct strings.');
   const normalizedNetworks = Object.freeze(networks.map(network => {
     const normalized = normalizeNetwork(network);
     if (normalized.chainId !== chainId) throw new TypeError(`Network ${normalized.id} does not belong to adapter ${chainId}.`);
