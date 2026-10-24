@@ -37,6 +37,8 @@ export function createFinalityObservation({ policy, transactionRef, observedAt, 
       !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(observedAt) ||
       new Date(parsed).toISOString().slice(0,19)!==observedAt.slice(0,19))
     throw new TypeError('Finality observation requires an unambiguous real UTC timestamp.');
+  if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence))
+    throw new TypeError('Finality observation evidence must be an object.');
   return Object.freeze({
     chainId: policy.chainId, networkRef: policy.networkRef, model: policy.model,
     transactionRef, observedAt, status, evidence: structuredClone(evidence)
