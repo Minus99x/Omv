@@ -17,7 +17,8 @@ export function maskImmutableReferences(bytecode, immutableReferences = {}) {
   const chars = [...assertHex(bytecode, 'runtime bytecode')];
   const masked=new Set();
   for (const refs of Object.values(immutableReferences ?? {})) {
-    for (const ref of refs ?? []) {
+    if (!Array.isArray(refs)) throw new TypeError('Immutable reference offsets must be arrays.');
+    for (const ref of refs) {
       // Solidity immutable references use byte offsets/lengths. Reject malformed
       // values before converting to hex-character indices.
       const startByte = ref?.start;
