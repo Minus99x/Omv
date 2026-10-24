@@ -32,6 +32,11 @@ export function createFinalityObservation({ policy, transactionRef, observedAt, 
       typeof observedAt !== 'string' || !observedAt.trim())
     throw new TypeError('Finality observation requires policy, transactionRef and observedAt.');
   if (!['pending', 'included', 'finalized', 'failed'].includes(status)) throw new TypeError('Unsupported finality status.');
+  const parsed=Date.parse(observedAt);
+  if (!Number.isFinite(parsed) ||
+      !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(observedAt) ||
+      new Date(parsed).toISOString().slice(0,19)!==observedAt.slice(0,19))
+    throw new TypeError('Finality observation requires an unambiguous real UTC timestamp.');
   return Object.freeze({
     chainId: policy.chainId, networkRef: policy.networkRef, model: policy.model,
     transactionRef, observedAt, status, evidence: structuredClone(evidence)
