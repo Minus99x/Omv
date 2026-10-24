@@ -250,9 +250,13 @@ test('read-only Signet Core subprocess integrates prepared PSBT with fixed node 
     assert.deepEqual(commands.slice(0,2).map(c=>c[1]).sort(),[
       'getblockchaininfo','getnetworkinfo'
     ]);
-    assert.deepEqual(commands.slice(2).map(c=>c[1]),[
+    assert.deepEqual(commands.slice(2,4).map(c=>c[1]),[
       'decoderawtransaction','testmempoolaccept'
     ]);
+    assert.deepEqual(commands.slice(4).map(c=>c[1]).sort(),[
+      'getblockchaininfo','getnetworkinfo'
+    ]);
+    assert.equal(commands.length,6);
     assert.ok(commands.every(c=>c[0]==='-signet'));
     assert.deepEqual(commands[3].slice(2),[JSON.stringify([prepared.transaction.rawHex]),'0']);
   }finally{rmSync(f.dir,{recursive:true,force:true});}
