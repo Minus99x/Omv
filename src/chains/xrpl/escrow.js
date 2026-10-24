@@ -29,6 +29,9 @@ function normalizeAmount(amount) {
     if (typeof amount.mpt_issuance_id !== 'string' || !/^[A-Fa-f0-9]{48}$/.test(amount.mpt_issuance_id)) throw new TypeError('mpt_issuance_id must be a 192-bit hex identifier.');
     const value = positiveDecimalString(amount.value, 'MPT amount value');
     if (value.includes('.')) throw new TypeError('MPT escrow value must be an integer string; AssetScale determines display precision.');
+    if (BigInt(value)>0x7fffffffffffffffn) {
+      throw new RangeError('MPT escrow amount exceeds the XRPL signed-int64 token amount range.');
+    }
     return Object.freeze({ kind: 'mpt', amount: Object.freeze({ mpt_issuance_id: amount.mpt_issuance_id.toUpperCase(), value }), requiresTokenEscrow: true });
   }
   assertClassicAddress(amount.issuer, 'token issuer');

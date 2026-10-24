@@ -309,3 +309,14 @@ test('XRPL EscrowFinish fee floor cannot be calculated from a zero reference fee
   }
   assert.equal(calculateXrplEscrowFinishFeeDrops({baseFeeDrops:'10'}).minimumFeeDrops,'10');
 });
+
+
+test('XRPL MPT escrow unit count stays inside the signed-int64 amount domain',()=>{
+  const feature=evaluateXrplFeature({featureResponse:{result:{
+    [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',supported:true,enabled:true}
+  }}});
+  const params={owner,rescueDestination:rescue,finishAfterRippleTime:900000000,cancelAfterRippleTime:900000600,tokenEscrowFeature:feature};
+  const amount={mpt_issuance_id:'AA'.repeat(24),value:'9223372036854775807'};
+  assert.equal(createXrplEscrowRecoveryPlan({...params,amount}).transaction.Amount.value,amount.value);
+  assert.throws(()=>createXrplEscrowRecoveryPlan({...params,amount:{...amount,value:'9223372036854775808'}}),/signed-int64/);
+});
