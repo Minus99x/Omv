@@ -92,6 +92,8 @@ jobs:
         with:
           ref: dev/0.6.60-reconcile-overnight-bitcoin
           persist-credentials: false
+          # Preserve old blob objects for safe three-way reconciliation.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
@@ -109,8 +111,14 @@ jobs:
           test -s candidate.patch
           # Apply to the disposable checkout/index, then inspect Git's actual delta.
           # Do not run candidate code until all paths and modes have passed.
-          git apply --check --index candidate.patch
-          git apply --index candidate.patch
+          # Prefer exact application; when dev advances, reconcile disjoint edits
+          # with Git's recorded base blobs. Conflicts fail closed before tests.
+          if git apply --check --index candidate.patch; then
+            git apply --index candidate.patch
+          else
+            echo "Candidate base is stale; attempting a safe three-way apply."
+            git apply --3way --index candidate.patch
+          fi
           python3 - <<'PYGUARD'
           import subprocess
           records = subprocess.check_output([

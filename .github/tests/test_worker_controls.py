@@ -91,6 +91,49 @@ class GuardTests(unittest.TestCase):
     def test_empty_patch_rejected(self):
         self.check_patch({}, False)
 
+    def test_stale_patch_three_way_reconciles_and_rejects_conflicts(self):
+        """Preserve disjoint upstream commits; never test a conflicted patch."""
+        base = 'alpha\nbeta\ngamma\ndelta\nepsilon\nzeta\neta\n'
+        for upstream, should_pass in [
+            (base.replace('epsilon', 'EPSILON'), True),
+            (base.replace('beta', 'CONFLICT'), False),
+        ]:
+            with self.subTest(should_pass=should_pass):
+                with tempfile.TemporaryDirectory() as temp:
+                    root = Path(temp)
+                    def git(*args):
+                        return subprocess.check_output(['git', *args], cwd=root, stderr=subprocess.DEVNULL)
+                    git('init', '-q')
+                    git('config', 'user.email', 'test@example.invalid')
+                    git('config', 'user.name', 'Offline test')
+                    file = root / 'src/chains/base.js'
+                    file.parent.mkdir(parents=True)
+                    file.write_text(base)
+                    git('add', '.')
+                    git('commit', '-qm', 'base')
+                    file.write_text(base.replace('beta', 'BETA'))
+                    patch = git('diff', '--binary')
+                    git('reset', '--hard', 'HEAD')
+                    file.write_text(upstream)
+                    git('add', '.')
+                    git('commit', '-qm', 'upstream changed')
+                    (root / 'candidate.patch').write_bytes(patch)
+                    bin_dir = root / 'bin'
+                    bin_dir.mkdir()
+                    stub = bin_dir / 'npm'
+                    stub.write_text('#!/bin/sh\nprintf "%s\\n" "$*" >> npm-calls\n')
+                    stub.chmod(0o755)
+                    result = subprocess.run(
+                        ['bash', '-c', step_script('Validate paths, apply patch, run tests')],
+                        cwd=root,
+                        env={**os.environ, 'PATH': str(bin_dir) + ':' + os.environ['PATH']},
+                        text=True, capture_output=True
+                    )
+                    self.assertEqual(result.returncode == 0, should_pass, result.stdout + result.stderr)
+                    self.assertEqual((root / 'npm-calls').exists(), should_pass)
+                    if should_pass:
+                        self.assertEqual(file.read_text(), upstream.replace('beta', 'BETA'))
+
     def test_commit_records_run_origin(self):
         script = step_script('Commit verified engineering change without changing main')
         for field in ['Origin-Run:', 'Origin-Actor-ID:', 'Origin-Event:', 'Origin-Control-SHA:',
