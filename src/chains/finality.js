@@ -11,6 +11,8 @@ export function defineFinalityPolicy(input) {
   if (input.evidenceFields?.some(field=>typeof field!=='string'||!field.trim()) ||
       input.notes?.some(note=>typeof note!=='string'||!note.trim()))
     throw new TypeError('Finality evidence fields and notes must be nonempty primitive text.');
+  if (input.evidenceFields && new Set(input.evidenceFields).size!==input.evidenceFields.length)
+    throw new TypeError('Finality evidenceFields must not repeat required fields.');
   const policy = {
     chainId: input.chainId,
     networkRef: input.networkRef,
