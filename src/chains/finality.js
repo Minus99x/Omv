@@ -1,7 +1,9 @@
 const MODELS = new Set(['evm-block', 'bft-ledger', 'rollup', 'confirmations', 'solana-commitment', 'custom']);
 
 export function defineFinalityPolicy(input) {
-  if (!input?.chainId || !input?.networkRef || !MODELS.has(input?.model)) throw new TypeError('Finality policy requires chainId, networkRef and a supported model.');
+  if (typeof input?.chainId !== 'string' || !input.chainId.trim() ||
+      typeof input?.networkRef !== 'string' || !input.networkRef.trim() ||
+      !MODELS.has(input?.model)) throw new TypeError('Finality policy requires chainId, networkRef and a supported model.');
   const policy = {
     chainId: input.chainId,
     networkRef: input.networkRef,
