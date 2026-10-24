@@ -83,6 +83,8 @@ export function createCapabilityMaturityContract({ adapter, networks = [], stage
   }));
   if (new Set(normalizedNetworks.map(network=>network.id)).size!==normalizedNetworks.length)
     throw new TypeError('Capability contract must not repeat network IDs.');
+  if (Object.keys(gateEvidence).some(gate=>!PROMOTION_GATES.includes(gate)))
+    throw new TypeError('Gate evidence contains undeclared promotion gate.');
   const normalizedGates = Object.freeze(Object.fromEntries(PROMOTION_GATES.map(gate => [gate,
     normalizeGateEvidence(gate, Object.hasOwn(gateEvidence,gate) ? gateEvidence[gate] : {})])));
   const blockerList = normalizeRefs(blockers, 'blockers');
