@@ -9,7 +9,8 @@ function clean(value) {
 function freezeNetwork(spec) {
   const required = ['id', 'chainId', 'name', 'environment', 'nativeSymbol', 'rpcProtocol', 'implementationStage'];
   for (const key of required) {
-    if (!clean(spec?.[key])) throw new TypeError(`Network ${key} is required.`);
+    if (typeof spec?.[key] !== 'string' || !spec[key].trim())
+      throw new TypeError(`Network ${key} is required.`);
   }
   if (!NETWORK_STAGES.has(spec.implementationStage)) throw new TypeError(`Unknown network stage: ${spec.implementationStage}`);
   return Object.freeze({
