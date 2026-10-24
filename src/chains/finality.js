@@ -8,6 +8,9 @@ export function defineFinalityPolicy(input) {
     throw new TypeError('Finality evidenceFields must be an array.');
   if (input.notes != null && !Array.isArray(input.notes))
     throw new TypeError('Finality notes must be an array.');
+  if (input.evidenceFields?.some(field=>typeof field!=='string'||!field.trim()) ||
+      input.notes?.some(note=>typeof note!=='string'||!note.trim()))
+    throw new TypeError('Finality evidence fields and notes must be nonempty primitive text.');
   const policy = {
     chainId: input.chainId,
     networkRef: input.networkRef,
