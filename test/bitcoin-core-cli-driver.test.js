@@ -99,3 +99,17 @@ test('Bitcoin Core decoded transaction requires a 32-byte txid identity',async()
   const driver=createBitcoinSignetCoreCliDriver({execute:async()=>({stdout:JSON.stringify({txid:'ab'.repeat(32)})})});
   assert.equal((await driver.decodeRawTransaction({rawHex:'ab',networkRef:'bitcoin:signet'})).txid,'ab'.repeat(32));
 });
+
+
+test('Bitcoin CLI input policy throws synchronously before any Core RPC work', async () => {
+  let invoked=0;
+  const driver=createBitcoinSignetCoreCliDriver({execute:async()=>{
+    invoked += 1;
+    return {stdout:'{}'};
+  }});
+  assert.throws(()=>driver.decodeRawTransaction({rawHex:'ab',networkRef:'bitcoin:mainnet'}),/Signet-only/);
+  assert.throws(()=>driver.decodeRawTransaction({rawHex:'xyz',networkRef:'bitcoin:signet'}),/canonical/);
+  assert.throws(()=>driver.testMempoolAccept({rawTransactions:['ab','cd'],maxFeeRate:0,networkRef:'bitcoin:signet'}),/single Signet/);
+  assert.throws(()=>driver.testMempoolAccept({rawTransactions:['xyz'],maxFeeRate:0,networkRef:'bitcoin:signet'}),/canonical/);
+  assert.equal(invoked,0);
+});

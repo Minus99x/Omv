@@ -55,26 +55,30 @@ export function createBitcoinSignetCoreCliDriver({ execute = execFileAsync } = {
       }
       return info;
     },
-    decodeRawTransaction:async ({rawHex,networkRef}) => {
+    decodeRawTransaction:({rawHex,networkRef}) => {
       if (networkRef !== 'bitcoin:signet') throw new Error('Bitcoin Core CLI is Signet-only.');
-      const decoded=await query(METHODS.decodeRawTransaction,[raw(rawHex,'rawHex')]);
-      if (!decoded || typeof decoded!=='object' || Array.isArray(decoded) ||
-          typeof decoded.txid!=='string' || !/^[a-fA-F0-9]{64}$/.test(decoded.txid)) {
-        throw new Error('Bitcoin Core returned malformed decoded transaction identity.');
-      }
-      return decoded;
+      const verifiedHex=raw(rawHex,'rawHex');
+      return query(METHODS.decodeRawTransaction,[verifiedHex]).then(decoded => {
+        if (!decoded || typeof decoded!=='object' || Array.isArray(decoded) ||
+            typeof decoded.txid!=='string' || !/^[a-fA-F0-9]{64}$/.test(decoded.txid)) {
+          throw new Error('Bitcoin Core returned malformed decoded transaction identity.');
+        }
+        return decoded;
+      });
     },
-    testMempoolAccept:async ({rawTransactions,maxFeeRate,networkRef}) => {
+    testMempoolAccept:({rawTransactions,maxFeeRate,networkRef}) => {
       if (networkRef !== 'bitcoin:signet' || maxFeeRate !== 0 ||
           !Array.isArray(rawTransactions) || rawTransactions.length !== 1)
         throw new Error('Bitcoin Core CLI accepts only a single Signet read-only testmempoolaccept call.');
-      const outcome=await query(METHODS.testMempoolAccept,[JSON.stringify([raw(rawTransactions[0],'rawTransactions[0]')]),'0']);
-      if (!Array.isArray(outcome) || outcome.length!==1 || !outcome[0] ||
-          typeof outcome[0]!=='object' || Array.isArray(outcome[0]) ||
-          typeof outcome[0].allowed!=='boolean') {
-        throw new Error('Bitcoin Core returned malformed single-transaction mempool acceptance evidence.');
-      }
-      return outcome;
+      const verifiedHex=raw(rawTransactions[0],'rawTransactions[0]');
+      return query(METHODS.testMempoolAccept,[JSON.stringify([verifiedHex]),'0']).then(outcome => {
+        if (!Array.isArray(outcome) || outcome.length!==1 || !outcome[0] ||
+            typeof outcome[0]!=='object' || Array.isArray(outcome[0]) ||
+            typeof outcome[0].allowed!=='boolean') {
+          throw new Error('Bitcoin Core returned malformed single-transaction mempool acceptance evidence.');
+        }
+        return outcome;
+      });
     }
   });
 }
