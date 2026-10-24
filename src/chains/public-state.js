@@ -23,6 +23,10 @@ export function definePublicStateCheck({ id, description, expected, comparator =
 export function verifyPublicState({ chainId, networkRef, mechanismRef, observedAt, source, checks, observations }) {
   if (!chainId || !networkRef || !mechanismRef || !observedAt || !source) throw new TypeError('Public-state verification requires chain/network/mechanism/time/source.');
   if (!Array.isArray(checks) || !checks.length) throw new TypeError('Public-state verification requires checks.');
+  const ids=checks.map(check=>check?.id);
+  if(ids.some(id=>typeof id!=='string'||!id.trim()||['__proto__','prototype','constructor'].includes(id))||
+    new Set(ids).size!==ids.length)
+    throw new TypeError('Public-state checks require unique safe identifiers.');
   const results = checks.map(check => {
     const actual = observations?.[check.id];
     let ok = false;
