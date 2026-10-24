@@ -275,3 +275,17 @@ test('XRPL EscrowFinish condition and fulfillment require encoded complete hex b
     assert.throws(()=>createXrplEscrowFinishPlan({...params,condition:'AABB',fulfillment:value}),/hexadecimal bytes/);
   }
 });
+
+
+import { calculateXrplEscrowFinishFeeDrops } from '../src/chains/xrpl/escrow-fee.js';
+
+test('XRPL EscrowFinish fee calculator includes crypto-condition and multisign weight',()=>{
+  const fee=params=>calculateXrplEscrowFinishFeeDrops({baseFeeDrops:'10',...params}).minimumFeeDrops;
+  assert.equal(fee({}),'10');
+  assert.equal(fee({signerCount:2}),'30');
+  assert.equal(fee({fulfillmentHex:'A0028000'}),'330');
+  assert.equal(fee({fulfillmentHex:'AA'.repeat(32)}),'350');
+  assert.equal(fee({fulfillmentHex:'AA'.repeat(32),signerCount:2}),'370');
+  assert.throws(()=>fee({fulfillmentHex:'XYZ'}),/hexadecimal/);
+  assert.throws(()=>fee({signerCount:-1}),/signerCount/);
+});
