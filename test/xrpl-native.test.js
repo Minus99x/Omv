@@ -186,3 +186,12 @@ test('XRPL token escrow preserves exact owner-specified decimal strings',()=>{
     assert.throws(()=>createXrplEscrowRecoveryPlan({...params,amount:{currency:'USD',issuer:a,value}}),/positive decimal string/);
   }
 });
+
+
+test('XRPL product-claim assertions refuse unknown and mismatched recovery semantics',()=>{
+  for(const claim of ['full-recovery','immutable-rescue',null,{},'RESETTABLE-INACTIVITY']){
+    assert.throws(()=>assertXrplProductClaim({mode:XRPL_RECOVERY_MODES.FIXED_TIME_ESCROW,claim}),/Unknown XRPL recovery product claim/);
+  }
+  assert.throws(()=>assertXrplProductClaim({mode:XRPL_RECOVERY_MODES.FIXED_TIME_ESCROW,claim:XRPL_RECOVERY_MODES.SIGNER_QUORUM}),/does not match/);
+  assert.equal(assertXrplProductClaim({mode:XRPL_RECOVERY_MODES.FIXED_TIME_ESCROW,claim:XRPL_RECOVERY_MODES.FIXED_TIME_ESCROW}),true);
+});

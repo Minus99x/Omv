@@ -26,6 +26,12 @@ export function assessXrplRecoverySemantics({ mode, token = false } = {}) {
 
 export function assertXrplProductClaim({ mode, claim }) {
   const assessment = assessXrplRecoverySemantics({ mode });
+  // An unknown claim must never be treated as proof of an unimplemented
+  // recovery capability simply because it is not named resettable-inactivity.
+  if (typeof claim !== 'string' || !Object.values(XRPL_RECOVERY_MODES).includes(claim)) {
+    throw new TypeError('Unknown XRPL recovery product claim.');
+  }
+  if (claim !== mode) throw new TypeError('XRPL product claim does not match the verified recovery mode.');
   if (claim === 'resettable-inactivity' && !assessment.exactResettableInactivity) {
     throw new TypeError(`XRPL ${mode} must not be advertised as resettable inactivity recovery.`);
   }
