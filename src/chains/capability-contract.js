@@ -77,6 +77,8 @@ export function createCapabilityMaturityContract({ adapter, networks = [], stage
     if (normalized.chainId !== chainId) throw new TypeError(`Network ${normalized.id} does not belong to adapter ${chainId}.`);
     return normalized;
   }));
+  if (new Set(normalizedNetworks.map(network=>network.id)).size!==normalizedNetworks.length)
+    throw new TypeError('Capability contract must not repeat network IDs.');
   const normalizedGates = Object.freeze(Object.fromEntries(PROMOTION_GATES.map(gate => [gate,
     normalizeGateEvidence(gate, Object.hasOwn(gateEvidence,gate) ? gateEvidence[gate] : {})])));
   const blockerList = normalizeRefs(blockers, 'blockers');
