@@ -61,7 +61,7 @@ test('adapter network metadata rejects malformed, duplicate and coercible descri
   const { defineAdapter } = await import('../src/chains/adapter-interface.js');
   const valid = getChain('ethereum');
   const attempts = [
-    ['x'], [null], [{}], [{ id: 17 }], [{ id: '' }],
+    [''], [null], [{}], [{ id: 17 }], [{ id: '' }],
     [{ id: 'valid', testOnly: 'true' }],
     [{ id: 'valid', name: '' }],
     [{ id: 'valid', extra: true }],
@@ -72,4 +72,20 @@ test('adapter network metadata rejects malformed, duplicate and coercible descri
     assert.throws(() => defineAdapter({ ...valid, proofNetworks }), /proofNetworks/);
   }
   assert.throws(() => defineAdapter({ ...valid, securityNotes: [null] }), /securityNotes/);
+});
+
+test('adapter supports legacy string identifiers alongside structured descriptors without coercion', async () => {
+  const { defineAdapter } = await import('../src/chains/adapter-interface.js');
+  const valid = getChain('ethereum');
+  const mixed = defineAdapter({
+    ...valid,
+    proofNetworks: ['legacy:testnet', { id: 'another:testnet', testOnly: true }]
+  });
+  assert.equal(mixed.proofNetworks[0], 'legacy:testnet');
+  assert.deepEqual(mixed.proofNetworks[1], { id: 'another:testnet', testOnly: true });
+  assert.ok(Object.isFrozen(mixed.proofNetworks[1]));
+  assert.throws(() => defineAdapter({
+    ...valid,
+    proofNetworks: ['duplicate:testnet', { id: 'duplicate:testnet', testOnly: true }]
+  }), /duplicate/);
 });

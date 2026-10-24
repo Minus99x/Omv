@@ -36,9 +36,14 @@ export function defineAdapter(spec) {
   if (spec.securityNotes?.some(note => typeof note !== 'string' || !note.trim()))
     throw new TypeError('Adapter securityNotes entries must be non-empty strings.');
 
-  // Existing adapters declare structured test-network descriptors. Preserve
-  // those descriptors and validate their identity; never coerce them to text.
+  // Preserve both pre-existing formats: legacy primitive network identifiers
+  // and structured test-network descriptors. Never coerce objects into text.
   const proofNetworks = (spec.proofNetworks ?? []).map((entry, index) => {
+    if (typeof entry === 'string') {
+      if (!entry.trim())
+        throw new TypeError('Adapter proofNetworks entries must be non-empty strings or network descriptors.');
+      return entry;
+    }
     if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
         ![Object.prototype, null].includes(Object.getPrototypeOf(entry)))
       throw new TypeError(`Adapter proofNetworks[${index}] must be a plain network descriptor.`);
@@ -52,7 +57,7 @@ export function defineAdapter(spec) {
       throw new TypeError(`Adapter proofNetworks[${index}] has an unknown field.`);
     return Object.freeze({ ...entry });
   });
-  if (new Set(proofNetworks.map(entry => entry.id)).size !== proofNetworks.length)
+  if (new Set(proofNetworks.map(entry => typeof entry === 'string' ? entry : entry.id)).size !== proofNetworks.length)
     throw new TypeError('Adapter proofNetworks cannot contain duplicate network ids.');
   const frozen = {
     ...spec,
