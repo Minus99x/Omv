@@ -140,3 +140,11 @@ test('Bitcoin Signet rescue UTXO refuses immature declared coinbase outputs',asy
   const mature=await fixture({gettxout:{...base,confirmations:100}}).driver.readTxOut({transactionId:TXID,vout:0,networkRef:'bitcoin:signet'});
   assert.equal(mature.amountSats,'99000');
 });
+
+
+test('Signet chain tip rejects a reported header height behind the active block height',async()=>{
+  const info={chain:'signet',initialblockdownload:false,blocks:300005,headers:300004,bestblockhash:TIP};
+  await assert.rejects(()=>fixture({getblockchaininfo:info}).driver.readChainTip({networkRef:'bitcoin:signet'}),/contradictory Signet block\/header/);
+  await assert.rejects(()=>fixture({getblockchaininfo:{...info,headers:'300005'}}).driver.readChainTip({networkRef:'bitcoin:signet'}),/contradictory/);
+  assert.equal((await fixture({getblockchaininfo:{...info,headers:300005}}).driver.readChainTip({networkRef:'bitcoin:signet'})).blockHeight,300005);
+});

@@ -129,6 +129,11 @@ export function createBitcoinSignetObservationCoreCliDriver({
       if (info?.chain !== 'signet' || info?.initialblockdownload !== false) {
         throw new Error('Bitcoin Core is not a synchronized Signet node.');
       }
+      height(info.blocks, 'getblockchaininfo.blocks');
+      if (info.headers != null && (!Number.isSafeInteger(info.headers) ||
+          info.headers<info.blocks || info.headers>0xffffffff)) {
+        throw new Error('Bitcoin Core reported contradictory Signet block/header heights.');
+      }
       return Object.freeze({
         networkRef:'bitcoin:signet',
         blockHash:hash(info.bestblockhash, 'getblockchaininfo.bestblockhash'),
