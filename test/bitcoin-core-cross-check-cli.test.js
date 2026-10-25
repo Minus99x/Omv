@@ -24,6 +24,10 @@ function fixture() {
   const { digest } = createBitcoinWitnessV0Sighash({ psbt:encodePsbtV2(intent), inputIndex:0 });
   const partialSignatures = contacts.map(privateKey => ({ publicKey:pub(privateKey), signature:`${Buffer.from(secp256k1.sign(digest, privateKey, { prehash:false, lowS:true, format:'der' })).toString('hex')}01` }));
   const transaction = extractBitcoinRecoveryTransaction({ psbt:encodePsbtV2({ ...intent, inputs:[{ ...intent.inputs[0], partialSignatures }] }), descriptor, rescueScriptPubKey });
+  const effectiveFeeRateSatsPerKvB =
+    BigInt(transaction.finalizerEvidence.feeSats) * 1000n / BigInt(transaction.virtualBytes);
+  const effectiveFeeRateBtcPerKvB =
+    `${effectiveFeeRateSatsPerKvB / 100_000_000n}.${String(effectiveFeeRateSatsPerKvB % 100_000_000n).padStart(8, '0')}`;
   const observations = {
     schema:'omegavault.bitcoin.core-cross-check-observations.v1',
     node:{ chain:'signet', version:310100, subversion:'/Satoshi:31.1.0/', protocolVersion:70016 },
@@ -40,7 +44,7 @@ function fixture() {
       vsize:transaction.virtualBytes,
       fees:{
         base:'0.00001000',
-        'effective-feerate':'0.00005000',
+        'effective-feerate':effectiveFeeRateBtcPerKvB,
         'effective-includes':[transaction.wtxid]
       }
     }

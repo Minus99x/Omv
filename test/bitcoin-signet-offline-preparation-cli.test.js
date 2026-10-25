@@ -123,6 +123,10 @@ test('operator CLI rejects secret-bearing flags and noncanonical fee parameters'
 });
 
 function coreObservations(tx) {
+  const effectiveFeeRateSatsPerKvB =
+    BigInt(tx.finalizerEvidence.feeSats) * 1000n / BigInt(tx.virtualBytes);
+  const effectiveFeeRateBtcPerKvB =
+    `${effectiveFeeRateSatsPerKvB / 100_000_000n}.${String(effectiveFeeRateSatsPerKvB % 100_000_000n).padStart(8, '0')}`;
   return {
     schema:'omegavault.bitcoin.core-cross-check-observations.v1',
     node:{chain:'signet',version:310100,subversion:'/Satoshi:31.1.0/',protocolVersion:70016},
@@ -140,7 +144,7 @@ function coreObservations(tx) {
     },
     mempoolResult:{
       txid:tx.txid,wtxid:tx.wtxid,allowed:true,vsize:tx.virtualBytes,
-      fees:{base:'0.00001000','effective-feerate':'0.00005000','effective-includes':[tx.wtxid]}
+      fees:{base:'0.00001000','effective-feerate':effectiveFeeRateBtcPerKvB,'effective-includes':[tx.wtxid]}
     }
   };
 }

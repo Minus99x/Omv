@@ -88,6 +88,10 @@ function btcToSats(value, label) {
   return (BigInt(whole) * SATOSHIS + BigInt(fraction.padEnd(8, '0'))).toString();
 }
 
+function expectedEffectiveFeeRateSatsPerKvB(feeSats, virtualBytes) {
+  return (BigInt(feeSats) * 1000n / BigInt(virtualBytes)).toString();
+}
+
 function normalizeObservationContext(context) {
   if (context == null) return null;
   if (!context || typeof context !== 'object' || Array.isArray(context)) throw new TypeError('observationContext must be an object.');
@@ -200,6 +204,10 @@ function normalizeMempool(transaction, result) {
   const feeSats = btcToSats(result.fees.base, 'mempool.fees.base');
   if (feeSats !== transaction.finalizerEvidence.feeSats) throw new Error('Bitcoin Core mempool base fee does not match deterministic extracted transaction fee.');
   const effectiveFeeRateSatsPerKvB = btcToSats(result.fees['effective-feerate'], 'mempool.fees.effective-feerate');
+  const expectedEffectiveFeeRate = expectedEffectiveFeeRateSatsPerKvB(feeSats, vsize);
+  if (effectiveFeeRateSatsPerKvB !== expectedEffectiveFeeRate) {
+    throw new Error('Bitcoin Core effective fee rate does not match the extracted transaction fee and vsize.');
+  }
   if (!Array.isArray(result.fees['effective-includes'])) throw new TypeError('Bitcoin Core mempool fee diagnostics require effective-includes.');
   const effectiveIncludes = result.fees['effective-includes'].map((value, index) => sha256Hex(value, `mempool.fees.effective-includes[${index}]`));
   if (effectiveIncludes.length !== 1 || effectiveIncludes[0] !== transaction.wtxid) {
@@ -234,6 +242,9 @@ export function createBitcoinCoreCrossCheckEvidence({
   const mempool = normalizeMempool(transaction, mempoolResult);
   if (!['offline-fixture', 'imported-json', 'bitcoin-core-rpc'].includes(observationSource)) throw new TypeError('Unsupported Bitcoin Core observationSource.');
   const normalizedObservationContext = normalizeObservationContext(observationContext);
+  if (observationSource === 'bitcoin-core-rpc' && !normalizedObservationContext) {
+    throw new Error('Bitcoin Core RPC observations require observationContext for timestamp and receipt-chain binding.');
+  }
   const core = Object.freeze({
     schema:'omegavault.bitcoin.core-cross-check-evidence.v2',
     chainId:'bitcoin',
@@ -326,14 +337,21 @@ function validateChainedCoreAuthority(evidence, index, errors) {
       evidence.mempool?.wtxid !== evidence.wtxid) {
     errors.push(`${prefix} mempool transaction identity is inconsistent.`);
   }
+  const effectiveRate = evidence.mempool?.effectiveFeeRateSatsPerKvB;
+  const effectiveRateMatches =
+    typeof effectiveRate === 'string' && /^(0|[1-9][0-9]*)$/.test(effectiveRate) &&
+    typeof evidence.extractedFeeSats === 'string' && /^(0|[1-9][0-9]{0,15})$/.test(evidence.extractedFeeSats) &&
+    Number.isSafeInteger(evidence.virtualBytes) && evidence.virtualBytes > 0 &&
+    effectiveRate === expectedEffectiveFeeRateSatsPerKvB(evidence.extractedFeeSats, evidence.virtualBytes);
   if (bound === true && (
     evidence.mempool?.feeSats !== evidence.extractedFeeSats ||
     evidence.mempool?.vsize !== evidence.virtualBytes ||
     !Array.isArray(evidence.mempool?.effectiveIncludes) ||
     evidence.mempool.effectiveIncludes.length !== 1 ||
-    evidence.mempool.effectiveIncludes[0] !== evidence.wtxid
+    evidence.mempool.effectiveIncludes[0] !== evidence.wtxid ||
+    !effectiveRateMatches
   )) {
-    errors.push(`${prefix} mempool fee, size or effective-includes do not bind the transaction.`);
+    errors.push(`${prefix} mempool fee, size, effective-includes or effective-feerate do not bind the transaction.`);
   }
   if (allowed === false && (
     typeof evidence.mempool?.rejectReason !== 'string' || !evidence.mempool.rejectReason.trim() ||
@@ -351,10 +369,12 @@ function validateChainedCoreAuthority(evidence, index, errors) {
           typeof evidence.mempool.baseFeeBtc !== 'string' ||
           btcToSats(evidence.mempool.baseFeeBtc, 'mempool.baseFeeBtc') !== evidence.extractedFeeSats ||
           typeof evidence.mempool.effectiveFeeRateSatsPerKvB !== 'string' ||
-          !/^(0|[1-9][0-9]*)$/.test(evidence.mempool.effectiveFeeRateSatsPerKvB)) {
+          !/^(0|[1-9][0-9]*)$/.test(evidence.mempool.effectiveFeeRateSatsPerKvB) ||
+          evidence.mempool.effectiveFeeRateSatsPerKvB !==
+            expectedEffectiveFeeRateSatsPerKvB(evidence.extractedFeeSats, evidence.virtualBytes)) {
         errors.push(`${prefix} has contradictory accepted mempool fee diagnostics.`);
       }
-    } catch { errors.push(`${prefix} has invalid accepted mempool decimal fee.`); }
+    } catch { errors.push(`${prefix} has invalid accepted mempool fee rate or decimal fee.`); }
   }
   const proven = source === 'bitcoin-core-rpc' && allowed === true && bound === true;
   if (evidence.bitcoinCoreCrossCheckProven !== proven) {

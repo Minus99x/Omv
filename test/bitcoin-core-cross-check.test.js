@@ -46,6 +46,10 @@ function transaction(inputByte = 'ab') {
 }
 
 function observations(tx, overrides = {}) {
+  const effectiveFeeRateSatsPerKvB =
+    BigInt(tx.finalizerEvidence.feeSats) * 1000n / BigInt(tx.virtualBytes);
+  const effectiveFeeRateBtcPerKvB =
+    `${effectiveFeeRateSatsPerKvB / 100_000_000n}.${String(effectiveFeeRateSatsPerKvB % 100_000_000n).padStart(8, '0')}`;
   return {
     node:{ chain:'signet', version:310100, subversion:'/Satoshi:31.1.0/', protocolVersion:70016 },
     decodedTransaction:{
@@ -61,7 +65,7 @@ function observations(tx, overrides = {}) {
       vsize:tx.virtualBytes,
       fees:{
         base:'0.00001000',
-        'effective-feerate':'0.00005000',
+        'effective-feerate':effectiveFeeRateBtcPerKvB,
         'effective-includes':[tx.wtxid]
       }
     },
@@ -82,6 +86,10 @@ test('Bitcoin Core fixture cross-check binds node, decode and mempool fee diagno
   assert.equal(evidence.mempool.allowed, true);
   assert.equal(evidence.mempool.vsize, tx.virtualBytes);
   assert.equal(evidence.mempool.feeSats, '1000');
+  assert.equal(
+    evidence.mempool.effectiveFeeRateSatsPerKvB,
+    (1000n * 1000n / BigInt(tx.virtualBytes)).toString()
+  );
   assert.equal(evidence.mempool.feeDiagnosticsBound, true);
   assert.equal(evidence.extractedFeeSats, '1000');
   assert.equal(evidence.bitcoinCoreCrossCheckProven, false);
@@ -177,7 +185,8 @@ test('Bitcoin Core RPC amounts reject fractional satoshis rather than silently r
   const exact = structuredClone(input);
   exact.decodedTransaction.vout[0].value = 0.00099000;
   exact.mempoolResult.fees.base = 0.00001000;
-  exact.mempoolResult.fees['effective-feerate'] = 0.00005000;
+  exact.mempoolResult.fees['effective-feerate'] =
+    input.mempoolResult.fees['effective-feerate'];
   assert.equal(createBitcoinCoreCrossCheckEvidence({ transaction:tx, ...exact }).mempool.feeSats, '1000');
 
   for (const [label, edit] of [
@@ -225,6 +234,12 @@ test('Bitcoin Core effective fee diagnostics cannot be cross-wired or malformed'
     () => createBitcoinCoreCrossCheckEvidence({ transaction:tx, ...input, mempoolResult:malformedRate }),
     /effective-feerate/
   );
+  const substitutedRate = structuredClone(input.mempoolResult);
+  substitutedRate.fees['effective-feerate'] = '0.00005000';
+  assert.throws(
+    () => createBitcoinCoreCrossCheckEvidence({ transaction:tx, ...input, mempoolResult:substitutedRate }),
+    /does not match the extracted transaction fee and vsize/
+  );
 });
 
 test('Bitcoin Core rejected mempool observation is bound without claiming proof or successful diagnostics', () => {
@@ -239,6 +254,7 @@ test('Bitcoin Core rejected mempool observation is bound without claiming proof 
   const evidence = createBitcoinCoreCrossCheckEvidence({
     transaction:tx, ...input,
     observationSource:'bitcoin-core-rpc',
+    observationContext:context(1, '2026-10-07T05:20:00Z'),
     mempoolResult:rejected
   });
   assert.equal(evidence.mempool.allowed, false);
@@ -275,6 +291,14 @@ test('imported observations cannot be confused with live Bitcoin Core RPC proof'
   assert.equal(imported.bitcoinCoreCrossCheckProven, false);
   assert.equal(live.bitcoinCoreCrossCheckProven, true);
   assert.notEqual(imported.sha256, live.sha256);
+  assert.throws(
+    () => createBitcoinCoreCrossCheckEvidence({
+      transaction:tx,
+      ...input,
+      observationSource:'bitcoin-core-rpc'
+    }),
+    /require observationContext/
+  );
 });
 
 test('Bitcoin Core observation receipt chain rejects stale, replayed and reordered observations', () => {
@@ -511,12 +535,13 @@ test('Bitcoin Core receipt chain rejects coordinated digest rewrites of transact
     ['vsize', receipt=>{receipt.mempool.vsize+=1;}],
     ['txid', receipt=>{receipt.mempool.txid='55'.repeat(32);}],
     ['wtxid', receipt=>{receipt.mempool.wtxid='66'.repeat(32);}],
-    ['effective-includes', receipt=>{receipt.mempool.effectiveIncludes=['77'.repeat(32)];}]
+    ['effective-includes', receipt=>{receipt.mempool.effectiveIncludes=['77'.repeat(32)];}],
+    ['effective-feerate', receipt=>{receipt.mempool.effectiveFeeRateSatsPerKvB='1';}]
   ]) {
     const forged=rehashReceipt(baseline,edit);
     const result=verifyBitcoinCoreCrossCheckEvidenceChain([forged]);
     assert.equal(result.ok,false,name+' digest-rewritten mismatch must fail');
-    assert.ok(result.errors.some(error=>/mempool transaction identity|mempool fee, size or effective-includes/.test(error)),name);
+    assert.ok(result.errors.some(error=>/mempool transaction identity|mempool fee, size, effective-includes or effective-feerate/.test(error)),name);
   }
 });
 
