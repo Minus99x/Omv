@@ -88,6 +88,23 @@ function normalizePermission(value,index){
   return permission;
 }
 
+// Array.prototype.map skips holes and can read inherited/accessor entries.
+// Capture only explicit data entries before deriving any delegated authority.
+function normalizePermissionArray(permissions){
+  const normalized=[];
+  for(let index=0;index<permissions.length;index++){
+    const descriptor=Object.getOwnPropertyDescriptor(permissions,String(index));
+    if(!descriptor || !Object.hasOwn(descriptor,'value')){
+      throw new TypeError(`permissions[${index}] must be an own data entry; sparse or accessor permissions are forbidden.`);
+    }
+    normalized.push(normalizePermission(descriptor.value,index));
+  }
+  if(Reflect.ownKeys(permissions).length!==permissions.length+1){
+    throw new TypeError('permissions must not contain additional authority fields or symbols.');
+  }
+  return normalized;
+}
+
 export function evaluateXrplPermissionDelegationFeature({
   featureResponse,
   featureName='PermissionDelegationV1_1'
@@ -133,7 +150,7 @@ export function buildXrplDelegateSet({
   if(!Array.isArray(permissions) || permissions.length>MAX_PERMISSIONS) {
     throw new TypeError(`permissions must contain 0-${MAX_PERMISSIONS} entries.`);
   }
-  const normalized=permissions.map(normalizePermission);
+  const normalized=normalizePermissionArray(permissions);
   if(new Set(normalized).size!==normalized.length) throw new TypeError('XRPL delegated permissions must be unique.');
   if(normalized.includes('PaymentBurn')) {
     throw new TypeError('OmegaVault does not delegate PaymentBurn; amendment-dependent historical behavior makes this permission outside the recovery-planning allowlist.');
@@ -185,7 +202,7 @@ export function assessXrplDelegatedRecoveryAuthority({
   resettableInactivityBoundByLedger=false
 }){
   if(!Array.isArray(permissionValues) || permissionValues.length<1) throw new TypeError('permissionValues must be a non-empty array.');
-  const normalized=permissionValues.map(normalizePermission);
+  const normalized=normalizePermissionArray(permissionValues);
   if(new Set(normalized).size!==normalized.length) throw new TypeError('permissionValues must be unique.');
 
   const paymentPermission=normalized.includes('Payment');

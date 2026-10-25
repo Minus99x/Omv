@@ -313,3 +313,63 @@ test('XRPL delegation rejects accessor permissions without invoking attacker-con
   }
   assert.equal(accessed,0);
 });
+
+test('XRPL delegation accepts dense explicit data entries and keeps canonical transaction authority immutable',()=>{
+  const permissions=Object.freeze(['Payment',{Permission:{PermissionValue:'EscrowFinish'}}]);
+  const built=buildXrplDelegateSet({
+    owner,delegate,permissions,sequence:10,permissionDelegationFeature:enabledFeature()
+  });
+  assert.deepEqual(built.permissions,['Payment','EscrowFinish']);
+  assert.deepEqual(built.transaction.Permissions,[
+    {Permission:{PermissionValue:'Payment'}},
+    {Permission:{PermissionValue:'EscrowFinish'}}
+  ]);
+  assert.equal(Object.isFrozen(built.transaction.Permissions),true);
+  assert.equal(assessXrplDelegatedRecoveryAuthority({permissionValues:['Payment']}).exactOmegaVaultDelegatedRecovery,false);
+});
+
+test('XRPL delegated authority rejects sparse and inherited permission array entries',()=>{
+  const inherited=Array(1);
+  Object.setPrototypeOf(inherited,Object.create(Array.prototype,{
+    0:{value:'Payment',enumerable:true}
+  }));
+  for(const permissionValues of [Array(1),[, 'Payment'],inherited]){
+    assert.throws(()=>buildXrplDelegateSet({
+      owner,delegate,permissions:permissionValues,sequence:10,
+      permissionDelegationFeature:enabledFeature()
+    }),/own data entry/);
+    assert.throws(()=>assessXrplDelegatedRecoveryAuthority({
+      permissionValues
+    }),/own data entry/);
+  }
+});
+
+test('XRPL delegated authority rejects indexed accessors without executing them',()=>{
+  let invoked=0;
+  const permissionValues=['Payment'];
+  Object.defineProperty(permissionValues,'0',{configurable:true,enumerable:true,
+    get(){invoked++;return 'Payment';}
+  });
+  assert.throws(()=>buildXrplDelegateSet({
+    owner,delegate,permissions:permissionValues,sequence:10,
+    permissionDelegationFeature:enabledFeature()
+  }),/own data entry/);
+  assert.throws(()=>assessXrplDelegatedRecoveryAuthority({
+    permissionValues
+  }),/own data entry/);
+  assert.equal(invoked,0);
+});
+
+test('XRPL delegated authority rejects extra string and symbol authority metadata',()=>{
+  for(const property of ['PermissionScope',Symbol('extra-authority')]){
+    const permissionValues=['Payment'];
+    permissionValues[property]='all';
+    assert.throws(()=>buildXrplDelegateSet({
+      owner,delegate,permissions:permissionValues,sequence:10,
+      permissionDelegationFeature:enabledFeature()
+    }),/additional authority fields or symbols/);
+    assert.throws(()=>assessXrplDelegatedRecoveryAuthority({
+      permissionValues
+    }),/additional authority fields or symbols/);
+  }
+});
