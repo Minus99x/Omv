@@ -24,8 +24,22 @@ function hashHex(value, label) {
 
 function isoTime(value, label) {
   const text = requiredText(value, label);
+  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?Z$/.exec(text);
+  if (!parts) throw new TypeError(`${label} must be a valid UTC timestamp.`);
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText, fraction = ''] = parts;
+  const [year, month, day, hour, minute, second] =
+    [yearText, monthText, dayText, hourText, minuteText, secondText].map(Number);
+  const calendar = new Date(0);
+  calendar.setUTCFullYear(year, month - 1, day);
+  calendar.setUTCHours(hour, minute, second, Number(fraction.padEnd(3, '0')));
   const time = Date.parse(text);
-  if (!Number.isFinite(time)) throw new TypeError(`${label} must be an ISO-compatible timestamp.`);
+  if (!Number.isFinite(time) ||
+      calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 ||
+      calendar.getUTCDate() !== day || calendar.getUTCHours() !== hour ||
+      calendar.getUTCMinutes() !== minute || calendar.getUTCSeconds() !== second ||
+      calendar.getUTCMilliseconds() !== Number(fraction.padEnd(3, '0'))) {
+    throw new TypeError(`${label} must be a valid UTC timestamp.`);
+  }
   return Object.freeze({ text, time });
 }
 

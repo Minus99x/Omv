@@ -162,6 +162,34 @@ test('Stellar Testnet evidence rejects non-monotonic proof timelines', () => {
   assert.throws(() => createStellarTestnetRecoveryEvidenceBundle(input), /timeline is not monotonic/i);
 });
 
+test('Stellar evidence requires real UTC timestamps and accepts canonical milliseconds', () => {
+  const valid = fixture();
+  valid.initialTooEarly.observedAt = '2026-10-03T00:00:00.100Z';
+  valid.heartbeat.observedAt = '2026-10-03T00:01:00.200Z';
+  valid.postHeartbeatTooEarly.observedAt = '2026-10-03T00:02:00.300Z';
+  valid.eligibleSubmission.observedAt = '2026-10-03T00:03:00.400Z';
+  valid.finality.observedAt = '2026-10-03T00:04:00.500Z';
+  assert.equal(verifyStellarTestnetRecoveryEvidenceBundle(
+    createStellarTestnetRecoveryEvidenceBundle(valid)
+  ).ok, true);
+
+  for (const observedAt of [
+    '2026-02-30T00:00:00Z',
+    '2026-10-03T00:00:00',
+    '2026-10-03T00:00:00+00:00',
+    '2026-10-03T00:00:00.1234Z',
+    '2026-10-03T00:00:60Z'
+  ]) {
+    const input = fixture();
+    input.initialTooEarly.observedAt = observedAt;
+    assert.throws(
+      () => createStellarTestnetRecoveryEvidenceBundle(input),
+      /valid UTC timestamp/i,
+      observedAt
+    );
+  }
+});
+
 test('Stellar Testnet evidence rejects duplicate asset movements', () => {
   const input = fixture();
   input.balanceMovements = [input.balanceMovements[0], { ...input.balanceMovements[0] }];
@@ -248,6 +276,9 @@ test('Stellar failed-applied evidence rejects non-applied failures and signer-su
   assert.throws(() => createStellarFailedAppliedRecoveryEvidenceBundle({
     ...base, accountState:{ ...base.accountState, after:{ ...base.accountState.after, preAuthTxSignerPresent:true } }
   }), /consumed after application/i);
+  assert.throws(() => createStellarFailedAppliedRecoveryEvidenceBundle({
+    ...base, submission:{ ...base.submission, observedAt:'2026-02-30T00:04:00Z' }
+  }), /valid UTC timestamp/i);
 });
 
 test('tampered Stellar failed-applied evidence fails closed', () => {
