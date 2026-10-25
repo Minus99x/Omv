@@ -254,3 +254,62 @@ test('XRPL PermissionValue names require canonical case-sensitive identifiers',(
   }
   assert.equal(buildXrplDelegateSet({...base,permissions:['Payment']}).permissions[0],'Payment');
 });
+
+test('XRPL DelegateSet accepts exact ledger permission objects and canonical convenience forms',()=>{
+  const base={owner,delegate,sequence:10,permissionDelegationFeature:enabledFeature()};
+  const built=buildXrplDelegateSet({...base,permissions:[
+    'Payment',{PermissionValue:'EscrowCreate'},{Permission:{PermissionValue:'EscrowFinish'}}
+  ]});
+  assert.deepEqual(built.permissions,['Payment','EscrowCreate','EscrowFinish']);
+  assert.deepEqual(built.transaction.Permissions,[
+    {Permission:{PermissionValue:'Payment'}},
+    {Permission:{PermissionValue:'EscrowCreate'}},
+    {Permission:{PermissionValue:'EscrowFinish'}}
+  ]);
+  const assessment=assessXrplDelegatedRecoveryAuthority({
+    permissionValues:[{Permission:{PermissionValue:'Payment'}}]
+  });
+  assert.deepEqual(assessment.permissionValues,['Payment']);
+  assert.equal(assessment.exactOmegaVaultDelegatedRecovery,false);
+});
+
+test('XRPL delegation refuses contradictory, extra, inherited and symbol-bearing authority fields',()=>{
+  const base={owner,delegate,sequence:10,permissionDelegationFeature:enabledFeature()};
+  const inherited=Object.create({PermissionValue:'Payment'});
+  const inheritedWrapper=Object.create({Permission:{PermissionValue:'Payment'}});
+  const cases=[
+    {PermissionValue:'Payment',Permission:{PermissionValue:'EscrowFinish'}},
+    {Permission:{PermissionValue:'Payment',PermissionScope:'all'}},
+    {PermissionValue:'Payment',Authorize:'another-account'},
+    {Permission:{PermissionValue:'Payment'},unexpected:true},
+    {Permission:{PermissionValue:'Payment',Permission:{PermissionValue:'EscrowFinish'}}},
+    inherited,inheritedWrapper,
+    {[Symbol('hidden')]:'override',PermissionValue:'Payment'},
+    {Permission:[]},
+    {Permission:{PermissionValue:1}},
+    {PermissionValue:1}
+  ];
+  for(const permission of cases){
+    assert.throws(()=>buildXrplDelegateSet({...base,permissions:[permission]}),
+      /canonical PermissionValue/,JSON.stringify(permission));
+    assert.throws(()=>assessXrplDelegatedRecoveryAuthority({permissionValues:[permission]}),
+      /canonical PermissionValue/);
+  }
+});
+
+test('XRPL delegation rejects accessor permissions without invoking attacker-controlled getters',()=>{
+  const base={owner,delegate,sequence:10,permissionDelegationFeature:enabledFeature()};
+  let accessed=0;
+  const top={};
+  Object.defineProperty(top,'PermissionValue',{enumerable:true,get(){accessed++;return 'Payment';}});
+  const nested={};
+  Object.defineProperty(nested,'PermissionValue',{enumerable:true,get(){accessed++;return 'Payment';}});
+  const wrapper={Permission:nested};
+  for(const permission of [top,wrapper]){
+    assert.throws(()=>buildXrplDelegateSet({...base,permissions:[permission]}),
+      /accessor PermissionValue/);
+    assert.throws(()=>assessXrplDelegatedRecoveryAuthority({permissionValues:[permission]}),
+      /accessor PermissionValue/);
+  }
+  assert.equal(accessed,0);
+});

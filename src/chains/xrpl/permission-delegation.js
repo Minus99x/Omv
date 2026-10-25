@@ -42,12 +42,43 @@ function assertUInt(value,label){
   return value;
 }
 
+// The ledger JSON form is {Permission:{PermissionValue:"Payment"}}.
+// Accept the existing flat/string convenience forms, but never silently
+// discard additional authority fields, inherited values, or accessor getters.
+function exactOwnPermissionField(value,field,index){
+  if(value===null || typeof value!=='object' || Array.isArray(value) ||
+      ![Object.prototype,null].includes(Object.getPrototypeOf(value)) ||
+      Reflect.ownKeys(value).length!==1 || !Object.hasOwn(value,field)){
+    throw new TypeError(`permissions[${index}] must use an exact canonical PermissionValue object.`);
+  }
+  const descriptor=Object.getOwnPropertyDescriptor(value,field);
+  if(!descriptor || !Object.hasOwn(descriptor,'value')){
+    throw new TypeError(`permissions[${index}] cannot use an accessor PermissionValue field.`);
+  }
+  return descriptor.value;
+}
+
 function normalizePermission(value,index){
-  const permission=typeof value==='string'
-    ? value
-    : value?.PermissionValue ?? value?.Permission?.PermissionValue;
-  // XRPL named permissions use canonical case-sensitive transaction or
-  // granular identifiers; malformed names must not enter authority plans.
+  let permission;
+  if(typeof value==='string'){
+    permission=value;
+  }else if(value!==null && typeof value==='object' && !Array.isArray(value)){
+    const fields=Reflect.ownKeys(value);
+    if(fields.length!==1){
+      throw new TypeError(`permissions[${index}] must use an exact canonical PermissionValue object.`);
+    }
+    if(fields[0]==='PermissionValue'){
+      permission=exactOwnPermissionField(value,'PermissionValue',index);
+    }else if(fields[0]==='Permission'){
+      permission=exactOwnPermissionField(
+        exactOwnPermissionField(value,'Permission',index),'PermissionValue',index
+      );
+    }else{
+      throw new TypeError(`permissions[${index}] must use an exact canonical PermissionValue object.`);
+    }
+  }
+  // Numeric or unknown permission identifiers cannot silently expand
+  // OmegaVault's explicit named-permission recovery policy.
   if(typeof permission!=='string' || !/^[A-Z][A-Za-z0-9]*$/.test(permission)) {
     throw new TypeError(`permissions[${index}] must identify a canonical PermissionValue string.`);
   }
