@@ -1,11 +1,39 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
+import { normalizeCardanoProtocolParameterSnapshot } from '../src/chains/cardano/protocol-parameters.js';
 import { createCardanoPreprodIndependentPhaseOneInput, verifyCardanoPreprodIndependentPhaseOneInput } from '../src/chains/cardano/preprod-independent-phase-one-input.js';
 const h=(c)=>c.repeat(64);
+const protocolSnapshotFixture=JSON.parse(readFileSync(
+ new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json',import.meta.url),
+ 'utf8'
+));
+function currentProtocolSnapshotAt(tip) {
+ const snapshot=structuredClone(protocolSnapshotFixture);
+ snapshot.schemaVersion=2;
+ snapshot.source={
+  ...snapshot.source,
+  provider:'Ogmios + Blockfrost',
+  independentSourceCount:2,
+  ogmios:'queryLedgerState/protocolParameters',
+  blockfrost:'GET /epochs/latest/parameters'
+ };
+ snapshot.tip={...snapshot.tip,blockHash:tip.hash,slot:tip.slot};
+ snapshot.parameters={
+  ...snapshot.parameters,
+  sourceBlockHash:tip.hash,
+  maxValueSize:5000
+ };
+ snapshot.promotion={
+  ...snapshot.promotion,
+  independentlyConfirmed:true
+ };
+ return snapshot;
+}
 function serializedFixtureTransaction({
   includeRequiredSigner=true,
   signingHashOverride=null,
@@ -108,7 +136,7 @@ function fixture() {
  };
  witness.witnessEvidenceSha256=hashCardanoEvidence(witness);
  const tip={hash:h('f'),slot:10000};
- const snapshot={schemaVersion:2,tip:{blockHash:tip.hash,slot:tip.slot},parameters:{sourceBlockHash:tip.hash}};
+ const snapshot=currentProtocolSnapshotAt(tip);
  const utxo=(char,index)=>({reference:{transaction:{id:h(char)},index},address:ownerAddress,lovelace:'5000000',valueSha256:h(char),datumPresent:false,referenceScriptPresent:false,stillUnspent:true,exactValuePreserved:true,exactOutputShapePreserved:true});
  const presubmit={
    schema:'omegavault.cardano.preprod-initialize-pre-submit-evidence.v3',network:'preprod',action:'initialize',
@@ -119,7 +147,7 @@ function fixture() {
    utxoBindingEvidenceSha256:witness.utxoBindingEvidenceSha256,
    signedTransaction:{sha256:sha,bytes:signed.length/2,feeLovelace:'200000',currentMinimumFeeLovelace:'200000'},
    currentProtocolSnapshot:snapshot,currentProtocolSnapshotSha256:hashCardanoEvidence(snapshot),
-   currentProtocolParametersSha256:h('a'),currentTip:tip,
+   currentProtocolParametersSha256:hashCardanoEvidence(normalizeCardanoProtocolParameterSnapshot(snapshot)),currentTip:tip,
    unsignedTransactionBodyCborHex:Cardano.Transaction.from_hex(signed).body().to_hex(),
    validity:{lowerSlot:9990,upperSlot:10010,currentTipWithinInterval:true},
    currentInputs:{seed:utxo('1',0),collateral:utxo('2',1)},
@@ -196,6 +224,32 @@ test('fails closed on protocol snapshot tampering',()=>{
 });
 test('fails closed on protocol snapshot not tied to stable tip',()=>{
  const x=fixture();x.preSubmitEvidence.currentProtocolSnapshot.parameters.sourceBlockHash=h('0');x.preSubmitEvidence.currentProtocolSnapshotSha256=hashCardanoEvidence(x.preSubmitEvidence.currentProtocolSnapshot);resign(x.preSubmitEvidence,'preSubmitSha256');assert.throws(()=>create(x),/not bound to the recorded stable ledger tip/);
+});
+test('rejects a self-rehashed protocol-parameter digest that differs from its tip-bound snapshot',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.currentProtocolParametersSha256=h('0');
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/protocol parameters do not reproduce from the tip-bound snapshot/);
+});
+test('rejects a tip-bound snapshot without independently confirmed current protocol parameters',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.currentProtocolSnapshot.source.independentSourceCount=1;
+ x.preSubmitEvidence.currentProtocolSnapshotSha256=hashCardanoEvidence(x.preSubmitEvidence.currentProtocolSnapshot);
+ x.preSubmitEvidence.currentProtocolParametersSha256=hashCardanoEvidence(
+  normalizeCardanoProtocolParameterSnapshot(x.preSubmitEvidence.currentProtocolSnapshot)
+ );
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/at least two independent sources/);
+});
+test('rejects a current protocol snapshot that omits maxValueSize',()=>{
+ const x=fixture();
+ x.preSubmitEvidence.currentProtocolSnapshot.parameters.maxValueSize=null;
+ x.preSubmitEvidence.currentProtocolSnapshotSha256=hashCardanoEvidence(x.preSubmitEvidence.currentProtocolSnapshot);
+ x.preSubmitEvidence.currentProtocolParametersSha256=hashCardanoEvidence(
+  normalizeCardanoProtocolParameterSnapshot(x.preSubmitEvidence.currentProtocolSnapshot)
+ );
+ resign(x.preSubmitEvidence,'preSubmitSha256');
+ assert.throws(()=>create(x),/missing the required maxValueSize/);
 });
 test('fails closed if the recorded stable tip is outside validity interval',()=>{
  const x=fixture();x.preSubmitEvidence.validity.upperSlot=9999;resign(x.preSubmitEvidence,'preSubmitSha256');assert.throws(()=>create(x),/validity interval/);

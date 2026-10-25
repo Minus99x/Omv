@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { blake2b } from '@noble/hashes/blake2.js';
 import { hashCardanoEvidence } from './evidence-binding.js';
+import { normalizeCardanoProtocolParameterSnapshot } from './protocol-parameters.js';
 
 const HEX_32 = /^[0-9a-f]{64}$/i;
 const HEX_BYTES = /^(?:[0-9a-f]{2})+$/i;
@@ -193,6 +194,19 @@ export function createCardanoPreprodIndependentPhaseOneInput({
   if (snapshot.schemaVersion !== 2 || String(snapshot.tip?.blockHash).toLowerCase() !== tipHash || snapshot.tip?.slot !== tip.slot ||
       String(snapshot.parameters?.sourceBlockHash).toLowerCase() !== tipHash) {
     throw new Error('Current protocol snapshot is not bound to the recorded stable ledger tip.');
+  }
+  const normalizedParameters = normalizeCardanoProtocolParameterSnapshot(snapshot);
+  if (hashCardanoEvidence(normalizedParameters) !== hex32(
+    preSubmit.currentProtocolParametersSha256,
+    'preSubmitEvidence.currentProtocolParametersSha256'
+  )) {
+    throw new Error('Current protocol parameters do not reproduce from the tip-bound snapshot.');
+  }
+  if (normalizedParameters.sourceCount < 2 || normalizedParameters.independentlyConfirmed !== true) {
+    throw new Error('Current protocol parameters require at least two independent sources and explicit confirmation.');
+  }
+  if (normalizedParameters.maxValueSize === null) {
+    throw new Error('Current protocol snapshot is missing the required maxValueSize parameter.');
   }
   const lower = preSubmit.validity?.lowerSlot;
   const upper = preSubmit.validity?.upperSlot;
