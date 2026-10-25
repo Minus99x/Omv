@@ -155,19 +155,28 @@ test('Stellar execution evidence rejects failed outcome masked by a success resu
 test('Stellar execution evidence preserves valid canonical success and fee-bump success codes', () => {
   const input = fixture();
   for (const code of ['txSUCCESS', 'txFEE_BUMP_INNER_SUCCESS']) {
+    const feeBump = code === 'txFEE_BUMP_INNER_SUCCESS';
+    const outerHash = 'aa'.repeat(32);
     const result = createStellarRecoveryExecutionEvidence({
       ...input,
       submission: {
         ...input.submission,
         resultCode: code,
-        ...(code === 'txFEE_BUMP_INNER_SUCCESS'
-          ? { transactionHashHex: 'aa'.repeat(32),
+        ...(feeBump
+          ? { transactionHashHex: outerHash,
               innerTransactionHashHex: input.artifact.transactionHashHex }
           : {})
-      }
+      },
+      finalityObservation: feeBump ? {
+        ...input.finalityObservation,
+        transactionRef: outerHash,
+        evidence: { ...input.finalityObservation.evidence, transactionHash: outerHash }
+      } : input.finalityObservation
     });
     assert.equal(result.ok, true, code);
     assert.equal(result.checks.submissionResultCodeMatchesOutcome, true);
+    assert.equal(result.evidence.finalizedTransactionHashHex,
+      feeBump ? outerHash : input.artifact.transactionHashHex);
   }
 });
 
@@ -227,4 +236,67 @@ test('Stellar execution evidence rejects absent submission hash even with valid 
   assert.equal(result.ok, false);
   assert.equal(result.checks.finalityTransactionRefMatches, true);
   assert.equal(result.checks.submissionTransactionIdentityMatches, false);
+});
+
+test('Stellar fee-bump finality must prove the outer submitted hash, not only the signed inner recovery', () => {
+  const input = fixture();
+  const outerHash = 'aa'.repeat(32);
+  const submission = {
+    ...input.submission, resultCode: 'txFEE_BUMP_INNER_SUCCESS',
+    transactionHashHex: outerHash,
+    innerTransactionHashHex: input.artifact.transactionHashHex
+  };
+  // The prior implementation accepted these apparently valid inner-hash
+  // finality observations even though they did not identify the outer
+  // transaction actually submitted to Horizon.
+  const wrong = createStellarRecoveryExecutionEvidence({ ...input, submission });
+  assert.equal(wrong.checks.submissionTransactionIdentityMatches, true);
+  assert.equal(wrong.checks.finalityTransactionRefMatches, false);
+  assert.equal(wrong.checks.finalityEvidenceHashMatches, false);
+  assert.equal(wrong.ok, false);
+});
+
+test('Stellar fee-bump finality rejects independently substituted reference or evidence hash', () => {
+  const input = fixture();
+  const outerHash = 'aa'.repeat(32);
+  const submission = {
+    ...input.submission, resultCode: 'txFEE_BUMP_INNER_SUCCESS',
+    transactionHashHex: outerHash,
+    innerTransactionHashHex: input.artifact.transactionHashHex
+  };
+  const goodFinality = {
+    ...input.finalityObservation, transactionRef: outerHash,
+    evidence: { ...input.finalityObservation.evidence, transactionHash: outerHash }
+  };
+  const valid = createStellarRecoveryExecutionEvidence({
+    ...input, submission, finalityObservation: goodFinality
+  });
+  assert.equal(valid.ok, true);
+  assert.equal(valid.evidence.transactionHashHex, input.artifact.transactionHashHex);
+  assert.equal(valid.evidence.finalizedTransactionHashHex, outerHash);
+  for (const finalityObservation of [
+    { ...goodFinality, transactionRef: 'bb'.repeat(32) },
+    { ...goodFinality, evidence: { ...goodFinality.evidence, transactionHash: 'bb'.repeat(32) } },
+    { ...goodFinality, transactionRef: input.artifact.transactionHashHex,
+      evidence: { ...goodFinality.evidence, transactionHash: input.artifact.transactionHashHex } }
+  ]) {
+    const result = createStellarRecoveryExecutionEvidence({
+      ...input, submission, finalityObservation
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.evidence.status, 'rejected');
+  }
+});
+
+test('Stellar non-fee-bump recovery still finalizes its own inner transaction hash', () => {
+  const input = fixture();
+  const substituted = createStellarRecoveryExecutionEvidence({
+    ...input, finalityObservation: {
+      ...input.finalityObservation, transactionRef: 'aa'.repeat(32),
+      evidence: { ...input.finalityObservation.evidence, transactionHash: 'aa'.repeat(32) }
+    }
+  });
+  assert.equal(substituted.ok, false);
+  assert.equal(substituted.checks.finalityTransactionRefMatches, false);
+  assert.equal(substituted.checks.finalityEvidenceHashMatches, false);
 });

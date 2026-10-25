@@ -105,6 +105,11 @@ export function createStellarRecoveryExecutionEvidence({
       reportedSubmissionHash !== expectedTransactionHash &&
       reportedInnerHash === expectedTransactionHash
     : reportedSubmissionHash === expectedTransactionHash;
+  // Horizon finalizes the fee-bump *outer* transaction. The signed recovery
+  // envelope is the inner transaction, whose hash must match the artifact.
+  // Requiring finality of the inner hash alone can accept a substituted
+  // observation that never proves inclusion of the submitted outer envelope.
+  const expectedFinalityHash = feeBumpSuccess ? reportedSubmissionHash : expectedTransactionHash;
   const submissionLedger = canonicalSubmissionLedger(submission.ledger);
   const submissionTime = submissionObservedAtMilliseconds(submission.observedAt);
   const finalityTime = submissionObservedAtMilliseconds(finalityObservation.observedAt);
@@ -129,8 +134,10 @@ export function createStellarRecoveryExecutionEvidence({
     finalityNetworkMatches: finalityObservation.networkRef === policy.networkRef,
     finalityModelMatches: finalityObservation.model === policy.model,
     finalityFinalized: finalityObservation.status === 'finalized',
-    finalityTransactionRefMatches: finalityTransactionRef === expectedTransactionHash,
-    finalityEvidenceHashMatches: finalityEvidenceHash === expectedTransactionHash,
+    finalityTransactionRefMatches: expectedFinalityHash !== null &&
+      finalityTransactionRef === expectedFinalityHash,
+    finalityEvidenceHashMatches: expectedFinalityHash !== null &&
+      finalityEvidenceHash === expectedFinalityHash,
     finalityLedgerPresent: ledgerPresent
   });
   const ok = Object.values(checks).every(Boolean);
@@ -143,6 +150,7 @@ export function createStellarRecoveryExecutionEvidence({
     networkRef: plan.networkRef,
     strategy: plan.strategy,
     transactionHashHex: expectedTransactionHash,
+    finalizedTransactionHashHex: expectedFinalityHash,
     preAuthTxSigner: artifact.preAuthTxSigner,
     signedEnvelopeSha256: digestText(signedTransactionXdr),
     signatureCount: signed.signatureCount,
