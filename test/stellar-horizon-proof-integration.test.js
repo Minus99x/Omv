@@ -124,6 +124,8 @@ test('composed Testnet Horizon driver completes the full recovery proof against 
   assert.equal(proof.success, true);
   assert.equal(proof.evidenceBundle.sha256.length, 64);
   assert.equal(proof.evidenceBundle.balanceMovements.length, 2);
+  assert.equal(proof.evidenceBundle.observationSource, 'injected-driver');
+  assert.equal(proof.evidenceBundle.publicTestnetEvidenceReady, false);
   assert.deepEqual(horizon.counts(), { vaultReads:9, rescueReads:4, submissions:4 });
   assert.equal(driver.safetyBoundary.networkRef, 'stellar:testnet');
   assert.equal(driver.safetyBoundary.signingPerformed, false);

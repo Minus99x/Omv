@@ -36,6 +36,13 @@ function integerString(value, label, { positive = false } = {}) {
   return text;
 }
 
+function observationSource(value) {
+  if (value !== 'injected-driver' && value !== 'default-horizon-http') {
+    throw new TypeError('observationSource must identify injected-driver or default-horizon-http evidence.');
+  }
+  return value;
+}
+
 function stellarAccount(value, label) {
   const account = requiredText(value, label);
   if (!StrKey.isValidEd25519PublicKey(account)) throw new TypeError(`${label} must be a valid Stellar G-address.`);
@@ -179,11 +186,12 @@ function finalityEvidence(input, eligible) {
 
 function normalize(input) {
   exactKeys(input, [
-    'networkRef', 'recoveryTransactionHashHex', 'preAuthTxSigner', 'recoverySequence',
+    'networkRef', 'observationSource', 'recoveryTransactionHashHex', 'preAuthTxSigner', 'recoverySequence',
     'initialTooEarly', 'heartbeat', 'postHeartbeatTooEarly', 'eligibleSubmission',
     'feeBump', 'accountState', 'balanceMovements', 'finality'
   ], 'Stellar recovery evidence input');
   if (input.networkRef !== 'stellar:testnet') throw new TypeError('Stellar recovery evidence must target stellar:testnet.');
+  const source = observationSource(input.observationSource);
   const recoveryTransactionHashHex = hashHex(input.recoveryTransactionHashHex, 'recoveryTransactionHashHex');
   const preAuthTxSigner = preAuthSigner(input.preAuthTxSigner, 'preAuthTxSigner');
   const recoverySequence = integerString(input.recoverySequence, 'recoverySequence', { positive: true });
@@ -214,9 +222,10 @@ function normalize(input) {
   }
 
   return Object.freeze({
-    schema: 'omegavault.stellar.testnet-recovery-evidence.v1',
+    schema: 'omegavault.stellar.testnet-recovery-evidence.v2',
     chainId: 'stellar',
     networkRef: 'stellar:testnet',
+    observationSource: source,
     recoveryTransactionHashHex,
     preAuthTxSigner,
     recoverySequence,
@@ -228,9 +237,9 @@ function normalize(input) {
     accountState,
     balanceMovements,
     finality,
-    publicTestnetEvidenceReady: true,
+    publicTestnetEvidenceReady: false,
     promotionAuthority: false,
-    authorityBoundary: 'This bundle validates one Stellar Testnet recovery proof only. It does not by itself promote the connector, authorize deployment, authorize wallets, or grant production authority.'
+    authorityBoundary: 'This bundle records the stated observation transport, not independent provider attestation. Injected inputs are not public Horizon observations; the default Horizon HTTP path does not by itself promote the connector, authorize deployment, authorize wallets, or grant production authority.'
   });
 }
 
@@ -242,15 +251,16 @@ export function createStellarTestnetRecoveryEvidenceBundle(input) {
 export function verifyStellarTestnetRecoveryEvidenceBundle(bundle) {
   const errors = [];
   if (!bundle || typeof bundle !== 'object' || Array.isArray(bundle)) return Object.freeze({ ok: false, errors: Object.freeze(['Stellar evidence bundle is required.']) });
-  const { sha256, schema, chainId, publicTestnetEvidenceReady, promotionAuthority, authorityBoundary, ...input } = bundle;
-  if (schema !== 'omegavault.stellar.testnet-recovery-evidence.v1') errors.push('Unexpected Stellar evidence schema.');
+  const { sha256, schema, chainId, observationSource: source, publicTestnetEvidenceReady, promotionAuthority, authorityBoundary, ...input } = bundle;
+  if (schema !== 'omegavault.stellar.testnet-recovery-evidence.v2') errors.push('Unexpected Stellar evidence schema.');
   if (chainId !== 'stellar') errors.push('Unexpected Stellar evidence chain.');
-  if (publicTestnetEvidenceReady !== true) errors.push('Stellar evidence readiness flag is invalid.');
+  if (source !== 'injected-driver' && source !== 'default-horizon-http') errors.push('Stellar observation source is invalid.');
+  if (publicTestnetEvidenceReady !== false) errors.push('Stellar evidence cannot independently attest public Testnet observations.');
   if (promotionAuthority !== false) errors.push('Stellar evidence bundle must not grant promotion authority.');
   if (typeof authorityBoundary !== 'string' || !authorityBoundary) errors.push('Stellar evidence authority boundary is missing.');
   let expected;
   try {
-    expected = createStellarTestnetRecoveryEvidenceBundle(input);
+    expected = createStellarTestnetRecoveryEvidenceBundle({ ...input, observationSource: source });
   } catch (error) {
     errors.push(String(error?.message || error));
     return Object.freeze({ ok: false, errors: Object.freeze(errors) });
@@ -264,11 +274,12 @@ export function verifyStellarTestnetRecoveryEvidenceBundle(bundle) {
 export function createStellarFailedAppliedRecoveryEvidenceBundle(input) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new TypeError('Stellar failed-applied recovery evidence input is required.');
   const expected = [
-    'networkRef','recoveryTransactionHashHex','preAuthTxSigner','recoverySequence',
+    'networkRef','observationSource','recoveryTransactionHashHex','preAuthTxSigner','recoverySequence',
     'submission','accountState'
   ];
   exactKeys(input, expected, 'Stellar failed-applied recovery evidence input');
   if (input.networkRef !== 'stellar:testnet') throw new TypeError('Failed-applied Stellar evidence must target stellar:testnet.');
+  const source = observationSource(input.observationSource);
   const recoveryTransactionHashHex = hashHex(input.recoveryTransactionHashHex, 'recoveryTransactionHashHex');
   const preAuthTxSigner = preAuthSigner(input.preAuthTxSigner, 'preAuthTxSigner');
   const recoverySequence = integerString(input.recoverySequence, 'recoverySequence', { positive: true });
@@ -319,9 +330,10 @@ export function createStellarFailedAppliedRecoveryEvidenceBundle(input) {
   }
 
   const core = Object.freeze({
-    schema: 'omegavault.stellar.failed-applied-recovery-evidence.v1',
+    schema: 'omegavault.stellar.failed-applied-recovery-evidence.v2',
     chainId: 'stellar',
     networkRef: 'stellar:testnet',
+    observationSource: source,
     recoveryTransactionHashHex,
     preAuthTxSigner,
     recoverySequence,
@@ -334,7 +346,7 @@ export function createStellarFailedAppliedRecoveryEvidenceBundle(input) {
     retrySameEnvelope: false,
     requiredAction: 'Diagnose the failed operation, rebuild the immutable recovery envelope, and explicitly re-authorize a new preAuthTx signer before retrying.',
     promotionAuthority: false,
-    authorityBoundary: 'This evidence records one failed applied Stellar Testnet recovery and one-time signer consumption only. It grants no chain promotion, deployment authority, wallet authority, or mainnet authority.'
+    authorityBoundary: 'This evidence records the stated observation transport for one failed applied Stellar Testnet recovery and one-time signer consumption. Injected inputs are not public Horizon observations; no chain promotion, deployment authority, wallet authority, or mainnet authority is granted.'
   });
   return Object.freeze({ ...core, sha256: evidenceDigest(core) });
 }
@@ -346,10 +358,11 @@ export function verifyStellarFailedAppliedRecoveryEvidenceBundle(bundle) {
   }
   const {
     sha256, schema, chainId, preAuthSignerConsumed, retrySameEnvelope,
-    requiredAction, promotionAuthority, authorityBoundary, ...input
+    observationSource: source, requiredAction, promotionAuthority, authorityBoundary, ...input
   } = bundle;
-  if (schema !== 'omegavault.stellar.failed-applied-recovery-evidence.v1') errors.push('Unexpected failed-applied Stellar evidence schema.');
+  if (schema !== 'omegavault.stellar.failed-applied-recovery-evidence.v2') errors.push('Unexpected failed-applied Stellar evidence schema.');
   if (chainId !== 'stellar') errors.push('Unexpected failed-applied Stellar evidence chain.');
+  if (source !== 'injected-driver' && source !== 'default-horizon-http') errors.push('Failed-applied Stellar observation source is invalid.');
   if (preAuthSignerConsumed !== true) errors.push('Failed-applied evidence must record preAuth signer consumption.');
   if (retrySameEnvelope !== false) errors.push('Failed-applied evidence must forbid retry of the same envelope.');
   if (typeof requiredAction !== 'string' || !/rebuild/i.test(requiredAction)) errors.push('Failed-applied evidence must require rebuilding the recovery envelope.');
@@ -358,7 +371,7 @@ export function verifyStellarFailedAppliedRecoveryEvidenceBundle(bundle) {
 
   let expected;
   try {
-    expected = createStellarFailedAppliedRecoveryEvidenceBundle(input);
+    expected = createStellarFailedAppliedRecoveryEvidenceBundle({ ...input, observationSource: source });
   } catch (error) {
     errors.push(String(error?.message || error));
     return Object.freeze({ ok:false, errors:Object.freeze(errors) });

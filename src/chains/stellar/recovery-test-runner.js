@@ -53,6 +53,12 @@ function assetKey(asset) {
   return asset?.type === 'native' ? 'native' : `${asset?.code}:${asset?.issuer}`;
 }
 
+function observationSource(driver) {
+  return driver?.safetyBoundary?.observationSource === 'default-horizon-http'
+    ? 'default-horizon-http'
+    : 'injected-driver';
+}
+
 function amountUnits(amount, label) {
   // A recovery payment amount must come from the canonical manifest, not from
   // a coercible object or an imprecise JS number.
@@ -346,6 +352,7 @@ export async function runStellarTestnetRecoveryProof(input) {
 
   const evidenceBundle = createStellarTestnetRecoveryEvidenceBundle({
     networkRef: 'stellar:testnet',
+    observationSource: observationSource(driver),
     recoveryTransactionHashHex: recoveryArtifact.transactionHashHex,
     preAuthTxSigner: recoveryArtifact.preAuthTxSigner,
     recoverySequence: recoveryPlan.sequence.recoverySequence,
@@ -500,6 +507,7 @@ export async function runStellarFailedAppliedRecoveryProof(input) {
 
   const evidenceBundle = createStellarFailedAppliedRecoveryEvidenceBundle({
     networkRef:'stellar:testnet',
+    observationSource:observationSource(driver),
     recoveryTransactionHashHex:recoveryArtifact.transactionHashHex,
     preAuthTxSigner:recoveryArtifact.preAuthTxSigner,
     recoverySequence:recoveryPlan.sequence.recoverySequence,

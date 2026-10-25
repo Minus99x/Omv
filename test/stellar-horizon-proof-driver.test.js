@@ -226,6 +226,7 @@ test('injected Horizon proof driver is testnet-only and performs no signing', as
   assert.equal(driver.safetyBoundary.signingKeysAccepted, false);
   assert.equal(driver.safetyBoundary.signingPerformed, false);
   assert.equal(driver.safetyBoundary.productionNetworkAllowed, false);
+  assert.equal(driver.safetyBoundary.observationSource, 'injected-driver');
 
   const snapshot=await driver.readAccountSnapshot(G(1));
   assert.equal(snapshot.masterWeight, 1);
@@ -577,9 +578,16 @@ test('Horizon proof factory retains default timeout for completed account reads'
   const driver = createStellarTestnetHorizonProofDriver({
     fetchImpl: async () => ({ ok: true, json: async () => accountResponse() })
   });
+  assert.equal(driver.safetyBoundary.observationSource, 'injected-driver');
   const snapshot = await driver.readAccountSnapshot(G(1));
   assert.equal(snapshot.account, G(1));
   assert.equal(snapshot.sequence, '1001');
+});
+
+test('Horizon proof factory classifies its default HTTP transport without making a request', () => {
+  const driver = createStellarTestnetHorizonProofDriver();
+  assert.equal(driver.safetyBoundary.transportInjected, false);
+  assert.equal(driver.safetyBoundary.observationSource, 'default-horizon-http');
 });
 
 

@@ -16,6 +16,7 @@ function fixture(overrides = {}) {
   const outerTransactionHashHex = H('c');
   return {
     networkRef: 'stellar:testnet',
+    observationSource: 'injected-driver',
     recoveryTransactionHashHex,
     preAuthTxSigner: StrKey.encodePreAuthTx(Uint8Array.from({ length: 32 }, () => 0xaa)),
     recoverySequence: '1000',
@@ -82,12 +83,38 @@ function fixture(overrides = {}) {
 
 test('Stellar Testnet evidence bundle binds liveness reset, fee bump, recovery, balances and finality', () => {
   const bundle = createStellarTestnetRecoveryEvidenceBundle(fixture());
-  assert.equal(bundle.schema, 'omegavault.stellar.testnet-recovery-evidence.v1');
+  assert.equal(bundle.schema, 'omegavault.stellar.testnet-recovery-evidence.v2');
   assert.equal(bundle.chainId, 'stellar');
   assert.equal(bundle.networkRef, 'stellar:testnet');
-  assert.equal(bundle.publicTestnetEvidenceReady, true);
+  assert.equal(bundle.observationSource, 'injected-driver');
+  assert.equal(bundle.publicTestnetEvidenceReady, false);
   assert.equal(bundle.promotionAuthority, false);
   assert.match(bundle.sha256, /^[a-f0-9]{64}$/);
+  assert.deepEqual(verifyStellarTestnetRecoveryEvidenceBundle(bundle), { ok: true, errors: [] });
+});
+
+test('Stellar evidence refuses unsupported source claims and digest-binds injected provenance', () => {
+  assert.throws(() => createStellarTestnetRecoveryEvidenceBundle({
+    ...fixture(),
+    observationSource: 'made-up-public-source'
+  }), /observationSource/);
+
+  const bundle = structuredClone(createStellarTestnetRecoveryEvidenceBundle(fixture()));
+  bundle.observationSource = 'default-horizon-http';
+  bundle.publicTestnetEvidenceReady = true;
+  const result = verifyStellarTestnetRecoveryEvidenceBundle(bundle);
+  assert.equal(result.ok, false);
+  assert.ok(result.errors.some(error => /digest mismatch/i.test(error)));
+});
+
+test('Stellar evidence records the default HTTP path without treating it as independent public attestation', () => {
+  const bundle = createStellarTestnetRecoveryEvidenceBundle({
+    ...fixture(),
+    observationSource: 'default-horizon-http'
+  });
+  assert.equal(bundle.observationSource, 'default-horizon-http');
+  assert.equal(bundle.publicTestnetEvidenceReady, false);
+  assert.match(bundle.authorityBoundary, /not independent provider attestation/i);
   assert.deepEqual(verifyStellarTestnetRecoveryEvidenceBundle(bundle), { ok: true, errors: [] });
 });
 
@@ -168,6 +195,7 @@ test('Stellar failed-applied evidence proves one-time preAuth signer consumption
   const recoveryTransactionHashHex = H('a');
   const bundle = createStellarFailedAppliedRecoveryEvidenceBundle({
     networkRef:'stellar:testnet',
+    observationSource:'injected-driver',
     recoveryTransactionHashHex,
     preAuthTxSigner:StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => 0xaa)),
     recoverySequence:'1000',
@@ -196,6 +224,7 @@ test('Stellar failed-applied evidence rejects non-applied failures and signer-su
   const recoveryTransactionHashHex = H('a');
   const base = {
     networkRef:'stellar:testnet',
+    observationSource:'injected-driver',
     recoveryTransactionHashHex,
     preAuthTxSigner:StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => 0xaa)),
     recoverySequence:'1000',
@@ -225,6 +254,7 @@ test('tampered Stellar failed-applied evidence fails closed', () => {
   const recoveryTransactionHashHex = H('a');
   const bundle = structuredClone(createStellarFailedAppliedRecoveryEvidenceBundle({
     networkRef:'stellar:testnet',
+    observationSource:'injected-driver',
     recoveryTransactionHashHex,
     preAuthTxSigner:StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => 0xaa)),
     recoverySequence:'1000',

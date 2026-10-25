@@ -198,6 +198,8 @@ test('Stellar Testnet proof runner orchestrates too-early, heartbeat reset, elig
   assert.equal(result.evidenceBundle.eligibleSubmission.resultCode, 'txSUCCESS');
   assert.equal(result.evidenceBundle.accountState.after.preAuthTxSignerPresent, false);
   assert.equal(result.evidenceBundle.finality.status, 'finalized');
+  assert.equal(result.evidenceBundle.observationSource, 'injected-driver');
+  assert.equal(result.evidenceBundle.publicTestnetEvidenceReady, false);
   assert.deepEqual(verifyStellarTestnetRecoveryEvidenceBundle(result.evidenceBundle), { ok:true, errors:[] });
   assert.ok(fake.calls.some(call => call[0] === 'waitUntilEligible'));
   assert.ok(fake.calls.some(call => call[0] === 'observeFinality'));
@@ -349,6 +351,7 @@ test('Stellar failed-applied proof runner records consumed preAuth signer and fo
   assert.equal(result.kind, 'stellar-testnet-failed-applied-recovery-proof');
   assert.equal(result.evidenceBundle.preAuthSignerConsumed, true);
   assert.equal(result.evidenceBundle.retrySameEnvelope, false);
+  assert.equal(result.evidenceBundle.observationSource, 'injected-driver');
   assert.equal(result.evidenceBundle.submission.innerTransactionHashHex, inputs.recoveryArtifact.transactionHashHex);
   assert.equal(result.evidenceBundle.submission.outerTransactionHashHex, inputs.feeBumpArtifact.feeBumpTransactionHashHex);
   assert.match(result.evidenceBundle.requiredAction, /rebuild/i);

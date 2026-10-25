@@ -247,10 +247,11 @@ export function normalizeHorizonFinality({
   });
 }
 
-export function createInjectedStellarTestnetHorizonDriver({
+function createHorizonDriver({
   transport,
   horizonUrl = TESTNET_HORIZON_URL,
-  clock = () => new Date().toISOString()
+  clock = () => new Date().toISOString(),
+  transportInjected
 }) {
   if (horizonUrl !== TESTNET_HORIZON_URL) throw new TypeError('OmegaVault Stellar proof driver is restricted to the official Stellar Testnet Horizon endpoint.');
   for (const method of ['loadAccount', 'submitTransactionXdr', 'loadTransaction', 'loadLedger', 'waitUntilEligible']) {
@@ -311,26 +312,33 @@ export function createInjectedStellarTestnetHorizonDriver({
       signingKeysAccepted: false,
       signingPerformed: false,
       productionNetworkAllowed: false,
-      transportInjected: true
+      transportInjected,
+      observationSource: transportInjected ? 'injected-driver' : 'default-horizon-http'
     })
   });
 }
 
-export function createStellarTestnetHorizonProofDriver({
-  fetchImpl = globalThis.fetch,
-  sleep,
-  pollIntervalMs,
-  maxEligibilityAttempts,
-  requestTimeoutMs,
-  clock = () => new Date().toISOString()
-} = {}) {
+export function createInjectedStellarTestnetHorizonDriver(options) {
+  return createHorizonDriver({ ...options, transportInjected: true });
+}
+
+export function createStellarTestnetHorizonProofDriver(options = {}) {
+  const {
+    fetchImpl = globalThis.fetch,
+    sleep,
+    pollIntervalMs,
+    maxEligibilityAttempts,
+    requestTimeoutMs,
+    clock = () => new Date().toISOString()
+  } = options;
   const transportOptions = { fetchImpl };
   if (sleep !== undefined) transportOptions.sleep = sleep;
   if (pollIntervalMs !== undefined) transportOptions.pollIntervalMs = pollIntervalMs;
   if (maxEligibilityAttempts !== undefined) transportOptions.maxEligibilityAttempts = maxEligibilityAttempts;
   if (requestTimeoutMs !== undefined) transportOptions.requestTimeoutMs = requestTimeoutMs;
-  return createInjectedStellarTestnetHorizonDriver({
+  return createHorizonDriver({
     transport: createStellarTestnetHorizonHttpTransport(transportOptions),
-    clock
+    clock,
+    transportInjected: Object.hasOwn(options, 'fetchImpl')
   });
 }
