@@ -380,3 +380,55 @@ test('Cardano real UTxO stable-tip hashes reject coercible containers and noncan
   assert.equal(rejected.valid, false);
   assert.match(rejected.errors.join('; '), /32-byte hex string/);
 });
+
+test('Cardano real UTxO lovelace rejects rounded numbers and coercible container values', () => {
+  const plan = initializePlan();
+  const tip = { hash: 'dd'.repeat(32), slot: 135700000 };
+  const utxos = () => [
+    walletUtxo(plan.roles.seed, 10000000),
+    walletUtxo(plan.roles.collateral, 5000000)
+  ];
+
+  // String(value) previously accepted arrays containing a decimal integer
+  // and unsafe JS numbers after precision had already been lost.
+  for (const invalid of [
+    ['10000000'], true, Number.MAX_SAFE_INTEGER + 2, 1.5,
+    '010000000', '1e7', 10000000n
+  ]) {
+    const queriedUtxo = utxos();
+    queriedUtxo[0].value.ada.lovelace = invalid;
+    assert.throws(
+      () => createCardanoPreprodRealUtxoBindingEvidence({
+        plan, tipBefore: tip, tipAfter: tip, queriedUtxo
+      }),
+      /positive lovelace as an exact safe integer or canonical decimal string/,
+      String(invalid)
+    );
+  }
+
+  let coercions = 0;
+  const queriedUtxo = utxos();
+  queriedUtxo[0].value.ada.lovelace = {
+    toString() { coercions++; return '10000000'; }
+  };
+  assert.throws(
+    () => createCardanoPreprodRealUtxoBindingEvidence({
+      plan, tipBefore: tip, tipAfter: tip, queriedUtxo
+    }),
+    /positive lovelace as an exact safe integer or canonical decimal string/
+  );
+  assert.equal(coercions, 0, 'untrusted numeric coercion must never execute');
+
+  for (const exactAmount of [10000000, '9007199254740993']) {
+    const goodUtxos = utxos();
+    goodUtxos[0].value.ada.lovelace = exactAmount;
+    const evidence = createCardanoPreprodRealUtxoBindingEvidence({
+      plan, tipBefore: tip, tipAfter: tip, queriedUtxo: goodUtxos
+    });
+    assert.equal(evidence.roles.seed.lovelace, String(exactAmount));
+    const checked = verifyCardanoPreprodRealUtxoBindingEvidence({
+      evidence, plan, tipBefore: tip, tipAfter: tip, queriedUtxo: goodUtxos
+    });
+    assert.equal(checked.valid, true, checked.errors.join('; '));
+  }
+});

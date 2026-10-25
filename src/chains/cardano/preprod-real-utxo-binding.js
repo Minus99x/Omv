@@ -100,9 +100,17 @@ function paymentKeyHash(address, label) {
 }
 
 function adaLovelace(utxo, label) {
-  const raw = String(utxo?.value?.ada?.lovelace ?? '');
-  if (!/^\d+$/.test(raw) || BigInt(raw) < 1n) throw new Error(`${label} must contain positive lovelace.`);
-  return raw;
+  const amount = utxo?.value?.ada?.lovelace;
+  // Ogmios JSON numbers must be safely representable: converting an unsafe
+  // JavaScript number to a string cannot recover rounded lovelace. Accept
+  // canonical decimal strings for exact values outside the safe range.
+  if (typeof amount === 'number' && Number.isSafeInteger(amount) && amount > 0) {
+    return String(amount);
+  }
+  if (typeof amount === 'string' && /^[1-9]\d*$/.test(amount)) {
+    return amount;
+  }
+  throw new Error(`${label} must contain positive lovelace as an exact safe integer or canonical decimal string.`);
 }
 
 function nonAdaPolicies(utxo) {
