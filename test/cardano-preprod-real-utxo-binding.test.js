@@ -4,6 +4,7 @@ import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { createCardanoPreprodAppliedValidatorIdentity } from '../src/chains/cardano/live-validator-identity.js';
+import { hashCardanoEvidence } from '../src/chains/cardano/evidence-binding.js';
 import {
   CARDANO_APPLIED_FIXTURE,
   CARDANO_PREPROD_NETWORK_ID
@@ -125,6 +126,39 @@ test('Cardano real UTxO plan verifier rejects query or authority tampering', () 
   const authorityTampered = structuredClone(plan);
   authorityTampered.walletSigningAuthorized = true;
   assert.equal(verifyCardanoPreprodRealUtxoBindingPlan(authorityTampered).valid, false);
+});
+
+test('Cardano real UTxO plan rejects rehashed Ogmios request envelope substitution', () => {
+  const valid = initializePlan();
+  assert.equal(verifyCardanoPreprodRealUtxoBindingPlan(valid).valid, true);
+  assert.equal(valid.query.jsonrpc, '2.0');
+  assert.deepEqual(Object.keys(valid.query).sort(), ['jsonrpc', 'method', 'params']);
+
+  // Recompute the self-digest so the rejection is specifically from the
+  // query-envelope validation, not merely a stale checksum.
+  const variants = [
+    { ...valid.query, jsonrpc: '1.0' },
+    { ...valid.query, jsonrpc: '2.1' },
+    { ...valid.query, id: 1 },
+    { ...valid.query, network: 'mainnet' },
+    { method: valid.query.method, params: valid.query.params },
+    { jsonrpc: '2.0', method: 'queryLedgerState/utxo', params: valid.query.params, auth: true }
+  ];
+  for (const query of variants) {
+    const tampered = structuredClone(valid);
+    tampered.query = query;
+    const { planSha256: _old, ...unsigned } = tampered;
+    tampered.planSha256 = hashCardanoEvidence(unsigned);
+    const checked = verifyCardanoPreprodRealUtxoBindingPlan(tampered);
+    assert.equal(checked.valid, false, JSON.stringify(query));
+    assert.match(checked.errors.join('; '), /exact Ogmios JSON-RPC 2.0 query envelope/);
+    assert.throws(() => createCardanoPreprodRealUtxoBindingEvidence({
+      plan: tampered,
+      tipBefore: { hash: 'dd'.repeat(32), slot: 135700000 },
+      tipAfter: { hash: 'dd'.repeat(32), slot: 135700000 },
+      queriedUtxo: []
+    }), /plan verification failed/);
+  }
 });
 
 test('Cardano real initialize UTxO evidence accepts exact stable-tip ADA-only seed/collateral set', () => {

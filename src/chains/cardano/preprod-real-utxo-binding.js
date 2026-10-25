@@ -199,7 +199,16 @@ export function verifyCardanoPreprodRealUtxoBindingPlan(plan) {
         errors.push('Initialize seed role does not match the bound validator identity seed.');
       }
     }
-    if (value.query?.method !== 'queryLedgerState/utxo') errors.push('Real UTxO binding plan must use queryLedgerState/utxo.');
+    // A self-digest can be recomputed after rewriting the Ogmios request.
+    // Verify the exact wire envelope, not only the referenced UTxO set.
+    const query = plainObject(value.query, 'query');
+    const queryKeys = Object.keys(query).sort();
+    if (queryKeys.length !== 3 ||
+        queryKeys.join(',') !== 'jsonrpc,method,params' ||
+        query.jsonrpc !== '2.0' ||
+        query.method !== 'queryLedgerState/utxo') {
+      errors.push('Real UTxO binding plan requires the exact Ogmios JSON-RPC 2.0 query envelope.');
+    }
     const expectedParams = expectedRoles.length === 0 ? null : createCardanoOgmiosUtxoByOutputReferencesParams(expectedRoles.map(role => value.roles[role]));
     if (expectedParams && hashCardanoEvidence(value.query?.params) !== hashCardanoEvidence(expectedParams)) {
       errors.push('Real UTxO binding plan query does not match its role references.');
