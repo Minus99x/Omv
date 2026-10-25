@@ -4,11 +4,17 @@ name: OmegaVault Frequent AI Engineering Launcher
 # dev/0.6.60-reconcile-overnight-bitcoin. No production code is modified.
 on:
   schedule:
-    # Four distinct engineering opportunities per hour at :09, :24, :39, :54 UTC
+    # Four distinct engineering opportunities per hour at :11, :26, :41, :56 UTC
     # (Arizona time is UTC-7 year-round); GitHub may delay scheduled starts.
     # Each run commits only a real source/test improvement that passes verification.
-    - cron: '9,24,39,54 * * * *'
+    - cron: '11,26,41,56 * * * *'
   workflow_dispatch:
+  # Explicit self-test: commits changing only this launcher also exercise the current worker.
+  # A push event is recorded as push, NEVER as proof of an hourly schedule trigger.
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/omegavault-hourly-engineering.yml'
 
 permissions:
   contents: read
