@@ -108,7 +108,8 @@ function convertBits(data, fromBits, toBits) {
 }
 
 function encodeSegwitV0Address(program, network) {
-  const hrp = network === 'mainnet' ? 'bc' : 'tb';
+  // Bitcoin Core / BIP173 network HRPs: regtest must never be encoded as signet/testnet.
+  const hrp = network === 'mainnet' ? 'bc' : network === 'regtest' ? 'bcrt' : 'tb';
   const words = [0, ...convertBits(program, 8, 5)];
   const values = [...bech32Expand(hrp), ...words, 0, 0, 0, 0, 0, 0];
   const polymod = bech32Polymod(values) ^ 1;
