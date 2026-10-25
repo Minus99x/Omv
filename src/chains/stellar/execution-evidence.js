@@ -24,7 +24,8 @@ function digestText(value) {
 }
 
 function normalizeTransactionHash(value) {
-  const normalized = String(value ?? '').trim().replace(/^0x/i, '').toLowerCase();
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().replace(/^0x/i, '').toLowerCase();
   return /^[0-9a-f]{64}$/.test(normalized) ? normalized : null;
 }
 
@@ -32,7 +33,9 @@ function submissionObservedAtMilliseconds(value) {
   if (typeof value !== 'string' ||
       !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(value)) return NaN;
   const milliseconds = Date.parse(value);
-  return Number.isFinite(milliseconds) ? milliseconds : NaN;
+  if (!Number.isFinite(milliseconds) ||
+      new Date(milliseconds).toISOString().slice(0, 19) !== value.slice(0, 19)) return NaN;
+  return milliseconds;
 }
 
 function canonicalSubmissionLedger(value) {

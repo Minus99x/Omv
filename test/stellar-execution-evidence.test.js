@@ -203,13 +203,39 @@ test('Stellar execution evidence rejects missing, inconsistent or noncanonical s
 test('Stellar execution evidence rejects future, missing and malformed submission observation times', () => {
   const input = fixture();
   for (const observedAt of [undefined, 'not-a-time', '2026-10-04T17:00:01.000Z',
-    '2026-10-04T17:00:00', '2026-13-04T16:00:00.000Z']) {
+    '2026-10-04T17:00:00', '2026-13-04T16:00:00.000Z',
+    '2026-02-30T16:59:59.000Z', '2026-10-04T16:59:60.000Z']) {
     const result = createStellarRecoveryExecutionEvidence({
       ...input, submission: { ...input.submission, observedAt }
     });
     assert.equal(result.ok, false, String(observedAt));
     assert.equal(result.checks.submissionPrecedesFinality, false, String(observedAt));
   }
+});
+
+test('Stellar execution evidence rejects coercible transaction hash identities', () => {
+  const input = fixture();
+  let conversions = 0;
+  const disguisedHash = Object.create({
+    toString() {
+      conversions++;
+      return input.artifact.transactionHashHex;
+    }
+  });
+  const result = createStellarRecoveryExecutionEvidence({
+    ...input,
+    submission: { ...input.submission, transactionHashHex: disguisedHash },
+    finalityObservation: {
+      ...input.finalityObservation,
+      transactionRef: disguisedHash,
+      evidence: { ...input.finalityObservation.evidence, transactionHash: disguisedHash }
+    }
+  });
+  assert.equal(result.ok, false);
+  assert.equal(result.checks.submissionTransactionIdentityMatches, false);
+  assert.equal(result.checks.finalityTransactionRefMatches, false);
+  assert.equal(result.checks.finalityEvidenceHashMatches, false);
+  assert.equal(conversions, 0);
 });
 
 test('Stellar fee-bump evidence rejects wrong or absent inner hash and disguised outer transaction', () => {
