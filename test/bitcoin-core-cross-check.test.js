@@ -522,6 +522,41 @@ test('Bitcoin Core receipt-chain freshness rejects future and just-expired obser
   assert.ok(future.errors.some(message => /future/.test(message)));
 });
 
+test('Bitcoin Core receipt chronology and freshness preserve sub-millisecond timestamp precision', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const first = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input,
+    observationSource:'bitcoin-core-rpc',
+    observationContext:context(1, '2026-10-07T05:20:00.0000001Z')
+  });
+  const later = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input,
+    observationSource:'bitcoin-core-rpc',
+    observationContext:context(2, '2026-10-07T05:20:00.0000009Z', first.sha256)
+  });
+  assert.equal(verifyBitcoinCoreCrossCheckEvidenceChain([first, later]).ok, true);
+
+  const reversed = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx, ...input,
+    observationSource:'bitcoin-core-rpc',
+    observationContext:context(2, '2026-10-07T05:20:00.0000000Z', first.sha256)
+  });
+  const reordered = verifyBitcoinCoreCrossCheckEvidenceChain([first, reversed]);
+  assert.equal(reordered.ok, false);
+  assert.ok(reordered.errors.some(message => /timestamp is stale or reordered/.test(message)));
+
+  const checkFreshness = (now, maxAgeMs) =>
+    verifyBitcoinCoreCrossCheckEvidenceChain([first], { now, maxAgeMs });
+  assert.equal(checkFreshness('2026-10-07T05:20:00.0000001Z', 0).ok, true);
+  const future = checkFreshness('2026-10-07T05:20:00.0000000Z', 0);
+  assert.equal(future.ok, false);
+  assert.ok(future.errors.some(message => /from the future/.test(message)));
+  const expired = checkFreshness('2026-10-07T05:20:00.0000002Z', 0);
+  assert.equal(expired.ok, false);
+  assert.ok(expired.errors.some(message => /stale/.test(message)));
+});
+
 test('Bitcoin Core receipt chain rejects coordinated digest rewrites of transaction and fee identities', () => {
   const tx = transaction(), input = observations(tx);
   const baseline = createBitcoinCoreCrossCheckEvidence({

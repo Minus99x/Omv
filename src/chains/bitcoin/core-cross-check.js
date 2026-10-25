@@ -43,7 +43,7 @@ function sha256Hex(value, label) {
   return text;
 }
 
-function iso(value, label) {
+function parseIsoTimestamp(value, label) {
   const text = typeof value === 'string' ? value.trim() : '';
   const invalid = () => new TypeError(`${label} must be a valid ISO-8601 timestamp with a real calendar date and timezone.`);
   // Mirror the strict real-date and explicit-timezone contract used by
@@ -69,8 +69,15 @@ function iso(value, label) {
     throw invalid();
   }
   const offset = (offsetSign === '-' ? -1 : 1) * (offsetHours * 60 + offsetMinutes) * 60000;
-  if (Date.parse(text) !== calendar.getTime() - offset) throw invalid();
-  return text;
+  const epochMilliseconds = calendar.getTime() - offset;
+  if (Date.parse(text) !== epochMilliseconds) throw invalid();
+  const fractionNanoseconds = BigInt(fraction.padEnd(9, '0') || '0');
+  const millisecondNanoseconds = BigInt(milliseconds) * 1_000_000n;
+  return Object.freeze({
+    text,
+    epochNanoseconds: BigInt(epochMilliseconds) * 1_000_000n +
+      fractionNanoseconds - millisecondNanoseconds
+  });
 }
 
 function btcToSats(value, label) {
@@ -103,7 +110,7 @@ function normalizeObservationContext(context) {
     throw new TypeError('observationContext.previousEvidenceSha256 must be null or a SHA-256 digest.');
   }
   const sequence = positiveInteger(context.sequence, 'observationContext.sequence');
-  const observedAt = iso(context.observedAt, 'observationContext.observedAt');
+  const observedAt = parseIsoTimestamp(context.observedAt, 'observationContext.observedAt').text;
   const previousEvidenceSha256 = context.previousEvidenceSha256 == null
     ? null
     : sha256Hex(context.previousEvidenceSha256, 'observationContext.previousEvidenceSha256');
@@ -440,7 +447,9 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
       const previousContext = previous.observationContext;
       if (context.sequence !== previousContext.sequence + 1) errors.push(`Evidence ${index} observation sequence is reordered or non-contiguous.`);
       if (context.previousEvidenceSha256 !== previous.sha256) errors.push(`Evidence ${index} previousEvidenceSha256 does not bind the preceding receipt.`);
-      if (Date.parse(context.observedAt) <= Date.parse(previousContext.observedAt)) errors.push(`Evidence ${index} observation timestamp is stale or reordered.`);
+      const currentTimestamp = parseIsoTimestamp(context.observedAt, `Evidence ${index} observationContext.observedAt`);
+      const previousTimestamp = parseIsoTimestamp(previousContext.observedAt, `Evidence ${index - 1} observationContext.observedAt`);
+      if (currentTimestamp.epochNanoseconds <= previousTimestamp.epochNanoseconds) errors.push(`Evidence ${index} observation timestamp is stale or reordered.`);
     } else {
       if (context.sequence !== 1) errors.push('First Bitcoin Core evidence receipt must begin at sequence 1.');
       if (context.previousEvidenceSha256 !== null) {
@@ -452,13 +461,16 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
   if (now != null || maxAgeMs != null) {
     if (now == null || !Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0) errors.push('now and non-negative maxAgeMs must be supplied together for freshness enforcement.');
     else if (previous?.observationContext) {
-      let nowMs;
-      try { nowMs = Date.parse(iso(now, 'now')); }
+      let nowNanoseconds;
+      try { nowNanoseconds = parseIsoTimestamp(now, 'now').epochNanoseconds; }
       catch (error) { errors.push(String(error.message || error)); }
 
-      const observedMs = Date.parse(previous.observationContext.observedAt);
-      if (observedMs > nowMs) errors.push('Latest Bitcoin Core observation is from the future.');
-      else if (nowMs - observedMs > maxAgeMs) errors.push('Latest Bitcoin Core observation is stale.');
+      const observedNanoseconds = parseIsoTimestamp(previous.observationContext.observedAt, 'observationContext.observedAt').epochNanoseconds;
+      if (nowNanoseconds !== undefined && observedNanoseconds > nowNanoseconds) errors.push('Latest Bitcoin Core observation is from the future.');
+      else if (nowNanoseconds !== undefined && Number.isSafeInteger(maxAgeMs) && maxAgeMs >= 0 &&
+          nowNanoseconds - observedNanoseconds > BigInt(maxAgeMs) * 1_000_000n) {
+        errors.push('Latest Bitcoin Core observation is stale.');
+      }
     }
   }
   return Object.freeze({ ok:errors.length === 0, errors:Object.freeze(errors) });
