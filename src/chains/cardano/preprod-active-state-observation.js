@@ -6,28 +6,34 @@ const HEX_28=/^[0-9a-f]{56}$/i;
 const HEX_32=/^[0-9a-f]{64}$/i;
 
 function keyHash(value,label){
-  const normalized=String(value ?? '').toLowerCase();
-  if(!HEX_28.test(normalized)) throw new TypeError(`${label} must be 28-byte hex.`);
-  return normalized;
+  if(typeof value!=='string' || !HEX_28.test(value)) throw new TypeError(`${label} must be 28-byte hex.`);
+  return value.toLowerCase();
 }
 
 function sha(value,label){
-  const normalized=String(value ?? '').toLowerCase();
-  if(!HEX_32.test(normalized)) throw new TypeError(`${label} must be SHA-256/32-byte hex.`);
-  return normalized;
+  if(typeof value!=='string' || !HEX_32.test(value)) throw new TypeError(`${label} must be SHA-256/32-byte hex.`);
+  return value.toLowerCase();
+}
+
+// Ogmios may provide canonical decimal strings, but an observation must
+// never accept implicit Number()/valueOf()/toString() identity coercion.
+function safeIndex(value,label){
+  const number=typeof value==='number' && Number.isSafeInteger(value) ? value
+    : typeof value==='string' && /^(0|[1-9][0-9]*)$/.test(value) ? Number(value)
+    : NaN;
+  if(!Number.isSafeInteger(number) || number<0) throw new TypeError(`${label} must be a non-negative safe integer.`);
+  return number;
 }
 
 function tip(value){
   const hash=sha(value?.hash,'observedTip.hash');
-  const slot=Number(value?.slot);
-  if(!Number.isSafeInteger(slot) || slot<0) throw new TypeError('observedTip.slot must be a non-negative safe integer.');
+  const slot=safeIndex(value?.slot,'observedTip.slot');
   return Object.freeze({ hash,slot });
 }
 
 function stateReference(value){
   const id=sha(value?.transaction?.id,'observedStateUtxo.transaction.id');
-  const index=Number(value?.index);
-  if(!Number.isSafeInteger(index) || index<0) throw new TypeError('observedStateUtxo.index must be a non-negative safe integer.');
+  const index=safeIndex(value?.index,'observedStateUtxo.index');
   return Object.freeze({ transaction:Object.freeze({ id }),index });
 }
 
@@ -75,7 +81,10 @@ export function createCardanoPreprodActiveStateEvidence({
 
   if(reference.transaction.id!==bodyHash) throw new Error('Observed active-state reference is not the exact source transaction body hash.');
   if(reference.index!==0) throw new Error('Current real lifecycle builders require the continuing active state at output index 0.');
-  if(String(observedStateUtxo.address ?? '')!==String(recoveryAddress ?? '')) throw new Error('Observed active state is not at the bound recovery validator address.');
+  if(typeof observedStateUtxo.address!=='string' || typeof recoveryAddress!=='string' ||
+      !recoveryAddress || observedStateUtxo.address!==recoveryAddress) {
+    throw new Error('Observed active state is not at the bound recovery validator address.');
+  }
   if(observedStateUtxo.script!=null) throw new Error('Observed active state must not carry a reference script.');
 
   const owner=keyHash(ownerPaymentKeyHash,'ownerPaymentKeyHash');
@@ -111,7 +120,8 @@ export function createCardanoPreprodActiveStateEvidence({
     approvalKeyHashes:approvals
   });
   const expectedDatumHex=Buffer.from(expectedDatum.to_bytes()).toString('hex');
-  const observedDatum=String(observedStateUtxo.datum ?? '').toLowerCase();
+  const observedDatum=typeof observedStateUtxo.datum==='string'
+    ? observedStateUtxo.datum.toLowerCase() : null;
   if(observedDatum!==expectedDatumHex) throw new Error('Observed active-state inline datum does not exactly reproduce the expected lifecycle state.');
 
   const core=Object.freeze({

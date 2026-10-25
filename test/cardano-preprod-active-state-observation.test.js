@@ -140,3 +140,90 @@ test('active-state observation rejects protected-value leakage or extra assets',
     /exactly ADA plus the one bound state-beacon policy/
   );
 });
+
+test('active-state observation rejects coerced tip slots and output indices without executing conversion hooks',()=>{
+  const base=input('heartbeat',[]);
+  let coercions=0;
+  const trap={valueOf(){coercions++;return 100000200;},toString(){coercions++;return '0';}};
+  for(const invalid of [null,false,true,[],['0'],{},trap,'',' 0 ','00','01','0x1','1e2',-1,1.5,Number.MAX_SAFE_INTEGER+1]){
+    assert.throws(()=>createCardanoPreprodActiveStateEvidence({
+      ...base,observedTip:{...base.observedTip,slot:invalid}
+    }),/observedTip.slot must be a non-negative safe integer/);
+    assert.throws(()=>createCardanoPreprodActiveStateEvidence({
+      ...base,observedStateUtxo:{...base.observedStateUtxo,index:invalid}
+    }),/observedStateUtxo.index must be a non-negative safe integer/);
+  }
+  assert.equal(coercions,0,'untrusted index conversion hooks must never run');
+});
+
+test('active-state observation accepts canonical decimal index strings and normalized uppercase hashes',()=>{
+  const base=input('heartbeat',[]);
+  const canonical={
+    ...base,
+    observedTip:{hash:base.observedTip.hash.toUpperCase(),slot:'100000200'},
+    observedStateUtxo:{
+      ...base.observedStateUtxo,
+      transaction:{id:base.transactionBodyHash.toUpperCase()},
+      index:'0'
+    },
+    transactionBodyHash:base.transactionBodyHash.toUpperCase()
+  };
+  const result=createCardanoPreprodActiveStateEvidence(canonical);
+  assert.equal(result.observedTip.slot,100000200);
+  assert.equal(result.observedTip.hash,base.observedTip.hash);
+  assert.equal(result.stateReference.index,0);
+  assert.equal(result.stateReference.transaction.id,base.transactionBodyHash);
+  assert.equal(verifyCardanoPreprodActiveStateEvidence({evidence:result,...canonical}).valid,true);
+});
+
+test('active-state observation rejects hash identity containers without calling toString',()=>{
+  const base=input('heartbeat',[]);
+  let coercions=0;
+  const trap={toString(){coercions++;return base.transactionBodyHash;}};
+  for(const [field,valid] of [
+    ['sourceArtifactSha256',base.sourceArtifactSha256],
+    ['transactionBodyHash',base.transactionBodyHash],
+    ['validatorIdentitySha256',base.validatorIdentitySha256],
+    ['ownerPaymentKeyHash',base.ownerPaymentKeyHash],
+    ['rescueKeyHash',base.rescueKeyHash],
+    ['beaconPolicyId',base.beaconPolicyId]
+  ]){
+    for(const invalid of [[valid],new String(valid),trap]){
+      assert.throws(()=>createCardanoPreprodActiveStateEvidence({
+        ...base,[field]:invalid
+      }),/must be (28-byte hex|SHA-256\/32-byte hex)/,field);
+    }
+  }
+  for(const invalid of [[base.observedTip.hash],trap]){
+    assert.throws(()=>createCardanoPreprodActiveStateEvidence({
+      ...base,observedTip:{...base.observedTip,hash:invalid}
+    }),/observedTip.hash must be SHA-256\/32-byte hex/);
+  }
+  for(const invalid of [[base.transactionBodyHash],trap]){
+    assert.throws(()=>createCardanoPreprodActiveStateEvidence({
+      ...base,observedStateUtxo:{...base.observedStateUtxo,transaction:{id:invalid}}
+    }),/observedStateUtxo.transaction.id must be SHA-256\/32-byte hex/);
+  }
+  assert.equal(coercions,0,'untrusted hash conversion hooks must never run');
+});
+
+test('active-state observation rejects spoofed validator address and inline datum identity',()=>{
+  const base=input('heartbeat',[]);
+  let coercions=0;
+  const addressTrap={toString(){coercions++;return base.recoveryAddress;}};
+  const datumTrap={toString(){coercions++;return base.observedStateUtxo.datum;}};
+  for(const invalid of [[base.recoveryAddress],addressTrap]){
+    assert.throws(()=>createCardanoPreprodActiveStateEvidence({
+      ...base,observedStateUtxo:{...base.observedStateUtxo,address:invalid}
+    }),/bound recovery validator address/);
+    assert.throws(()=>createCardanoPreprodActiveStateEvidence({
+      ...base,recoveryAddress:invalid
+    }),/bound recovery validator address/);
+  }
+  for(const invalid of [[base.observedStateUtxo.datum],datumTrap]){
+    assert.throws(()=>createCardanoPreprodActiveStateEvidence({
+      ...base,observedStateUtxo:{...base.observedStateUtxo,datum:invalid}
+    }),/inline datum does not exactly reproduce/);
+  }
+  assert.equal(coercions,0,'untrusted address/datum conversion hooks must never run');
+});
