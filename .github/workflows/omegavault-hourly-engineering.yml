@@ -4,14 +4,10 @@ name: OmegaVault Frequent AI Engineering Launcher
 # dev/0.6.60-reconcile-overnight-bitcoin. No production code is modified.
 on:
   schedule:
-    # One substantive unattended engineering run per hour, at :07 Arizona.
+    # One substantive unattended engineering run per hour, at :24 Arizona, in tandem with ChatGPT.
     # Longer bounded worker replaces three overlapping small attempts.
-    - cron: '7 * * * *'
+    - cron: '24 * * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/omegavault-hourly-engineering.yml'
 
 permissions:
   contents: read
