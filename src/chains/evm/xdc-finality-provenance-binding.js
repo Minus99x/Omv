@@ -74,10 +74,11 @@ export function validateXdcFinalityRpcObservation(observation) {
     throw new Error('XDC finality observation network identity mismatch');
   if (!Array.isArray(observation.endpoints) ||
       observation.endpoints.length !== 2 ||
-      observation.endpoints.some((endpoint,i)=>endpoint!==ENDPOINTS[i]))
+      ENDPOINTS.some((endpoint,i)=>!Object.hasOwn(observation.endpoints,i) || observation.endpoints[i]!==endpoint))
     throw new Error('XDC finality observation requires both ordered fixed endpoints');
   if (!Array.isArray(observation.latestHeadHeights) ||
-      observation.latestHeadHeights.length !== 2)
+      observation.latestHeadHeights.length !== 2 ||
+      ![0,1].every(i=>Object.hasOwn(observation.latestHeadHeights,i)))
     throw new Error('XDC finality observation requires two latest head heights');
   const heads = observation.latestHeadHeights.map((height,i)=>decimal(height,'latestHeadHeights['+i+']'));
   if (heads.some(height=>height<=0n)) throw new Error('XDC latest heads must be non-genesis');

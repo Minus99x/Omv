@@ -330,3 +330,17 @@ test('XDC package verifier rejects nested serialization spoofing and accepts reo
  const forged={...valid,finalityEvidence:{...valid.finalityEvidence,networkRef:'ethereum:mainnet',toJSON:()=>valid.finalityEvidence}};
  assert.equal(xdcProvenancePackageMatchesProof(forged,o,p,'native-recovery'),false);
 });
+
+test('XDC rejects missing provider slots before checksum validation for both recovery kinds', () => {
+  for (const field of ['endpoints', 'latestHeadHeights']) {
+    for (const index of [0, 1]) {
+      const o = observation();
+      delete o[field][index];
+      const forged = rehash(o);
+      assert.throws(() => validateXdcFinalityRpcObservation(forged), /provider|endpoint|head/i);
+      for (const kind of ['native-recovery', 'erc20-recovery']) {
+        assert.throws(() => createXdcProvenanceBoundFinality({observation:forged,proof:proof(kind),kind}));
+      }
+    }
+  }
+});
