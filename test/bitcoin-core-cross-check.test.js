@@ -32,6 +32,21 @@ const pub = value => Buffer.from(secp256k1.getPublicKey(value, true)).toString('
 const contacts = [key(2), key(3)];
 const rescueScriptPubKey = `0014${'11'.repeat(20)}`;
 const descriptor = createBitcoinRecoveryDescriptor({ ownerKey:pub(key(1)), contactKeys:contacts.map(pub), threshold:2, csvBlocks:144, network:'signet' });
+const observedTip = Object.freeze({
+  networkRef:'bitcoin:signet',
+  blockHash:'12'.repeat(32),
+  blockHeight:'300005'
+});
+
+function blockchainInfo(overrides = {}) {
+  return {
+    chain:'signet',
+    initialblockdownload:false,
+    bestblockhash:observedTip.blockHash,
+    blocks:Number(observedTip.blockHeight),
+    ...overrides
+  };
+}
 
 function transaction(inputByte = 'ab') {
   const intent = {
@@ -52,6 +67,7 @@ function observations(tx, overrides = {}) {
     `${effectiveFeeRateSatsPerKvB / 100_000_000n}.${String(effectiveFeeRateSatsPerKvB % 100_000_000n).padStart(8, '0')}`;
   return {
     node:{ chain:'signet', version:310100, subversion:'/Satoshi:31.1.0/', protocolVersion:70016 },
+    chainTip:observedTip,
     decodedTransaction:{
       txid:tx.txid, hash:tx.wtxid, size:tx.bytes, vsize:tx.virtualBytes, weight:tx.weight,
       version:2, locktime:0,
@@ -81,7 +97,8 @@ test('Bitcoin Core fixture cross-check binds node, decode and mempool fee diagno
   const tx = transaction();
   const input = observations(tx);
   const evidence = createBitcoinCoreCrossCheckEvidence({ transaction:tx, ...input });
-  assert.equal(evidence.schema, 'omegavault.bitcoin.core-cross-check-evidence.v2');
+  assert.equal(evidence.schema, 'omegavault.bitcoin.core-cross-check-evidence.v3');
+  assert.deepEqual(evidence.chainTip, observedTip);
   assert.equal(evidence.decodedTransactionMatches, true);
   assert.equal(evidence.mempool.allowed, true);
   assert.equal(evidence.mempool.vsize, tx.virtualBytes);
@@ -109,7 +126,7 @@ test('read-only Bitcoin Core driver binds actual RPC-source observations and rec
     now:() => '2026-10-07T05:30:00Z',
     driver:{
       getNetworkInfo:async () => (calls.push('network'), { version:310100, subversion:'/Satoshi:31.1.0/', protocolversion:70016 }),
-      getBlockchainInfo:async () => (calls.push('chain'), { chain:'signet' }),
+      getBlockchainInfo:async () => (calls.push('chain'), blockchainInfo()),
       decodeRawTransaction:async ({ rawHex }) => (calls.push(['decode', rawHex]), input.decodedTransaction),
       testMempoolAccept:async ({ rawTransactions }) => (calls.push(['mempool', rawTransactions]), [input.mempoolResult])
     }
@@ -121,8 +138,61 @@ test('read-only Bitcoin Core driver binds actual RPC-source observations and rec
     observedAt:'2026-10-07T05:30:00Z',
     previousEvidenceSha256:'aa'.repeat(32)
   });
+  assert.deepEqual(evidence.chainTip, observedTip);
   assert.equal(calls.some(call => Array.isArray(call) && call[0] === 'decode' && call[1] === tx.rawHex), true);
   assert.equal(calls.some(call => Array.isArray(call) && call[0] === 'mempool' && call[1][0] === tx.rawHex), true);
+});
+
+test('live Bitcoin Core evidence requires an exact nonzero Signet tip', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const args = {
+    transaction:tx,
+    ...input,
+    observationSource:'bitcoin-core-rpc',
+    observationContext:context(1, '2026-10-07T05:20:00Z')
+  };
+  assert.throws(
+    () => createBitcoinCoreCrossCheckEvidence({ ...args, chainTip:null }),
+    /require a bound Signet chain tip/
+  );
+  for (const chainTip of [
+    { ...observedTip, blockHash:'00'.repeat(32) },
+    { ...observedTip, blockHeight:'0300005' },
+    { ...observedTip, networkRef:'bitcoin:mainnet' }
+  ]) {
+    assert.throws(
+      () => createBitcoinCoreCrossCheckEvidence({ ...args, chainTip }),
+      /chainTip|Signet/
+    );
+  }
+});
+
+test('Core RPC comparison rejects unsynchronized nodes and a changing chain tip', async () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const driver = {
+    getNetworkInfo:async () => ({
+      version:310100, subversion:'/Satoshi:31.1.0/', protocolversion:70016
+    }),
+    getBlockchainInfo:async () => blockchainInfo({ initialblockdownload:true }),
+    decodeRawTransaction:async () => input.decodedTransaction,
+    testMempoolAccept:async () => [input.mempoolResult]
+  };
+  await assert.rejects(
+    () => runBitcoinCoreCrossCheck({ driver, transaction:tx }),
+    /requires a synchronized Signet node/
+  );
+
+  let reads = 0;
+  driver.getBlockchainInfo = async () => blockchainInfo(
+    ++reads === 1 ? {} : { bestblockhash:'13'.repeat(32), blocks:300006 }
+  );
+  await assert.rejects(
+    () => runBitcoinCoreCrossCheck({ driver, transaction:tx }),
+    /chain tip changed during the comparison/
+  );
+  assert.equal(reads, 2);
 });
 
 test('Bitcoin Core cross-check rejects wrong network or unpinned node version', () => {
@@ -290,6 +360,7 @@ test('imported observations cannot be confused with live Bitcoin Core RPC proof'
   assert.equal(imported.feeDiagnosticsBound, true);
   assert.equal(imported.bitcoinCoreCrossCheckProven, false);
   assert.equal(live.bitcoinCoreCrossCheckProven, true);
+  assert.deepEqual(live.chainTip, observedTip);
   assert.notEqual(imported.sha256, live.sha256);
   assert.throws(
     () => createBitcoinCoreCrossCheckEvidence({
@@ -332,6 +403,26 @@ test('Bitcoin Core observation receipt chain rejects stale, replayed and reorder
   const reordered = verifyBitcoinCoreCrossCheckEvidenceChain([second, first]);
   assert.equal(reordered.ok, false);
   assert.ok(reordered.errors.some(value => /reordered|predecessor/i.test(value)));
+});
+
+test('live Bitcoin Core receipt chain rejects a removed or malformed tip after digest rewrite', () => {
+  const tx = transaction();
+  const input = observations(tx);
+  const valid = createBitcoinCoreCrossCheckEvidence({
+    transaction:tx,
+    ...input,
+    observationSource:'bitcoin-core-rpc',
+    observationContext:context(1, '2026-10-07T05:20:00Z')
+  });
+  for (const mutate of [
+    receipt => { receipt.chainTip = null; },
+    receipt => { receipt.chainTip.blockHash = '00'.repeat(32); }
+  ]) {
+    const forged = rehashReceipt(valid, mutate);
+    const result = verifyBitcoinCoreCrossCheckEvidenceChain([forged]);
+    assert.equal(result.ok, false);
+    assert.ok(result.errors.some(error => /chain.tip/i.test(error)));
+  }
 });
 
 test('Bitcoin Core observation receipt chain forbids transaction drift and provenance mixing', () => {
@@ -706,13 +797,13 @@ test('Core chain freshness reports invalid clocks without throwing',()=>{const t
 });
 
 test('Core runner rejects altered transaction before contacting a driver',async()=>{const tx=transaction(),input=observations(tx),calls=[];
- const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return {chain:'signet'};},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
+ const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return blockchainInfo();},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
  await assert.rejects(runBitcoinCoreCrossCheck({driver,transaction:{...tx,rawHex:'00'}}),/wtxid/);
  assert.deepEqual(calls,[]);
 });
 
 test('Core runner rejects invalid receipt context before RPC access',async()=>{const tx=transaction(),input=observations(tx),calls=[];
- const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return {chain:'signet'};},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
+ const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return blockchainInfo();},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
  for(const args of [{observationSequence:0},{previousEvidenceSha256:'bad'},{now:null}]) {
   await assert.rejects(runBitcoinCoreCrossCheck({driver,transaction:tx,...args}));
   assert.deepEqual(calls,[]);
@@ -720,14 +811,14 @@ test('Core runner rejects invalid receipt context before RPC access',async()=>{c
 });
 
 test('Core runner refuses wrong chain before decoding or mempool inspection',async()=>{const tx=transaction(),input=observations(tx),calls=[];
- const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return {chain:'signet'};},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
+ const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return blockchainInfo();},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
  driver.getBlockchainInfo=async()=>({chain:'main'});
  await assert.rejects(runBitcoinCoreCrossCheck({driver,transaction:tx}),/Signet chain identity/);
  assert.equal(calls.includes('decode'),false);assert.equal(calls.includes('mempool'),false);
 });
 
 test('Core runner rejects provider identity drift during comparison',async()=>{const tx=transaction(),input=observations(tx),calls=[];
- const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return {chain:'signet'};},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
+ const driver={getNetworkInfo:async()=>{calls.push('network');return {version:310100,subversion:'/Satoshi:31.1.0/',protocolversion:70016};},getBlockchainInfo:async()=>{calls.push('chain');return blockchainInfo();},decodeRawTransaction:async()=>{calls.push('decode');return input.decodedTransaction;},testMempoolAccept:async()=>{calls.push('mempool');return [input.mempoolResult];}};
  let networkReads=0;driver.getNetworkInfo=async()=>({version:++networkReads===1?310100:310000,subversion:'/Satoshi:31.1.0/',protocolversion:70016});
  await assert.rejects(runBitcoinCoreCrossCheck({driver,transaction:tx}),/pinned value/);
  assert.equal(networkReads,2);

@@ -44,6 +44,18 @@ function sha256Hex(value, label) {
   return text;
 }
 
+function canonicalBlockHeight(value, label) {
+  if (!['string', 'number', 'bigint'].includes(typeof value) ||
+      (typeof value === 'number' && (!Number.isSafeInteger(value) || value < 1))) {
+    throw new TypeError(`${label} must be a positive uint32 integer.`);
+  }
+  const text = String(value);
+  if (!/^[1-9]\d*$/.test(text) || BigInt(text) > 0xffffffffn) {
+    throw new TypeError(`${label} must be a positive uint32 integer.`);
+  }
+  return text;
+}
+
 function btcToSats(value, label) {
   if (typeof value !== 'string' && typeof value !== 'number') throw new TypeError(`${label} must be a primitive BTC amount.`);
   let text;
@@ -112,6 +124,25 @@ function normalizeNode(node, expectedNodeVersion) {
   if (typeof node?.subversion !== 'string' || !node.subversion.trim() || /[\u0000-\u001f\u007f]/.test(node.subversion)) throw new TypeError('Bitcoin Core subversion must be non-empty text without control characters.');
   if (!Number.isSafeInteger(node?.protocolVersion) || node.protocolVersion < 1) throw new TypeError('Bitcoin Core protocolVersion is required.');
   return Object.freeze({ chain:'signet', version:node.version, subversion:node.subversion, protocolVersion:node.protocolVersion });
+}
+
+function normalizeChainTip(tip, label = 'chainTip') {
+  if (tip?.networkRef !== 'bitcoin:signet') throw new Error(`${label} must be bound to Signet.`);
+  const blockHash = sha256Hex(tip.blockHash, `${label}.blockHash`);
+  if (/^0{64}$/.test(blockHash)) throw new Error(`${label}.blockHash cannot be all-zero.`);
+  const blockHeight = canonicalBlockHeight(tip.blockHeight, `${label}.blockHeight`);
+  return Object.freeze({ networkRef:'bitcoin:signet', blockHash, blockHeight });
+}
+
+function normalizeCoreChainTip(blockchain) {
+  if (blockchain?.initialblockdownload !== false) {
+    throw new Error('Bitcoin Core cross-check requires a synchronized Signet node.');
+  }
+  return normalizeChainTip({
+    networkRef:'bitcoin:signet',
+    blockHash:blockchain?.bestblockhash,
+    blockHeight:blockchain?.blocks
+  }, 'Bitcoin Core chain tip');
 }
 
 function validateDecoded(transaction, decoded) {
@@ -203,6 +234,7 @@ export function createBitcoinCoreCrossCheckEvidence({
   node,
   decodedTransaction,
   mempoolResult,
+  chainTip = null,
   expectedNodeVersion = 310100,
   observationSource = 'offline-fixture',
   observationContext = null
@@ -216,12 +248,17 @@ export function createBitcoinCoreCrossCheckEvidence({
   if (observationSource === 'bitcoin-core-rpc' && !normalizedObservationContext) {
     throw new Error('Bitcoin Core RPC observations require observationContext for timestamp and receipt-chain binding.');
   }
+  const normalizedChainTip = chainTip == null ? null : normalizeChainTip(chainTip);
+  if (observationSource === 'bitcoin-core-rpc' && !normalizedChainTip) {
+    throw new Error('Bitcoin Core RPC observations require a bound Signet chain tip.');
+  }
   const core = Object.freeze({
-    schema:'omegavault.bitcoin.core-cross-check-evidence.v2',
+    schema:'omegavault.bitcoin.core-cross-check-evidence.v3',
     chainId:'bitcoin',
     networkRef:'bitcoin:signet',
     observationSource,
     observationContext:normalizedObservationContext,
+    chainTip:normalizedChainTip,
     node:normalizedNode,
     rawTransactionSha256:createHash('sha256').update(raw).digest('hex'),
     finalTransactionEvidenceSha256:transaction.finalizerEvidence.sha256,
@@ -234,7 +271,8 @@ export function createBitcoinCoreCrossCheckEvidence({
     decodedTransactionMatches:true,
     mempool,
     feeDiagnosticsBound:mempool.feeDiagnosticsBound,
-    bitcoinCoreCrossCheckProven:observationSource === 'bitcoin-core-rpc' && mempool.allowed && mempool.feeDiagnosticsBound,
+    bitcoinCoreCrossCheckProven:observationSource === 'bitcoin-core-rpc' &&
+      normalizedChainTip !== null && mempool.allowed && mempool.feeDiagnosticsBound,
     signetExecutionProven:false,
     broadcastPerformed:false,
     broadcastAuthorized:false,
@@ -264,6 +302,19 @@ function validateChainedCoreAuthority(evidence, index, errors) {
   }
   if (typeof evidence.node?.subversion !== 'string' || !evidence.node.subversion.trim() || /[\u0000-\u001f\u007f]/.test(evidence.node.subversion)) {
     errors.push(`${prefix} has invalid Bitcoin Core node subversion.`);
+  }
+  let chainTipValid = evidence.chainTip === null &&
+    evidence.observationSource !== 'bitcoin-core-rpc';
+  if (evidence.chainTip != null) {
+    try {
+      chainTipValid = isDeepStrictEqual(evidence.chainTip, normalizeChainTip(evidence.chainTip, `${prefix}.chainTip`));
+    } catch {
+      chainTipValid = false;
+    }
+    if (!chainTipValid) errors.push(`${prefix} has an invalid Signet chain-tip observation.`);
+  }
+  if (evidence.observationSource === 'bitcoin-core-rpc' && !chainTipValid) {
+    errors.push(`${prefix} live Bitcoin Core evidence must bind a valid Signet chain tip.`);
   }
   if (!Number.isSafeInteger(evidence.node?.version) || evidence.node.version < 1 ||
       !Number.isSafeInteger(evidence.node?.protocolVersion) || evidence.node.protocolVersion < 1) {
@@ -347,7 +398,8 @@ function validateChainedCoreAuthority(evidence, index, errors) {
       }
     } catch { errors.push(`${prefix} has invalid accepted mempool fee rate or decimal fee.`); }
   }
-  const proven = source === 'bitcoin-core-rpc' && allowed === true && bound === true;
+  const proven = source === 'bitcoin-core-rpc' && chainTipValid &&
+    allowed === true && bound === true;
   if (evidence.bitcoinCoreCrossCheckProven !== proven) {
     errors.push(`${prefix} has forged Bitcoin Core cross-check provenance.`);
   }
@@ -361,7 +413,7 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
   let identity = null;
   let provenance = null;
   Array.from(evidences).forEach((evidence, index) => {
-    if (!evidence || evidence.schema !== 'omegavault.bitcoin.core-cross-check-evidence.v2') {
+    if (!evidence || evidence.schema !== 'omegavault.bitcoin.core-cross-check-evidence.v3') {
       errors.push(`Evidence ${index} has an unsupported schema.`);
       return;
     }
@@ -460,6 +512,7 @@ export async function runBitcoinCoreCrossCheck({
   const [network, blockchain] = await Promise.all([driver.getNetworkInfo(), driver.getBlockchainInfo()]);
   const node = { version:network?.version, subversion:network?.subversion, protocolVersion:network?.protocolversion, chain:blockchain?.chain };
   normalizeNode(node, expectedNodeVersion);
+  const chainTip = normalizeCoreChainTip(blockchain);
   const decodedTransaction = await driver.decodeRawTransaction({ rawHex:transaction.rawHex, networkRef:'bitcoin:signet' });
   const results = await driver.testMempoolAccept({ rawTransactions:[transaction.rawHex], maxFeeRate:0, networkRef:'bitcoin:signet' });
   if (!Array.isArray(results) || results.length !== 1) throw new Error('Bitcoin Core testmempoolaccept must return exactly one result.');
@@ -469,10 +522,16 @@ export async function runBitcoinCoreCrossCheck({
   if (!isDeepStrictEqual(finalNode, normalizeNode(node, expectedNodeVersion))) {
     throw new Error('Bitcoin Core node identity changed during the comparison.');
   }
+  if (!isDeepStrictEqual(normalizeCoreChainTip(finalBlockchain), chainTip)) {
+    throw new Error('Bitcoin Core Signet chain tip changed during the comparison.');
+  }
   const observationContext = {
     sequence:observationSequence,
     observedAt:now(),
     previousEvidenceSha256
   };
-  return createBitcoinCoreCrossCheckEvidence({ transaction, node, decodedTransaction, mempoolResult:results[0], expectedNodeVersion, observationSource:'bitcoin-core-rpc', observationContext });
+  return createBitcoinCoreCrossCheckEvidence({
+    transaction, node, decodedTransaction, mempoolResult:results[0], chainTip,
+    expectedNodeVersion, observationSource:'bitcoin-core-rpc', observationContext
+  });
 }
