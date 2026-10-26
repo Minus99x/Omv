@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
+import { parseBitcoinIsoTimestamp } from './timestamp.js';
 
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
@@ -41,34 +42,7 @@ function integer(value, label, { positive = false } = {}) {
 }
 
 function iso(value, label) {
-  const text = textValue(value, label);
-  const invalid = () => new TypeError(`${label} must be a valid ISO-8601 timestamp with a real calendar date and timezone.`);
-  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(text);
-  if (!parts) throw invalid();
-  const [, yearText, monthText, dayText, hourText, minuteText, secondText,
-    fraction = '', , offsetSign, offsetHourText, offsetMinuteText] = parts;
-  const [year, month, day, hour, minute, second] = [
-    yearText, monthText, dayText, hourText, minuteText, secondText
-  ].map(Number);
-  const milliseconds = Number(fraction.padEnd(3, '0').slice(0, 3));
-  const offsetHours = Number(offsetHourText ?? 0);
-  const offsetMinutes = Number(offsetMinuteText ?? 0);
-  if (offsetHours > 23 || offsetMinutes > 59) throw invalid();
-
-  // Date.parse accepts impossible dates by rolling them into the next month.
-  // Round-trip each UTC calendar field before trusting the observation clock.
-  const calendar = new Date(0);
-  calendar.setUTCFullYear(year, month - 1, day);
-  calendar.setUTCHours(hour, minute, second, milliseconds);
-  if (!Number.isFinite(calendar.getTime()) ||
-      calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 ||
-      calendar.getUTCDate() !== day || calendar.getUTCHours() !== hour ||
-      calendar.getUTCMinutes() !== minute || calendar.getUTCSeconds() !== second) {
-    throw invalid();
-  }
-  const offset = (offsetSign === '-' ? -1 : 1) * (offsetHours * 60 + offsetMinutes) * 60000;
-  if (Date.parse(text) !== calendar.getTime() - offset) throw invalid();
-  return text;
+  return parseBitcoinIsoTimestamp(value, label).text;
 }
 
 function normalizeObservationSource(value) {
@@ -152,7 +126,10 @@ export function createBitcoinSignetObservationEvidence({
   }
   const derivedConfirmations = BigInt(tipHeight) - BigInt(blockHeight) + 1n;
   if (derivedConfirmations.toString() !== confirmations) throw new Error('Bitcoin confirmation count does not match the bound chain tip.');
-  if (Date.parse(tipObservedAt) < Date.parse(observedAt)) throw new Error('Bitcoin chain-tip observation is stale relative to the transaction observation.');
+  if (parseBitcoinIsoTimestamp(tipObservedAt, 'chainTip.observedAt').epochNanoseconds <
+      parseBitcoinIsoTimestamp(observedAt, 'transaction.observedAt').epochNanoseconds) {
+    throw new Error('Bitcoin chain-tip observation is stale relative to the transaction observation.');
+  }
 
   if (txid(rescueUtxo?.txid, 'rescueUtxo.txid') !== transactionId) {
     throw new Error('Bitcoin rescue UTXO is bound to another transaction.');
@@ -307,8 +284,8 @@ export async function runBitcoinSignetObservationProof({
         integer(chainTip.blockHeight, 'chainTip.blockHeight')) {
       throw new Error('Bitcoin Signet tip changed during read-only proof collection.');
     }
-    if (Date.parse(iso(postReadTip?.observedAt, 'postReadTip.observedAt')) <
-        Date.parse(iso(chainTip?.observedAt, 'chainTip.observedAt'))) {
+    if (parseBitcoinIsoTimestamp(postReadTip?.observedAt, 'postReadTip.observedAt').epochNanoseconds <
+        parseBitcoinIsoTimestamp(chainTip?.observedAt, 'chainTip.observedAt').epochNanoseconds) {
       throw new Error('Bitcoin Signet post-read chain-tip timestamp regressed.');
     }
   }
@@ -380,14 +357,16 @@ export function verifyBitcoinSignetObservationFreshness({
     if (!Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0) {
       throw new TypeError('maxAgeMs must be a non-negative safe integer.');
     }
-    const nowMs = Date.parse(iso(now, 'now'));
-    const transactionMs = Date.parse(iso(evidence.transaction?.observedAt, 'transaction.observedAt'));
-    const tipMs = Date.parse(iso(evidence.chainTip?.observedAt, 'chainTip.observedAt'));
-    if (transactionMs > tipMs) throw new Error('Bitcoin Signet transaction observation follows the chain-tip observation.');
-    if (transactionMs > nowMs || tipMs > nowMs) {
+    const nowNanoseconds = parseBitcoinIsoTimestamp(now, 'now').epochNanoseconds;
+    const transactionNanoseconds = parseBitcoinIsoTimestamp(evidence.transaction?.observedAt, 'transaction.observedAt').epochNanoseconds;
+    const tipNanoseconds = parseBitcoinIsoTimestamp(evidence.chainTip?.observedAt, 'chainTip.observedAt').epochNanoseconds;
+    if (transactionNanoseconds > tipNanoseconds) throw new Error('Bitcoin Signet transaction observation follows the chain-tip observation.');
+    if (transactionNanoseconds > nowNanoseconds || tipNanoseconds > nowNanoseconds) {
       throw new Error('Bitcoin Signet evidence contains an observation from the future.');
     }
-    if (nowMs - transactionMs > maxAgeMs || nowMs - tipMs > maxAgeMs) {
+    const maximumAgeNanoseconds = BigInt(maxAgeMs) * 1_000_000n;
+    if (nowNanoseconds - transactionNanoseconds > maximumAgeNanoseconds ||
+        nowNanoseconds - tipNanoseconds > maximumAgeNanoseconds) {
       throw new Error('Bitcoin Signet evidence has exceeded the required maximum age.');
     }
   } catch(error) {

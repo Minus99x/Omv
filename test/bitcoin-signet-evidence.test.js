@@ -389,6 +389,32 @@ test('Bitcoin Signet observation timestamps retain valid UTC, fractional and off
   }).ok, true);
 });
 
+test('Bitcoin Signet timestamp ordering preserves sub-millisecond precision', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const earlier = observations(finalizer, {
+    transaction:{ observedAt:'2026-10-04T00:00:00.000100Z' },
+    chainTip:{ observedAt:'2026-10-04T00:00:00.000900Z' }
+  });
+  assert.doesNotThrow(() => createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer,
+    finalTransactionEvidence:finalTransaction,
+    ...earlier
+  }));
+
+  const regressed = observations(finalizer, {
+    transaction:{ observedAt:'2026-10-04T00:00:00.000900Z' },
+    chainTip:{ observedAt:'2026-10-04T00:00:00.000100Z' }
+  });
+  assert.throws(
+    () => createBitcoinSignetObservationEvidence({
+      finalizerEvidence:finalizer,
+      finalTransactionEvidence:finalTransaction,
+      ...regressed
+    }),
+    /stale relative/
+  );
+});
+
 
 test('Bitcoin Signet rescue observation binds exact finalizer vout', () => {
   const { finalizer, finalTransaction } = finalizerArtifacts();
@@ -552,6 +578,14 @@ test('live Signet runner refuses mixed-tip, depth-drift and in-flight chain reor
       return ++reads===1?chainTip:{...chainTip,observedAt:'2026-10-03T23:59:59Z'};
     }
   }),/timestamp regressed/);
+  reads=0;
+  await assert.rejects(()=>attempt({
+    ...base,async readChainTip(){
+      return ++reads===1
+        ? {...chainTip,observedAt:'2026-10-04T00:01:00.000900Z'}
+        : {...chainTip,observedAt:'2026-10-04T00:01:00.000100Z'};
+    }
+  }),/timestamp regressed/);
   const ok=await attempt(base);
   assert.equal(ok.evidence.publicSignetObservationProven, false);
 });
@@ -602,6 +636,25 @@ test('Bitcoin Signet freshness guard rejects stale, future and digest-tampered o
   const {sha256,...core}=upgraded;
   upgraded.sha256=createHash('sha256').update(JSON.stringify(stable(core))).digest('hex');
   assert.match(check('2026-10-04T00:01:15Z',120000,upgraded).errors[0],/authority claim/);
+});
+
+test('Bitcoin Signet freshness guard rejects sub-millisecond future observations',()=>{
+  const {finalizer,finalTransaction}=finalizerArtifacts();
+  const observation=createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction,
+    ...observations(finalizer)
+  });
+  const future=structuredClone(observation);
+  future.chainTip.observedAt='2026-10-04T00:01:15.000001Z';
+  const {sha256:_old,...core}=future;
+  future.sha256=createHash('sha256').update(JSON.stringify(stable(core))).digest('hex');
+  const result=verifyBitcoinSignetObservationFreshness({
+    evidence:future,
+    now:'2026-10-04T00:01:15.000000Z',
+    maxAgeMs:120000
+  });
+  assert.equal(result.ok,false);
+  assert.match(result.errors[0],/future/);
 });
 
 test('Signet observation verification rejects serialization spoofing and accepts reordered keys',()=>{

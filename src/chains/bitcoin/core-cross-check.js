@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
+import { parseBitcoinIsoTimestamp } from './timestamp.js';
 
 const SATOSHIS = 100_000_000n;
 
@@ -43,43 +44,6 @@ function sha256Hex(value, label) {
   return text;
 }
 
-function parseIsoTimestamp(value, label) {
-  const text = typeof value === 'string' ? value.trim() : '';
-  const invalid = () => new TypeError(`${label} must be a valid ISO-8601 timestamp with a real calendar date and timezone.`);
-  // Mirror the strict real-date and explicit-timezone contract used by
-  // Bitcoin Signet inclusion observations; Date.parse alone rolls invalid dates.
-  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(text);
-  if (!parts) throw invalid();
-  const [, yearText, monthText, dayText, hourText, minuteText, secondText,
-    fraction = '', , offsetSign, offsetHourText, offsetMinuteText] = parts;
-  const [year, month, day, hour, minute, second] = [
-    yearText, monthText, dayText, hourText, minuteText, secondText
-  ].map(Number);
-  const milliseconds = Number(fraction.padEnd(3, '0').slice(0, 3));
-  const offsetHours = Number(offsetHourText ?? 0);
-  const offsetMinutes = Number(offsetMinuteText ?? 0);
-  if (offsetHours > 23 || offsetMinutes > 59) throw invalid();
-  const calendar = new Date(0);
-  calendar.setUTCFullYear(year, month - 1, day);
-  calendar.setUTCHours(hour, minute, second, milliseconds);
-  if (!Number.isFinite(calendar.getTime()) ||
-      calendar.getUTCFullYear() !== year || calendar.getUTCMonth() !== month - 1 ||
-      calendar.getUTCDate() !== day || calendar.getUTCHours() !== hour ||
-      calendar.getUTCMinutes() !== minute || calendar.getUTCSeconds() !== second) {
-    throw invalid();
-  }
-  const offset = (offsetSign === '-' ? -1 : 1) * (offsetHours * 60 + offsetMinutes) * 60000;
-  const epochMilliseconds = calendar.getTime() - offset;
-  if (Date.parse(text) !== epochMilliseconds) throw invalid();
-  const fractionNanoseconds = BigInt(fraction.padEnd(9, '0') || '0');
-  const millisecondNanoseconds = BigInt(milliseconds) * 1_000_000n;
-  return Object.freeze({
-    text,
-    epochNanoseconds: BigInt(epochMilliseconds) * 1_000_000n +
-      fractionNanoseconds - millisecondNanoseconds
-  });
-}
-
 function btcToSats(value, label) {
   if (typeof value !== 'string' && typeof value !== 'number') throw new TypeError(`${label} must be a primitive BTC amount.`);
   let text;
@@ -110,7 +74,7 @@ function normalizeObservationContext(context) {
     throw new TypeError('observationContext.previousEvidenceSha256 must be null or a SHA-256 digest.');
   }
   const sequence = positiveInteger(context.sequence, 'observationContext.sequence');
-  const observedAt = parseIsoTimestamp(context.observedAt, 'observationContext.observedAt').text;
+  const observedAt = parseBitcoinIsoTimestamp(context.observedAt, 'observationContext.observedAt').text;
   const previousEvidenceSha256 = context.previousEvidenceSha256 == null
     ? null
     : sha256Hex(context.previousEvidenceSha256, 'observationContext.previousEvidenceSha256');
@@ -447,8 +411,8 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
       const previousContext = previous.observationContext;
       if (context.sequence !== previousContext.sequence + 1) errors.push(`Evidence ${index} observation sequence is reordered or non-contiguous.`);
       if (context.previousEvidenceSha256 !== previous.sha256) errors.push(`Evidence ${index} previousEvidenceSha256 does not bind the preceding receipt.`);
-      const currentTimestamp = parseIsoTimestamp(context.observedAt, `Evidence ${index} observationContext.observedAt`);
-      const previousTimestamp = parseIsoTimestamp(previousContext.observedAt, `Evidence ${index - 1} observationContext.observedAt`);
+      const currentTimestamp = parseBitcoinIsoTimestamp(context.observedAt, `Evidence ${index} observationContext.observedAt`);
+      const previousTimestamp = parseBitcoinIsoTimestamp(previousContext.observedAt, `Evidence ${index - 1} observationContext.observedAt`);
       if (currentTimestamp.epochNanoseconds <= previousTimestamp.epochNanoseconds) errors.push(`Evidence ${index} observation timestamp is stale or reordered.`);
     } else {
       if (context.sequence !== 1) errors.push('First Bitcoin Core evidence receipt must begin at sequence 1.');
@@ -462,10 +426,10 @@ export function verifyBitcoinCoreCrossCheckEvidenceChain(evidences, { now = null
     if (now == null || !Number.isSafeInteger(maxAgeMs) || maxAgeMs < 0) errors.push('now and non-negative maxAgeMs must be supplied together for freshness enforcement.');
     else if (previous?.observationContext) {
       let nowNanoseconds;
-      try { nowNanoseconds = parseIsoTimestamp(now, 'now').epochNanoseconds; }
+      try { nowNanoseconds = parseBitcoinIsoTimestamp(now, 'now').epochNanoseconds; }
       catch (error) { errors.push(String(error.message || error)); }
 
-      const observedNanoseconds = parseIsoTimestamp(previous.observationContext.observedAt, 'observationContext.observedAt').epochNanoseconds;
+      const observedNanoseconds = parseBitcoinIsoTimestamp(previous.observationContext.observedAt, 'observationContext.observedAt').epochNanoseconds;
       if (nowNanoseconds !== undefined && observedNanoseconds > nowNanoseconds) errors.push('Latest Bitcoin Core observation is from the future.');
       else if (nowNanoseconds !== undefined && Number.isSafeInteger(maxAgeMs) && maxAgeMs >= 0 &&
           nowNanoseconds - observedNanoseconds > BigInt(maxAgeMs) * 1_000_000n) {
