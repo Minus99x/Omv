@@ -432,3 +432,44 @@ test('Cardano real UTxO lovelace rejects rounded numbers and coercible container
     assert.equal(checked.valid, true, checked.errors.join('; '));
   }
 });
+
+test('real UTxO binding rejects zero tip hashes and uint64 lovelace overflow', () => {
+  const plan = initializePlan();
+  const tip = {hash:'dd'.repeat(32),slot:135700000};
+  const queriedUtxo = [walletUtxo(plan.roles.seed, 10000000),walletUtxo(plan.roles.collateral,5000000)];
+  const args = {plan,tipBefore:tip,tipAfter:tip,queriedUtxo};
+  const zero = {...tip,hash:'00'.repeat(32)};
+  assert.throws(() => createCardanoPreprodRealUtxoBindingEvidence({...args,tipBefore:zero,tipAfter:zero}), /nonzero/);
+  queriedUtxo[0].value.ada.lovelace = (1n<<64n).toString();
+  assert.throws(() => createCardanoPreprodRealUtxoBindingEvidence(args), /uint64/);
+  queriedUtxo[0].value.ada.lovelace = ((1n<<64n)-1n).toString();
+  assert.equal(createCardanoPreprodRealUtxoBindingEvidence(args).roles.seed.lovelace,queriedUtxo[0].value.ada.lovelace);
+});
+
+test('real UTxO references reject coercible transaction identities without invoking hooks', () => {
+  const plan = initializePlan();
+  const tip = {hash:'dd'.repeat(32),slot:135700000};
+  let calls = 0;
+  for (const id of [[plan.roles.seed.transaction.id], {toString(){calls++;return plan.roles.seed.transaction.id;}}]) {
+    const queriedUtxo = [walletUtxo({...plan.roles.seed,transaction:{id}},10000000),walletUtxo(plan.roles.collateral,5000000)];
+    assert.throws(() => createCardanoPreprodRealUtxoBindingEvidence({plan,tipBefore:tip,tipAfter:tip,queriedUtxo}), /transaction.id/);
+  }
+  assert.equal(calls,0);
+});
+
+test('state beacon quantity must be an exact primitive unit, not a coercible object', () => {
+  const plan = createCardanoPreprodRealUtxoBindingPlan({action:'heartbeat',roles:{state:ref('ab',0),fee:ref('bc',1),collateral:ref('cd',2)},appliedValidatorIdentity:appliedIdentity()});
+  const tip = {hash:'de'.repeat(32),slot:135700001};
+  const state = {...plan.roles.state,address:plan.validatorIdentity.recoveryValidatorAddress,datum:'80',value:{ada:{lovelace:'10000000'},[plan.validatorIdentity.stateBeaconPolicyId]:{[plan.validatorIdentity.assetNameHex]:'1'}}};
+  const args = {plan,tipBefore:tip,tipAfter:tip,queriedUtxo:[state,walletUtxo(plan.roles.fee,3000000),walletUtxo(plan.roles.collateral,5000000)]};
+  let calls = 0;
+  for (const quantity of [['1'],{toString(){calls++;return '1';}},true,'01',2,0]) {
+    state.value[plan.validatorIdentity.stateBeaconPolicyId][plan.validatorIdentity.assetNameHex] = quantity;
+    assert.throws(() => createCardanoPreprodRealUtxoBindingEvidence(args), /state beacon/);
+  }
+  assert.equal(calls,0);
+  for (const quantity of [1,'1']) {
+    state.value[plan.validatorIdentity.stateBeaconPolicyId][plan.validatorIdentity.assetNameHex] = quantity;
+    assert.equal(createCardanoPreprodRealUtxoBindingEvidence(args).exactRoleReferenceBinding,true);
+  }
+});

@@ -27,7 +27,8 @@ function withoutDigest(value, key) {
 
 function normalizeReference(value, label) {
   const reference = plainObject(value, label);
-  const txId = String(reference?.transaction?.id ?? '').toLowerCase();
+  if (typeof reference?.transaction?.id !== 'string') throw new TypeError(`${label}.transaction.id must be a 32-byte hex string.`);
+  const txId = reference.transaction.id.toLowerCase();
   const rawIndex = reference?.index;
   const index = typeof rawIndex === 'number' && Number.isSafeInteger(rawIndex)
     ? rawIndex
@@ -108,7 +109,12 @@ function adaLovelace(utxo, label) {
     return String(amount);
   }
   if (typeof amount === 'string' && /^[1-9]\d*$/.test(amount)) {
-    return amount;
+    try {
+      // Reuse CSL's ledger-compatible unsigned coin parser.
+      return Cardano.BigNum.from_str(amount).to_str();
+    } catch {
+      throw new RangeError(`${label} lovelace exceeds uint64.`);
+    }
   }
   throw new Error(`${label} must contain positive lovelace as an exact safe integer or canonical decimal string.`);
 }
@@ -126,7 +132,7 @@ function assertStateUtxo(utxo, validatorIdentity) {
     throw new Error('state UTxO is not locked at the bound OmegaVault recovery validator address.');
   }
   const beacon = utxo.value?.[validatorIdentity.stateBeaconPolicyId]?.[validatorIdentity.assetNameHex];
-  if (String(beacon) !== '1') throw new Error('state UTxO must contain exactly one bound OmegaVault state beacon.');
+  if (beacon !== 1 && beacon !== '1') throw new Error('state UTxO must contain exactly one bound OmegaVault state beacon.');
   if (utxo.datum == null) throw new Error('state UTxO must carry an inline datum.');
 }
 
@@ -250,6 +256,7 @@ export function createCardanoPreprodRealUtxoBindingEvidence({
     if (typeof hash !== 'string' || !HEX_32.test(hash)) {
       throw new TypeError(`${label} must be a 32-byte hex string.`);
     }
+    if (/^0{64}$/.test(hash)) throw new TypeError(`${label} must be nonzero.`);
     return hash.toLowerCase();
   };
   const beforeHash = parseTipHash(tipBefore?.hash, 'tipBefore.hash');
