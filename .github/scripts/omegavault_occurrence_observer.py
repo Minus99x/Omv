@@ -10,9 +10,13 @@ from urllib.request import Request, urlopen
 
 ISSUE = 3
 WORKFLOW = "omegavault-hourly-engineering.yml"
-EXPECTED_PER_HOUR = 1
-# The schedule changed during 05:00-06:00 UTC. Audit only full new-cadence hours.
+EXPECTED_PER_HOUR = 4
+# Historical single-run audit began after its October 24 transition.
+# Four-per-hour cron was committed at 2026-10-25T06:18:56Z.
+# Exclude the partial transition hour: only full later hours expect four.
 CUTOFF_UTC = "2026-10-24T06:00:00Z"
+FOUR_PER_HOUR_START_UTC = "2026-10-25T07:00:00Z"
+FOUR_PER_HOUR_TRANSITION_UTC = "2026-10-25T06:00:00Z"
 
 
 def parse_time(value):
@@ -28,9 +32,55 @@ def audited_hour(now):
     return end - timedelta(hours=1), end
 
 
+def expected_per_hour(start):
+    """Only audit full hours under a known stable launcher cadence."""
+    if start < parse_time(CUTOFF_UTC):
+        return None
+    if start < parse_time(FOUR_PER_HOUR_TRANSITION_UTC):
+        return 1
+    if start < parse_time(FOUR_PER_HOUR_START_UTC):
+        return None
+    return EXPECTED_PER_HOUR
+
+
+def matching_scheduled(runs, start, end):
+    """Unique GitHub schedule-triggered run IDs created within this UTC hour.
+
+    A retry/duplicate API record is not another scheduling opportunity.
+    created_at is *not* the intended cron slot; delayed runs may land in
+    another hour and cannot be reliably assigned to their intended slot.
+    """
+    matches = {}
+    for run in runs:
+        if run.get("event") != "schedule" or not run.get("created_at"):
+            continue
+        run_id = run.get("id")
+        if type(run_id) is not int or run_id <= 0:
+            continue
+        if start <= parse_time(run["created_at"]) < end:
+            matches.setdefault(run_id, run)
+    return list(matches.values())
+
+
 def count_scheduled(runs, start, end):
-    return sum(1 for run in runs if run.get("event") == "schedule" and
-               run.get("created_at") and start <= parse_time(run["created_at"]) < end)
+    return len(matching_scheduled(runs, start, end))
+
+
+def fetch_scheduled_window(repo, token, start, end):
+    """Read all paginated run records; fail rather than undercount a partial response."""
+    rows = []
+    for page in range(1, 21):
+        query = urlencode({"event": "schedule",
+                           "created": iso(start) + ".." + iso(end - timedelta(seconds=1)),
+                           "per_page": 100, "page": page})
+        response = api("GET", repo, "actions/workflows/" + WORKFLOW + "/runs?" + query, token)
+        chunk = response.get("workflow_runs")
+        if not isinstance(chunk, list):
+            raise RuntimeError("Schedule-run API response is missing workflow_runs.")
+        rows.extend(chunk)
+        if len(chunk) < 100:
+            return rows
+    raise RuntimeError("Schedule-run query exceeded pagination audit limit.")
 
 
 def api(method, repo, path, token, body=None):
@@ -98,29 +148,33 @@ def observe_completion(repo, token, event, seen):
 
 def observe_schedule(repo, token, now, seen):
     start, end = audited_hour(now)  # Entire hour finished over 60 minutes ago.
-    if start < parse_time(CUTOFF_UTC):
-        print("Historical or transition hour: no post-change cadence inference.", iso(start))
+    expected = expected_per_hour(start)
+    if expected is None:
+        print("Historical or cadence-transition hour: no shortfall inference.", iso(start))
         return
-    query = urlencode({"event": "schedule",
-                       "created": iso(start) + ".." + iso(end - timedelta(seconds=1)),
-                       "per_page": 100})
-    runs = api("GET", repo, "actions/workflows/" + WORKFLOW + "/runs?" + query, token).get("workflow_runs", [])
-    actual = count_scheduled(runs, start, end)
-    missing = max(0, EXPECTED_PER_HOUR - actual)
+
+    runs = fetch_scheduled_window(repo, token, start, end)
+    matching = matching_scheduled(runs, start, end)
+    actual = len(matching)
+    missing = max(0, expected - actual)
+    run_ids = [run["id"] for run in matching]
     print(json.dumps({"audited_start_utc": iso(start), "audited_end_utc": iso(end),
-                      "expected": EXPECTED_PER_HOUR, "observed": actual, "shortfall": missing,
-                      "matching_run_ids": [x.get("id") for x in runs]}))
+                      "expected": expected, "observed": actual, "shortfall": missing,
+                      "matching_run_ids": run_ids,
+                      "attribution": "actual GitHub created_at hour, not intended cron slot"}))
     if missing:
         body = (
             "### Scheduled-run count shortfall\n"
             "- UTC window: " + iso(start) + " to " + iso(end) + "\n"
-            "- Expected GitHub schedule-triggered runs: " + str(EXPECTED_PER_HOUR) + "\n"
-            "- Observed schedule-triggered runs created in window: " + str(actual) + "\n"
+            "- Expected GitHub schedule-triggered runs: " + str(expected) + "\n"
+            "- Observed distinct schedule-triggered runs created in window: " + str(actual) + "\n"
             "- Shortfall: " + str(missing) + "\n"
-            "- Observed run IDs: " + str([x.get("id") for x in runs]) + "\n\n"
-            "Observation only: this does not establish a cancellation, intent, or a "
-            "specific missing slot. GitHub cron can be delayed; a later record may "
-            "change this count. This GitHub-native audit also depends on GitHub scheduling."
+            "- Observed run IDs: " + str(run_ids) + "\n\n"
+            "Observation only: a run created later may reflect a delayed trigger, "
+            "and its intended cron slot is not authenticated by this query. "
+            "This does not establish cancellation, intent, or which specific "
+            "scheduled slots were missed. Existing historical evidence is preserved; "
+            "this GitHub-native audit also depends on GitHub scheduling."
         )
         post_once(repo, token, "shortfall:" + iso(start), body, seen)
 
