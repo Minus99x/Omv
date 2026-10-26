@@ -88,7 +88,16 @@ export function createBitcoinFinalizerEvidence({
       validSignerCount:threshold.validCount,
       threshold:descriptor.threshold,
       thresholdReached:true,
-      validSigners:Object.freeze([...threshold.validSigners])
+      validSigners:Object.freeze([...threshold.validSigners]),
+      validSignatures:Object.freeze(threshold.validSigners.map(publicKey => {
+        const partial = input.partialSignatures.find(signature => signature.publicKey === publicKey);
+        if (!partial) throw new Error(`Bitcoin recovery input ${inputIndex} is missing a verified signer signature.`);
+        return Object.freeze({
+          publicKey,
+          sha256:createHash('sha256').update(Buffer.from(partial.signature, 'hex')).digest('hex')
+        });
+      })),
+      witnessScriptSha256:createHash('sha256').update(Buffer.from(input.witnessScript, 'hex')).digest('hex')
     });
   });
 

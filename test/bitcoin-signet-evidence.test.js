@@ -460,6 +460,46 @@ test('Bitcoin Signet rejects individually rehashed but cross-wired final transac
   }
 });
 
+test('Bitcoin Signet rejects a rehashed transaction-id substitution against the approved PSBT body', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const input = observations(finalizer);
+  const substitutedTxid = 'aa'.repeat(32);
+  const modified = { ...finalTransaction, txid:substitutedTxid };
+  const { sha256:_old, ...core } = modified;
+  modified.sha256 = createHash('sha256').update(JSON.stringify(stable(core))).digest('hex');
+  const substitutedObservation = {
+    ...input,
+    transaction:{ ...input.transaction, transactionId:substitutedTxid },
+    rescueUtxo:{ ...input.rescueUtxo, txid:substitutedTxid }
+  };
+  assert.throws(() => createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer,
+    finalTransactionEvidence:modified,
+    ...substitutedObservation
+  }), /transaction id does not match the finalized PSBT body/i);
+});
+
+test('Bitcoin Signet rejects a rehashed final witness that differs from approved signer evidence', () => {
+  const { finalizer, finalTransaction } = finalizerArtifacts();
+  const modified = { ...finalTransaction };
+  const raw = Buffer.from(modified.rawTransactionHex, 'hex');
+  const script = Buffer.from(descriptor.witnessScriptHex, 'hex');
+  const scriptOffset = raw.indexOf(script);
+  assert.notEqual(scriptOffset, -1, 'finalized transaction contains the approved recovery witness script');
+  raw[scriptOffset] ^= 0x01;
+  modified.rawTransactionHex = raw.toString('hex');
+  modified.rawTransactionSha256 = createHash('sha256').update(raw).digest('hex');
+  const firstHash = createHash('sha256').update(raw).digest();
+  modified.wtxid = Buffer.from(createHash('sha256').update(firstHash).digest()).reverse().toString('hex');
+  const { sha256:_old, ...core } = modified;
+  modified.sha256 = createHash('sha256').update(JSON.stringify(stable(core))).digest('hex');
+  assert.throws(() => createBitcoinSignetObservationEvidence({
+    finalizerEvidence:finalizer,
+    finalTransactionEvidence:modified,
+    ...observations(finalizer)
+  }), /witness does not match the approved PSBT signer evidence/i);
+});
+
 test('Bitcoin Signet requires identical tip and inclusion hashes for one-confirmation observations', () => {
   const { finalizer, finalTransaction } = finalizerArtifacts();
   const input = observations(finalizer, {

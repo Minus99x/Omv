@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createHash } from 'node:crypto';
 import { parseBitcoinIsoTimestamp } from './timestamp.js';
+import { assertBitcoinFinalTransactionEvidenceBinding } from './transaction-finalizer.js';
 
 function stable(value) {
   if (Array.isArray(value)) return value.map(stable);
@@ -83,6 +84,7 @@ export function createBitcoinSignetObservationEvidence({
   if (sha256Hex(finalTransactionSha256, 'finalTransactionEvidence.sha256') !== digest(finalTransactionCore)) {
     throw new Error('Bitcoin final-transaction evidence digest is invalid.');
   }
+  assertBitcoinFinalTransactionEvidenceBinding({ evidence:finalTransactionEvidence, finalizerEvidence });
   if (finalTransactionEvidence.finalizerEvidenceSha256 !== finalizerEvidence.sha256) {
     throw new Error('Bitcoin final transaction is bound to another finalizer artifact.');
   }
