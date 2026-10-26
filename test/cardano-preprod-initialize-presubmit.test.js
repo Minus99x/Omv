@@ -408,3 +408,87 @@ test('Cardano presubmit does not accept coerced output-reference identity',()=>{
   assert.throws(()=>createCardanoPreprodInitializePreSubmitEvidence({...input,recoveryConfig,currentQueriedUtxo:utxos}),/invalid output reference/);
  }
 });
+
+import { prepareCardanoPreprodInitializeValidationPackage, verifyCardanoPreprodInitializeValidationPackage } from '../src/chains/cardano/preprod-initialize-validation-package.js';
+
+test('initialize preparation integrates owner witness, fresh ledger and independent validator input', () => {
+  const inputs = {...fixture(), recoveryConfig};
+  const pack = prepareCardanoPreprodInitializeValidationPackage(inputs);
+  assert.equal(pack.phaseOneInput.signedTransaction.cborHex, inputs.signedTransactionCborHex);
+  assert.equal(pack.phaseOneInput.sources.preSubmitEvidenceSha256,pack.preSubmitEvidence.preSubmitSha256);
+  assert.equal(pack.phaseOneInput.sources.witnessEvidenceSha256,pack.witnessEvidence.witnessEvidenceSha256);
+  assert.equal(pack.preSubmitEvidence.witnessEvidenceSha256,pack.witnessEvidence.witnessEvidenceSha256);
+  assert.equal(pack.completePhaseOneValidated,false);
+  assert.equal(pack.transactionSubmissionAuthorized,false);
+  assert.equal(verifyCardanoPreprodInitializeValidationPackage({package:pack,inputs}).valid,true);
+});
+
+test('initialize package owns immutable ledger snapshots independent of caller mutation', () => {
+  const inputs = {...fixture(), recoveryConfig};
+  const pack = prepareCardanoPreprodInitializeValidationPackage(inputs);
+  const original = JSON.stringify(pack);
+  inputs.currentQueriedUtxo[0].value.ada.lovelace = '1';
+  inputs.currentProtocolSnapshot.parameters.maxValueSize = 1;
+  assert.equal(JSON.stringify(pack),original);
+  assert.throws(() => { pack.phaseOneInput.ledgerContext.utxos.seed.value.ada.lovelace = '1'; },TypeError);
+  assert.throws(() => { pack.preSubmitEvidence.currentProtocolSnapshot.parameters.maxValueSize = 1; },TypeError);
+});
+
+test('initialize package rejects changed signed bytes, spent inputs, expired validity and rewritten receipt', () => {
+  const inputs = {...fixture(), recoveryConfig};
+  const pack = prepareCardanoPreprodInitializeValidationPackage(inputs);
+  const badBytes = {...inputs,signedTransactionCborHex:'00'};
+  assert.throws(() => prepareCardanoPreprodInitializeValidationPackage(badBytes),/wallet witness/);
+  assert.throws(() => prepareCardanoPreprodInitializeValidationPackage({...inputs,currentQueriedUtxo:[]}),/current ledger/);
+  const expired = {...inputs,currentTip:{...inputs.currentTip,slot:inputs.unsignedCandidate.validity.upperSlot}};
+  expired.currentProtocolSnapshot = currentProtocolSnapshotAt(expired.currentTip);
+  expired.currentParameters = normalizeCardanoProtocolParameterSnapshot(expired.currentProtocolSnapshot);
+  assert.throws(() => prepareCardanoPreprodInitializeValidationPackage(expired));
+  assert.equal(verifyCardanoPreprodInitializeValidationPackage({package:{...pack,transactionSubmissionAuthorized:true},inputs}).valid,false);
+});
+
+test('initialize package refuses rollback and same-slot fork relative to bound UTxO', () => {
+  const inputs = {...fixture(), recoveryConfig};
+  for (const currentTip of [
+    {...inputs.currentTip,slot:inputs.utxoBindingEvidence.stableTip.slot-1},
+    {hash:'ef'.repeat(32),slot:inputs.utxoBindingEvidence.stableTip.slot}
+  ]) assert.throws(() => prepareCardanoPreprodInitializeValidationPackage({...inputs,currentTip}),/precede or contradict/);
+});
+
+test('offline initialize package CLI writes a reusable validator package and preserves existing receipts', async () => {
+  const {mkdtemp,writeFile,readFile,rm} = await import('node:fs/promises');
+  const {tmpdir} = await import('node:os');
+  const {join} = await import('node:path');
+  const {spawnSync} = await import('node:child_process');
+  const dir = await mkdtemp(join(tmpdir(),'ov-initialize-package-'));
+  try {
+    const input = join(dir,'inputs.json'), output = join(dir,'package.json');
+    const raw = {...fixture(),recoveryConfig};
+    delete raw.currentParameters;
+    const inputs = JSON.parse(JSON.stringify(raw));
+    await writeFile(input,JSON.stringify(inputs));
+    const script = new URL('../scripts/prepare-cardano-preprod-initialize-validation-package.js',import.meta.url);
+    const run = () => spawnSync(process.execPath,[script.pathname,'--input',input,'--output',output],{encoding:'utf8'});
+    const success = run();
+    assert.equal(success.status,0,success.stderr);
+    const saved = await readFile(output,'utf8');
+    const result = JSON.parse(saved);
+    assert.equal(verifyCardanoPreprodInitializeValidationPackage({package:result,inputs}).valid,true);
+    assert.equal(JSON.parse(success.stdout).packageSha256,result.packageSha256);
+    assert.equal(run().status,1);
+    assert.equal(await readFile(output,'utf8'),saved);
+    await rm(output);
+    await writeFile(input,JSON.stringify({...inputs,currentQueriedUtxo:[]}));
+    assert.equal(run().status,1);
+    await assert.rejects(readFile(output),{code:'ENOENT'});
+  } finally { await rm(dir,{recursive:true,force:true}); }
+});
+
+test('initialize package derives protocol integers from JSON snapshot and rejects conflicting overrides', () => {
+  const inputs = {...fixture(),recoveryConfig};
+  const pack = prepareCardanoPreprodInitializeValidationPackage(inputs);
+  const jsonInputs = {...inputs};
+  delete jsonInputs.currentParameters;
+  assert.deepEqual(prepareCardanoPreprodInitializeValidationPackage(JSON.parse(JSON.stringify(jsonInputs))),pack);
+  assert.throws(() => prepareCardanoPreprodInitializeValidationPackage({...inputs,currentParameters:{...inputs.currentParameters,maxTxSize:1}}),/do not match/);
+});
