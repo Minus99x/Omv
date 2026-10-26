@@ -17,12 +17,13 @@ test('deterministic EVM deployment verifier masks immutable ranges and checks po
 
 test('EVM native and ERC20 proof runners can execute against a custody-free driver', async () => {
   const state = { balance: 0n, recovered: false, approvals: new Set(), rescue: 0n, tokenVault: 100n, tokenRescue: 5n };
+  const rescueReads = [];
   const driver = {
     async readState() { return { balance: state.balance.toString(), recovered: state.recovered }; },
     async depositNative({ amount }) { state.balance += BigInt(amount); return { txHash: '0xdeposit' }; },
     async approveRecovery({ actor }) { state.approvals.add(actor); return { txHash: `0x${actor}` }; },
     async executeRecovery() { if (state.approvals.size < 2) throw new Error('threshold'); state.recovered = true; state.rescue += state.balance; state.balance = 0n; return { txHash: '0xexecute' }; },
-    async readNativeBalance() { return state.rescue.toString(); },
+    async readNativeBalance(address) { rescueReads.push(address); return state.rescue.toString(); },
     async readTokenBalance(_token, address) { return address === 'vault' ? state.tokenVault.toString() : state.tokenRescue.toString(); },
     async recoverErc20() { if (!state.recovered) throw new Error('not recovered'); state.tokenRescue += state.tokenVault; state.tokenVault = 0n; return { txHash: '0xtoken' }; }
   };
@@ -32,6 +33,7 @@ test('EVM native and ERC20 proof runners can execute against a custody-free driv
   assert.equal(native.rescueAfter, '1000');
   assert.equal(native.rescueBalance, '1000');
   assert.equal(native.rescueDeltaMatches, true);
+  assert.deepEqual(rescueReads, ['rescue', 'rescue']);
   const token = await runEvmErc20RecoveryProof({ driver, config: { contractAddress: 'vault', tokenAddress: 'token', rescueDestination: 'rescue', executor: 'owner' } });
   assert.equal(token.success, true);
   assert.equal(token.rescueAfter, '105');
@@ -51,6 +53,7 @@ test('EVM native proof runner rejects unreachable or duplicate approval policy b
   const calls = [];
   const driver = {
     async readState() { calls.push('readState'); return { balance:'0', recovered:false }; },
+    async readNativeBalance() { calls.push('readNativeBalance'); return '0'; },
     async depositNative() { calls.push('depositNative'); },
     async approveRecovery() { calls.push('approveRecovery'); },
     async executeRecovery() { calls.push('executeRecovery'); }
@@ -70,6 +73,46 @@ test('EVM native proof runner rejects unreachable or duplicate approval policy b
     /contacts must be unique/i
   );
   assert.equal(calls.length, 0);
+});
+
+test('EVM native proof runner requires a rescue-balance reader before any recovery action', async () => {
+  const calls = [];
+  const driver = {
+    async readState() { calls.push('readState'); return { balance:'0', recovered:false }; },
+    async depositNative() { calls.push('depositNative'); },
+    async approveRecovery() { calls.push('approveRecovery'); },
+    async executeRecovery() { calls.push('executeRecovery'); }
+  };
+  await assert.rejects(
+    () => runEvmNativeRecoveryProof({
+      driver,
+      config:{ contractAddress:'vault', owner:'owner', contacts:['a'], threshold:1, rescueDestination:'rescue', nativeAmount:'1' }
+    }),
+    /requires readNativeBalance/
+  );
+  assert.deepEqual(calls, []);
+});
+
+test('EVM native proof runner rejects coercible amounts without invoking conversions or the driver', async () => {
+  let coercions = 0;
+  const amount = { toString() { coercions++; return '100'; } };
+  const calls = [];
+  const driver = {
+    async readState() { calls.push('readState'); return { balance:'0', recovered:false }; },
+    async readNativeBalance() { calls.push('readNativeBalance'); return '0'; },
+    async depositNative() { calls.push('depositNative'); },
+    async approveRecovery() { calls.push('approveRecovery'); },
+    async executeRecovery() { calls.push('executeRecovery'); }
+  };
+  await assert.rejects(
+    () => runEvmNativeRecoveryProof({
+      driver,
+      config:{ contractAddress:'vault', owner:'owner', contacts:['a'], threshold:1, rescueDestination:'rescue', nativeAmount:amount }
+    }),
+    /exact non-negative integer primitive/
+  );
+  assert.equal(coercions, 0);
+  assert.deepEqual(calls, []);
 });
 
 test('EVM native proof runner fails success when rescue delta does not match deposited value', async () => {
@@ -94,4 +137,25 @@ test('EVM native proof runner fails success when rescue delta does not match dep
   });
   assert.equal(result.rescueDeltaMatches, false);
   assert.equal(result.success, false);
+});
+
+test('EVM native proof runner requires exact post-recovery vault and rescue balances', async () => {
+  let stateRead = 0;
+  const driver = {
+    async readState() {
+      stateRead++;
+      return stateRead === 1 ? { balance:'0', recovered:false } : { recovered:true };
+    },
+    async readNativeBalance() { return stateRead === 1 ? '0' : '100'; },
+    async depositNative() {},
+    async approveRecovery() {},
+    async executeRecovery() {}
+  };
+  await assert.rejects(
+    () => runEvmNativeRecoveryProof({
+      driver,
+      config:{ contractAddress:'vault', owner:'owner', contacts:['a'], threshold:1, rescueDestination:'rescue', nativeAmount:'100' }
+    }),
+    /Vault balance after recovery must be an exact non-negative integer primitive/
+  );
 });

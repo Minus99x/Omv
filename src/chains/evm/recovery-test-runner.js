@@ -2,6 +2,25 @@ function requireMethod(driver, name) {
   if (typeof driver?.[name] !== 'function') throw new TypeError(`EVM recovery test driver requires ${name}().`);
 }
 
+const MAX_UINT256 = (1n << 256n) - 1n;
+
+function nativeAmount(value, label, { positive = false } = {}) {
+  let amount;
+  if (typeof value === 'bigint') {
+    amount = value;
+  } else if (typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value)) {
+    amount = BigInt(value);
+  } else if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0) {
+    amount = BigInt(value);
+  } else {
+    throw new TypeError(`${label} must be an exact non-negative integer primitive.`);
+  }
+  if (amount < 0n || amount > MAX_UINT256 || (positive && amount === 0n)) {
+    throw new RangeError(`${label} must be ${positive ? 'a positive' : 'a'} uint256 amount.`);
+  }
+  return amount;
+}
+
 async function action(actions, operation, fn) {
   const startedAt = new Date().toISOString();
   try {
@@ -15,42 +34,42 @@ async function action(actions, operation, fn) {
 }
 
 export async function runEvmNativeRecoveryProof({ driver, config }) {
-  for (const method of ['readState', 'depositNative', 'approveRecovery', 'executeRecovery']) requireMethod(driver, method);
+  for (const method of ['readState', 'readNativeBalance', 'depositNative', 'approveRecovery', 'executeRecovery']) requireMethod(driver, method);
   if (!config?.contractAddress || !config?.owner || !Array.isArray(config?.contacts) || !config.contacts.length || !config?.rescueDestination) {
     throw new TypeError('Native recovery proof requires contract, owner, contacts and rescue destination.');
   }
   if (new Set(config.contacts).size !== config.contacts.length) throw new TypeError('Native recovery proof contacts must be unique.');
   if (!Number.isInteger(config.threshold) || config.threshold < 1 || config.threshold > config.contacts.length) throw new TypeError('Native recovery proof threshold must be reachable.');
-  if (!/^\d+$/.test(String(config.nativeAmount ?? '')) || BigInt(config.nativeAmount) <= 0n) throw new TypeError('Native recovery proof amount must be a positive integer.');
+  const expectedAmount = nativeAmount(config.nativeAmount, 'Native recovery proof amount', { positive: true });
   const actions = [];
   const before = await action(actions, 'state.before', () => driver.readState(config.contractAddress));
-  const rescueBefore = typeof driver.readNativeBalance === 'function'
-    ? await action(actions, 'rescue.balance.before', () => driver.readNativeBalance(config.rescueDestination))
-    : null;
+  const rescueBefore = nativeAmount(
+    await action(actions, 'rescue.balance.before', () => driver.readNativeBalance(config.rescueDestination)),
+    'Rescue destination balance before recovery'
+  );
   await action(actions, 'deposit.native', () => driver.depositNative({ contractAddress: config.contractAddress, actor: config.owner, amount: config.nativeAmount }));
   for (const contact of config.contacts.slice(0, config.threshold)) {
     await action(actions, 'recovery.approve', () => driver.approveRecovery({ contractAddress: config.contractAddress, actor: contact }));
   }
   await action(actions, 'recovery.execute', () => driver.executeRecovery({ contractAddress: config.contractAddress, actor: config.executor ?? config.owner }));
   const after = await action(actions, 'state.after', () => driver.readState(config.contractAddress));
-  const rescueAfter = typeof driver.readNativeBalance === 'function'
-    ? await action(actions, 'rescue.balance.after', () => driver.readNativeBalance(config.rescueDestination))
-    : null;
-  const expectedAmount = BigInt(config.nativeAmount);
-  const rescueDeltaMatches = rescueBefore == null || rescueAfter == null
-    ? null
-    : BigInt(rescueAfter) - BigInt(rescueBefore) === expectedAmount;
+  const rescueAfter = nativeAmount(
+    await action(actions, 'rescue.balance.after', () => driver.readNativeBalance(config.rescueDestination)),
+    'Rescue destination balance after recovery'
+  );
+  const rescueDeltaMatches = rescueAfter - rescueBefore === expectedAmount;
+  const remainingVaultAmount = nativeAmount(after?.balance, 'Vault balance after recovery');
   const success = after?.recovered === true
-    && BigInt(after?.balance ?? 0) === 0n
-    && rescueDeltaMatches !== false;
+    && remainingVaultAmount === 0n
+    && rescueDeltaMatches;
   return Object.freeze({
     kind: 'evm-native-recovery-proof',
     success,
     before: structuredClone(before),
     after: structuredClone(after),
-    rescueBefore: structuredClone(rescueBefore),
-    rescueAfter: structuredClone(rescueAfter),
-    rescueBalance: structuredClone(rescueAfter),
+    rescueBefore: rescueBefore.toString(),
+    rescueAfter: rescueAfter.toString(),
+    rescueBalance: rescueAfter.toString(),
     rescueDeltaMatches,
     actions: Object.freeze(actions)
   });
