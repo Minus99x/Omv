@@ -80,3 +80,33 @@ export function verifyCardanoPreprodInitializeValidationPackage({ package: suppl
       completePhaseOneValidated: false, transactionSubmissionAuthorized: false });
   }
 }
+
+// Replay the freshly reproduced package, never an unchecked saved receipt.
+// Scalus uses a disposable local ledger with its bundled Preprod parameters;
+// its verdict is not a current public-ledger phase-one certificate.
+export async function replayCardanoPreprodInitializeValidationPackage(inputs, { scalusApi = null } = {}) {
+  const prepared = prepareCardanoPreprodInitializeValidationPackage(inputs);
+  const { runCardanoScalusInitializeTrial } = await import('./scalus-local-validation.js');
+  const trial = await runCardanoScalusInitializeTrial({
+    signedTransactionCborHex: prepared.phaseOneInput.signedTransaction.cborHex,
+    preSubmitEvidence: prepared.preSubmitEvidence,
+    simulatedSlot: prepared.phaseOneInput.ledgerContext.tip.slot,
+    scalusApi
+  });
+  if (trial.acceptedByEmulator && trial.localTransactionHash !== prepared.phaseOneInput.signedTransaction.bodyHash) {
+    throw new Error('Local validator transaction hash differs from the exact prepared body.');
+  }
+  const core = {
+    schema: 'omegavault.cardano.preprod-initialize-package-replay.v1',
+    packageSha256: prepared.packageSha256,
+    validationPackage: prepared,
+    validatorSource: scalusApi == null ? 'installed-scalus' : 'injected-test-api',
+    parameterContext: 'scalus-bundled-preprod-parameters',
+    trial,
+    completeCurrentPreprodPhaseOneValidated: false,
+    transactionSubmissionAuthorized: false,
+    transactionSubmissionPerformed: false,
+    supportClaimAuthorized: false
+  };
+  return freezeTree({ ...core, replaySha256: hashCardanoEvidence(core) });
+}

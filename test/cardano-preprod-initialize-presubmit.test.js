@@ -478,6 +478,15 @@ test('offline initialize package CLI writes a reusable validator package and pre
     assert.equal(run().status,1);
     assert.equal(await readFile(output,'utf8'),saved);
     await rm(output);
+    if (process.env.OMEGAVAULT_TEST_REAL_SCALUS === '1') {
+      const replay = spawnSync(process.execPath,[script.pathname,'--input',input,'--output',output,'--local-replay'],{encoding:'utf8'});
+      assert.equal(replay.status,0,replay.stderr);
+      const savedReplay = JSON.parse(await readFile(output,'utf8'));
+      assert.equal(savedReplay.validatorSource,'installed-scalus');
+      assert.equal(savedReplay.trial.acceptedByEmulator,true);
+      assert.equal(savedReplay.transactionSubmissionPerformed,false);
+      await rm(output);
+    }
     await writeFile(input,JSON.stringify({...inputs,currentQueriedUtxo:[]}));
     assert.equal(run().status,1);
     await assert.rejects(readFile(output),{code:'ENOENT'});
@@ -492,3 +501,55 @@ test('initialize package derives protocol integers from JSON snapshot and reject
   assert.deepEqual(prepareCardanoPreprodInitializeValidationPackage(JSON.parse(JSON.stringify(jsonInputs))),pack);
   assert.throws(() => prepareCardanoPreprodInitializeValidationPackage({...inputs,currentParameters:{...inputs.currentParameters,maxTxSize:1}}),/do not match/);
 });
+
+import { replayCardanoPreprodInitializeValidationPackage } from '../src/chains/cardano/preprod-initialize-validation-package.js';
+
+function replayApi(result, captured) {
+  return {
+    Value: class { constructor(coin) { this.coin = coin; } },
+    Utxo: class { constructor(txHash,index,address,value) { Object.assign(this,{txHash,index,address,value}); } },
+    CardanoInfo: {preprod: () => ({fixture:true})},
+    Emulator: {create: (_info, context) => {
+      captured.context = context;
+      return {submitTx: bytes => { captured.bytes = Buffer.from(bytes).toString('hex'); return result; }};
+    }}
+  };
+}
+
+test('package replay sends exact signed bytes and both captured UTxOs to a disposable local ledger', async () => {
+  const inputs = {...fixture(), recoveryConfig};
+  const captured = {};
+  const result = await replayCardanoPreprodInitializeValidationPackage(inputs, {scalusApi:replayApi({isSuccess:true,txHash:inputs.unsignedCandidate.transaction.bodyHash},captured)});
+  assert.equal(captured.bytes,inputs.signedTransactionCborHex);
+  assert.equal(captured.context.slot,inputs.currentTip.slot);
+  assert.equal(captured.context.utxos.length,2);
+  assert.equal(result.validatorSource,'injected-test-api');
+  assert.equal(result.completeCurrentPreprodPhaseOneValidated,false);
+  assert.equal(result.transactionSubmissionPerformed,false);
+  assert.equal(result.trial.acceptedByEmulator,true);
+  assert.equal(result.packageSha256,result.validationPackage.packageSha256);
+});
+
+test('package replay preserves local rejection and rejects a mismatched accepted body hash', async () => {
+  const inputs = {...fixture(), recoveryConfig};
+  const result = await replayCardanoPreprodInitializeValidationPackage(inputs,{scalusApi:replayApi({isSuccess:false,errorRule:'FeeTooSmall',error:'fee rejected'}, {})});
+  assert.equal(result.trial.acceptedByEmulator,false);
+  assert.equal(result.trial.rejectedByRule,'FeeTooSmall');
+  await assert.rejects(replayCardanoPreprodInitializeValidationPackage(inputs,{scalusApi:replayApi({isSuccess:true,txHash:'ff'.repeat(32)}, {})}),/differs from the exact prepared body/);
+  const captured = {};
+  await assert.rejects(replayCardanoPreprodInitializeValidationPackage({...inputs,currentQueriedUtxo:[]},{scalusApi:replayApi({isSuccess:true},captured)}));
+  assert.equal(captured.context,undefined);
+});
+
+if (process.env.OMEGAVAULT_TEST_REAL_SCALUS === '1') {
+  test('integrated package replay executes installed Scalus on the signed initialize fixture', async () => {
+    const result = await replayCardanoPreprodInitializeValidationPackage({...fixture(),recoveryConfig});
+    assert.equal(result.validatorSource,'installed-scalus');
+    assert.equal(result.trial.acceptedByEmulator,true,JSON.stringify(result.trial));
+    assert.equal(result.completeCurrentPreprodPhaseOneValidated,false);
+    assert.equal(result.transactionSubmissionPerformed,false);
+    if (result.trial.acceptedByEmulator) assert.equal(result.trial.localTransactionHash,result.validationPackage.phaseOneInput.signedTransaction.bodyHash);
+    else assert.equal(typeof result.trial.rejectedByRule,'string');
+    console.log('REAL_SCALUS_RESULT',JSON.stringify(result.trial));
+  });
+}
