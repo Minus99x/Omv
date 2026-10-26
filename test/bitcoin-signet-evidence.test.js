@@ -575,6 +575,12 @@ test('live Signet runner refuses mixed-tip, depth-drift and in-flight chain reor
   reads=0;
   await assert.rejects(()=>attempt({
     ...base,async readChainTip(){
+      return ++reads===1?chainTip:{...chainTip,networkRef:'bitcoin:mainnet'};
+    }
+  }),/post-read chain tip.*Signet/i);
+  reads=0;
+  await assert.rejects(()=>attempt({
+    ...base,async readChainTip(){
       return ++reads===1?chainTip:{...chainTip,observedAt:'2026-10-03T23:59:59Z'};
     }
   }),/timestamp regressed/);

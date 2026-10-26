@@ -278,6 +278,9 @@ export async function runBitcoinSignetObservationProof({
       throw new Error('Bitcoin Signet UTXO confirmation depth differs from the observed chain.');
     }
     const postReadTip = await driver.readChainTip({ networkRef:'bitcoin:signet' });
+    if (postReadTip?.networkRef !== 'bitcoin:signet') {
+      throw new Error('Bitcoin Signet post-read chain tip is not bound to Signet.');
+    }
     if (txid(postReadTip?.blockHash, 'postReadTip.blockHash') !==
         txid(chainTip.blockHash, 'chainTip.blockHash') ||
         integer(postReadTip?.blockHeight, 'postReadTip.blockHeight') !==
