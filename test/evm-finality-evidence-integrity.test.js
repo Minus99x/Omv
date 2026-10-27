@@ -118,15 +118,38 @@ test('Sepolia confirmation count remains chain-policy-bound with canonical recei
   }), /fewer than 2/);
 });
 
-test('finality verifier rejects evidence bound to another recovery proof or recovery kind', () => {
+test('finality verifier rejects evidence bound to another network, recovery proof, or recovery kind', () => {
   const a = args();
   const evidence = createEvmBlockFinalityEvidence(a);
-  assert.equal(evmFinalityMatchesProof(evidence, { ...a.proof, transactionRef: WRONG_HASH }, {
-    networkId: a.networkId, kind: 'native-recovery'
-  }), false);
+  for (const proof of [
+    { ...a.proof, transactionRef: WRONG_HASH },
+    { ...a.proof, networkRef: 'ethereum:sepolia' },
+    { ...a.proof, chainId: 'ethereum' }
+  ]) {
+    assert.equal(evmFinalityMatchesProof(evidence, proof, {
+      networkId: a.networkId, kind: 'native-recovery'
+    }), false);
+  }
   assert.equal(evmFinalityMatchesProof(evidence, a.proof, {
     networkId: a.networkId, kind: 'erc20-recovery'
   }), false);
+});
+
+test('finality verifier rejects coercible proof transaction identities without invoking hooks', () => {
+  const a = args();
+  const evidence = createEvmBlockFinalityEvidence(a);
+  let coercions = 0;
+  const proof = {
+    ...a.proof,
+    transactionRef: {
+      toString() { coercions += 1; return TX; },
+      valueOf() { coercions += 1; return TX; }
+    }
+  };
+  assert.equal(evmFinalityMatchesProof(evidence, proof, {
+    networkId: a.networkId, kind: 'native-recovery'
+  }), false);
+  assert.equal(coercions, 0);
 });
 
 test('XDC finality creation and verification reject noncanonical UTC observation timestamps', () => {

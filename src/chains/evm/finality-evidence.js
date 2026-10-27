@@ -172,6 +172,8 @@ export function createEvmBlockFinalityEvidence({
 export function evmFinalityMatchesProof(evidence, proof, { networkId, kind }) {
   const network = getNetwork(networkId);
   if (!network || !evidence || !proof || proof?.success !== true) return false;
+  if (proof.networkRef !== network.id || proof.chainId !== network.chainId) return false;
+  if (typeof proof.transactionRef !== 'string' || !HASH_32.test(proof.transactionRef)) return false;
   if (proof?.binding?.kind !== kind) return false;
   if (typeof proof.bindingSha256 !== 'string' ||
       !/^[0-9a-f]{64}$/i.test(proof.bindingSha256) ||
@@ -210,7 +212,7 @@ export function evmFinalityMatchesProof(evidence, proof, { networkId, kind }) {
           evidence.finality?.requiredConfirmations !== required) return false;
     }
   } catch { return false; }
-  if (evidence.transactionRef !== String(proof.transactionRef ?? '').toLowerCase()) return false;
+  if (evidence.transactionRef !== proof.transactionRef.toLowerCase()) return false;
   if (evidence.proofBindingSha256 !== proof.bindingSha256) return false;
   if (evidence.proofContextSha256 !== proof.binding?.contextSha256) return false;
   if (evidence.deploymentVerificationSha256 !== proof.binding?.deploymentVerificationSha256) return false;
