@@ -1,4 +1,4 @@
-import { StrKey } from '@stellar/stellar-sdk';
+import { Networks, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
 import { createStellarTestnetHorizonHttpTransport } from './horizon-http-transport.js';
 
 const TESTNET_HORIZON_URL = 'https://horizon-testnet.stellar.org';
@@ -271,6 +271,22 @@ function createHorizonDriver({
     },
 
     async submitEnvelope({ transactionXdr, expectedTransactionHashHex }) {
+      // Verify the exact Testnet transaction body before the transport is called.
+      // Horizon's returned hash alone does not establish that the caller supplied
+      // the matching XDR; signatures are separately checked by the proof manifest.
+      const expectedHash = hashHex(expectedTransactionHashHex, 'expectedTransactionHashHex');
+      if (typeof transactionXdr !== 'string' || !transactionXdr) {
+        throw new TypeError('Stellar Testnet submission requires envelope XDR.');
+      }
+      let envelopeHash;
+      try {
+        envelopeHash = TransactionBuilder.fromXdr(transactionXdr, Networks.TESTNET).hash().toString('hex');
+      } catch {
+        throw new TypeError('Stellar Testnet submission requires valid envelope XDR.');
+      }
+      if (envelopeHash !== expectedHash) {
+        throw new Error('Stellar Testnet envelope XDR hash does not match the expected transaction hash.');
+      }
       try {
         const response = await transport.submitTransactionXdr(transactionXdr);
         return normalizeHorizonSubmissionSuccess({ response, expectedTransactionHashHex });

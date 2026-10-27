@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Keypair, StrKey } from '@stellar/stellar-sdk';
+import { Account, Asset, Keypair, Networks, Operation, StrKey, TransactionBuilder } from '@stellar/stellar-sdk';
 import {
   createInjectedStellarTestnetHorizonDriver,
   createStellarTestnetHorizonProofDriver,
@@ -14,6 +14,16 @@ import {
 const KP = n => Keypair.fromRawEd25519Seed(new Uint8Array(32).fill(n));
 const G = n => KP(n).publicKey();
 const T = byte => StrKey.encodePreAuthTx(Uint8Array.from({ length:32 }, () => byte));
+
+function envelopeFixture(amount = '1') {
+  const transaction = new TransactionBuilder(new Account(G(1), '1000'), {
+    fee:'100', networkPassphrase:Networks.TESTNET
+  }).addOperation(Operation.payment({
+    destination:G(2), asset:Asset.native(), amount
+  })).setTimeout(0).build();
+  return Object.freeze({transactionXdr:transaction.toXdr(),hash:transaction.hash().toString('hex')});
+}
+
 
 function accountResponse(overrides = {}) {
   return {
@@ -192,7 +202,7 @@ test('Horizon proof normalization rejects malformed hashes, timestamps, ledgers 
 });
 
 test('injected Horizon proof driver is testnet-only and performs no signing', async () => {
-  const hash='aa'.repeat(32);
+  const {transactionXdr,hash}=envelopeFixture();
   const ledgerHash='bb'.repeat(32);
   const submitted=[];
   const transport={
@@ -231,9 +241,9 @@ test('injected Horizon proof driver is testnet-only and performs no signing', as
   const snapshot=await driver.readAccountSnapshot(G(1));
   assert.equal(snapshot.masterWeight, 1);
   assert.equal(await driver.readBalanceUnits({ account:G(1), asset:{ type:'native' } }), '1000000000');
-  const submit=await driver.submitEnvelope({ transactionXdr:'AAAA', expectedTransactionHashHex:hash });
+  const submit=await driver.submitEnvelope({ transactionXdr, expectedTransactionHashHex:hash });
   assert.equal(submit.resultCode, 'txSUCCESS');
-  assert.deepEqual(submitted, ['AAAA']);
+  assert.deepEqual(submitted, [transactionXdr]);
   const eligible=await driver.waitUntilEligible({ sourceAccount:G(1) });
   assert.equal(eligible.eligible, true);
   const finality=await driver.observeFinality({ transactionHashHex:hash, ledger:'501' });
@@ -246,7 +256,7 @@ test('injected Horizon proof driver is testnet-only and performs no signing', as
 });
 
 test('injected Horizon proof driver normalizes tx_bad_minseq_age_or_gap transport rejection without treating it as inclusion', async () => {
-  const hash='aa'.repeat(32);
+  const {transactionXdr,hash}=envelopeFixture();
   const error={ response:{ data:{ extras:{ result_codes:{ transaction:'tx_bad_minseq_age_or_gap' } } } } };
   const transport={
     async loadAccount(){ return accountResponse(); },
@@ -259,7 +269,7 @@ test('injected Horizon proof driver normalizes tx_bad_minseq_age_or_gap transpor
     transport,
     clock:() => '2026-10-03T00:00:00Z'
   });
-  const result=await driver.submitEnvelope({ transactionXdr:'AAAA', expectedTransactionHashHex:hash });
+  const result=await driver.submitEnvelope({ transactionXdr, expectedTransactionHashHex:hash });
   assert.equal(result.resultCode, 'tx_bad_minseq_age_or_gap');
   assert.equal(result.includedInLedger, false);
 });
@@ -296,8 +306,9 @@ test('indeterminate Horizon timeout cannot be normalized into a confirmed recove
     async waitUntilEligible(){ throw new Error('not called'); }
   };
   const driver=createInjectedStellarTestnetHorizonDriver({transport});
+  const {transactionXdr,hash}=envelopeFixture();
   await assert.rejects(
-    driver.submitEnvelope({transactionXdr:'signed-envelope-fixture',expectedTransactionHashHex:'aa'.repeat(32)}),
+    driver.submitEnvelope({transactionXdr,expectedTransactionHashHex:hash}),
     error => error === timeout && error.code === 'STELLAR_HORIZON_TIMEOUT' &&
       /result is unconfirmed/.test(error.message)
   );
@@ -562,9 +573,10 @@ test('Horizon proof factory preserves unconfirmed submission timeout without ret
       return new Promise(() => {});
     }
   });
+  const {transactionXdr,hash}=envelopeFixture();
   await assert.rejects(driver.submitEnvelope({
-    transactionXdr: 'offline-fixture',
-    expectedTransactionHashHex: 'aa'.repeat(32)
+    transactionXdr,
+    expectedTransactionHashHex: hash
   }), error => {
     assert.equal(error.code, 'STELLAR_HORIZON_TIMEOUT');
     assert.match(error.message, /unconfirmed/);
@@ -722,4 +734,36 @@ test('Horizon sequences and ledger identifiers reject noncanonical zero-padded e
   }
   const valid=normalizeHorizonSubmissionSuccess({response:{hash,successful:true,created_at:'2026-10-03T00:04:00Z',ledger:501}});
   assert.equal(valid.ledger,'501');
+});
+
+test('Horizon submission rejects swapped, invalid and wrong-network XDR before any POST', async () => {
+  const good=envelopeFixture(), swapped=envelopeFixture('2');
+  let submissions=0;
+  const driver=createInjectedStellarTestnetHorizonDriver({transport:{
+    async loadAccount(){ throw new Error('not called'); },
+    async submitTransactionXdr(){ submissions++; return {
+      hash:good.hash, successful:true, created_at:'2026-10-03T00:04:00Z', ledger:501
+    }; },
+    async loadTransaction(){ throw new Error('not called'); },
+    async loadLedger(){ throw new Error('not called'); },
+    async waitUntilEligible(){ throw new Error('not called'); }
+  }});
+  await assert.rejects(driver.submitEnvelope({
+    transactionXdr:swapped.transactionXdr,expectedTransactionHashHex:good.hash
+  }), /XDR hash does not match/);
+  await assert.rejects(driver.submitEnvelope({
+    transactionXdr:good.transactionXdr,expectedTransactionHashHex:swapped.hash
+  }), /XDR hash does not match/);
+  await assert.rejects(driver.submitEnvelope({
+    transactionXdr:'not-valid-xdr',expectedTransactionHashHex:good.hash
+  }), /valid envelope XDR/);
+  await assert.rejects(driver.submitEnvelope({
+    transactionXdr:good.transactionXdr,expectedTransactionHashHex:'0'.repeat(64)
+  }), /nonzero 32-byte hexadecimal hash/);
+  assert.equal(submissions,0,'no mismatched envelope reaches Horizon transport');
+  const result=await driver.submitEnvelope({
+    transactionXdr:good.transactionXdr,expectedTransactionHashHex:good.hash
+  });
+  assert.equal(result.transactionHashHex,good.hash);
+  assert.equal(submissions,1);
 });
