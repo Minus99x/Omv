@@ -1,5 +1,5 @@
 export function parseBitcoinIsoTimestamp(value, label) {
-  const text = typeof value === 'string' ? value.trim() : '';
+  const text = typeof value === 'string' ? value : '';
   const invalid = () => new TypeError(`${label} must be a valid ISO-8601 timestamp with a real calendar date and timezone.`);
   const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,9}))?(Z|([+-])(\d{2}):(\d{2}))$/.exec(text);
   if (!parts) throw invalid();

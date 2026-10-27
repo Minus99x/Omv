@@ -722,7 +722,11 @@ test('Bitcoin Core chained receipts reject digest-rewritten invalid observation 
     transaction:tx, ...input,
     observationContext:context(1, '2026-10-07T05:20:00Z')
   });
-  for (const observedAt of ['2026-02-30T05:20:00Z', '2026-10-07T05:20:00', '2026-10-07T24:00:00Z']) {
+  for (const observedAt of [
+    '2026-02-30T05:20:00Z', '2026-10-07T05:20:00',
+    '2026-10-07T24:00:00Z', ' 2026-10-07T05:20:00Z',
+    '2026-10-07T05:20:00Z '
+  ]) {
     const forged = rehashReceipt(authentic, receipt => {
       receipt.observationContext.observedAt = observedAt;
     });

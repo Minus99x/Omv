@@ -354,7 +354,8 @@ test('Bitcoin Signet observation timestamps reject impossible calendar dates and
     '2026-13-01T00:00:00Z', '2026-10-04T24:00:00Z',
     '2026-10-04T00:00:60Z', '2026-10-04T00:00:00+24:00',
     '2026-10-04T00:00:00+00:60', 'October 4, 2026',
-    '2026-10-04T00:00:00'
+    '2026-10-04T00:00:00', ' 2026-10-04T00:00:00Z',
+    '2026-10-04T00:00:00Z '
   ];
   for (const [section, field] of [
     ['transaction', 'observedAt'], ['chainTip', 'observedAt']
