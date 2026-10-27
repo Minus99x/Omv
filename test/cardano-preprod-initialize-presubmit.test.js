@@ -508,7 +508,8 @@ function replayApi(result, captured) {
   return {
     Value: class { constructor(coin) { this.coin = coin; } },
     Utxo: class { constructor(txHash,index,address,value) { Object.assign(this,{txHash,index,address,value}); } },
-    CardanoInfo: {preprod: () => ({fixture:true})},
+    ProtocolParams: {fromBlockfrostJson: json => JSON.parse(json)},
+    CardanoInfo: {preprod: () => ({protocolParams:{toBlockfrostJson: () => JSON.stringify({cost_models_raw:{}})},withProtocolParams: params => ({params})})},
     Emulator: {create: (_info, context) => {
       captured.context = context;
       return {submitTx: bytes => { captured.bytes = Buffer.from(bytes).toString('hex'); return result; }};

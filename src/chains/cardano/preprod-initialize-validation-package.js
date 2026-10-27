@@ -91,7 +91,8 @@ export async function replayCardanoPreprodInitializeValidationPackage(inputs, { 
     signedTransactionCborHex: prepared.phaseOneInput.signedTransaction.cborHex,
     preSubmitEvidence: prepared.preSubmitEvidence,
     simulatedSlot: prepared.phaseOneInput.ledgerContext.tip.slot,
-    scalusApi
+    scalusApi,
+    useCapturedProtocolParameters: true
   });
   if (trial.acceptedByEmulator && trial.localTransactionHash !== prepared.phaseOneInput.signedTransaction.bodyHash) {
     throw new Error('Local validator transaction hash differs from the exact prepared body.');
@@ -101,7 +102,7 @@ export async function replayCardanoPreprodInitializeValidationPackage(inputs, { 
     packageSha256: prepared.packageSha256,
     validationPackage: prepared,
     validatorSource: scalusApi == null ? 'installed-scalus' : 'injected-test-api',
-    parameterContext: 'scalus-bundled-preprod-parameters',
+    parameterContext: trial.protocolContext.mode,
     trial,
     completeCurrentPreprodPhaseOneValidated: false,
     transactionSubmissionAuthorized: false,

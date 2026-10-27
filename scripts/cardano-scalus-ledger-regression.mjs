@@ -953,3 +953,28 @@ test('real Scalus denies unsigned, forged-key and expired recovery execution',()
  }
 });
 
+
+import { ProtocolParams } from 'scalus';
+import { createScalusCapturedProtocolContext } from '../src/chains/cardano/scalus-protocol-context.js';
+
+test('real Scalus applies captured fee and size overrides instead of bundled defaults', () => {
+  const snapshot = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json',import.meta.url),'utf8'));
+  snapshot.parameters.maxValueSize = 5000;
+  const api = {CardanoInfo,ProtocolParams};
+  const bytes = signedPayment();
+  const run = value => {
+    const {cardanoInfo} = createScalusCapturedProtocolContext(value,api);
+    return Emulator.create(cardanoInfo,{slot:SLOT,utxos:[new Utxo(TEST_TXID,0,address,new Value(COIN))]}).submitTx(bytes);
+  };
+  assert.equal(run(snapshot).isSuccess,true);
+  const fee = structuredClone(snapshot);
+  fee.parameters.minFeeB = '1000000';
+  const feeDenied = run(fee);
+  assert.equal(feeDenied.isSuccess,false);
+  assert.match(String(feeDenied.errorRule)+' '+String(feeDenied.error),/fee/i);
+  const size = structuredClone(snapshot);
+  size.parameters.maxTxSize = 1;
+  const sizeDenied = run(size);
+  assert.equal(sizeDenied.isSuccess,false);
+  assert.match(String(sizeDenied.errorRule)+' '+String(sizeDenied.error),/size/i);
+});

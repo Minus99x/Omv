@@ -1,3 +1,4 @@
+import { createScalusCapturedProtocolContext } from './scalus-protocol-context.js';
 import { createHash } from 'node:crypto';
 import * as Cardano from '@emurgo/cardano-serialization-lib-nodejs';
 import { blake2b } from '@noble/hashes/blake2.js';
@@ -71,7 +72,7 @@ function verifyCapturedOwnerWitness(transaction, seedAddress) {
  */
 export async function runCardanoScalusInitializeTrial({
   signedTransactionCborHex, preSubmitEvidence, simulatedSlot,
-  scalusApi = null
+  scalusApi = null, useCapturedProtocolParameters = false
 }) {
   const evidence = preSubmitEvidence;
   const capturedEvidence = evidence?.schema === 'omegavault.cardano.preprod-initialize-pre-submit-evidence.v3';
@@ -147,7 +148,9 @@ export async function runCardanoScalusInitializeTrial({
   const collateral = boundInput('collateral', snapshot, api);
   if (snapshot.utxos.seed.reference.transaction.id.toLowerCase() === snapshot.utxos.collateral.reference.transaction.id.toLowerCase() &&
       snapshot.utxos.seed.reference.index === snapshot.utxos.collateral.reference.index) fail('seed and collateral must be distinct');
-  const emulator = api.Emulator.create(api.CardanoInfo.preprod(), { utxos: [seed, collateral], slot });
+  const configured = useCapturedProtocolParameters
+    ? createScalusCapturedProtocolContext(evidence.currentProtocolSnapshot, api) : null;
+  const emulator = api.Emulator.create(configured?.cardanoInfo ?? api.CardanoInfo.preprod(), { utxos: [seed, collateral], slot });
   // This is the emulator's LOCAL ledger, not a public Preprod transaction submission.
   const result = emulator.submitTx(Buffer.from(normalizedHex, 'hex'));
   if (typeof result?.isSuccess !== 'boolean') fail('emulator did not return a recognized validation result');
@@ -157,6 +160,7 @@ export async function runCardanoScalusInitializeTrial({
     schema: 'omegavault.cardano.scalus-offline-initialize-trial.v1',
     network: 'local-emulated-preprod-rules',
     source: 'scalus-emulator',
+    ...(configured ? { protocolContext: configured.context } : {}),
     signedTransactionSha256: digestHex(normalizedHex),
     preSubmitSha256: evidence.preSubmitSha256 ?? null,
     simulatedSlot: slot,
