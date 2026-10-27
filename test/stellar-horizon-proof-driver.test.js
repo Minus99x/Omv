@@ -21,7 +21,7 @@ function envelopeFixture(amount = '1') {
   }).addOperation(Operation.payment({
     destination:G(2), asset:Asset.native(), amount
   })).setTimeout(0).build();
-  return Object.freeze({transactionXdr:transaction.toXdr(),hash:transaction.hash().toString('hex')});
+  return Object.freeze({transactionXdr:transaction.toXdr(),hash:Buffer.from(transaction.hash()).toString('hex')});
 }
 
 

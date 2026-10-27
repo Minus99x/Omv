@@ -280,7 +280,7 @@ function createHorizonDriver({
       }
       let envelopeHash;
       try {
-        envelopeHash = TransactionBuilder.fromXdr(transactionXdr, Networks.TESTNET).hash().toString('hex');
+        envelopeHash = Buffer.from(TransactionBuilder.fromXdr(transactionXdr, Networks.TESTNET).hash()).toString('hex');
       } catch {
         throw new TypeError('Stellar Testnet submission requires valid envelope XDR.');
       }
