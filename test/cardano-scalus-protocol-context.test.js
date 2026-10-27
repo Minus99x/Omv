@@ -41,3 +41,31 @@ test('captured Scalus context fails closed on unavailable API, incomplete parame
  const model=snapshot();model.parameters.plutusV3CostModel[0]++;
  assert.throws(()=>createScalusCapturedProtocolContext(model,api()),/digest mismatch/);
 });
+
+function completeCapturedSnapshot() {
+ const s=snapshot();
+ const {cardanoInfo}=createScalusCapturedProtocolContext(s,api());
+ s.capturedBlockfrostParameters={...cardanoInfo.params,epoch:s.parameters.epoch};
+ return s;
+}
+test('complete provider document is passed to Scalus without bundled fallback',()=>{
+ const s=completeCapturedSnapshot();s.capturedBlockfrostParameters.key_deposit='7654321';
+ const {cardanoInfo,context}=createScalusCapturedProtocolContext(s,api());
+ assert.equal(cardanoInfo.params.key_deposit,'7654321');
+ assert.deepEqual(cardanoInfo.params,s.capturedBlockfrostParameters);
+ assert.deepEqual(context.bundledFields,[]);
+ assert.equal(context.mode,'captured-blockfrost-document');
+ assert.equal(context.additionalFieldsIndependentlyConfirmed,false);
+});
+test('partial or conflicting provider capture fails instead of falling back to defaults',()=>{
+ for(const mutate of [
+  s=>delete s.capturedBlockfrostParameters.key_deposit,
+  s=>s.capturedBlockfrostParameters.epoch++,
+  s=>s.capturedBlockfrostParameters.min_fee_b++,
+  s=>delete s.capturedBlockfrostParameters.cost_models_raw.PlutusV1,
+  s=>delete s.capturedBlockfrostParameters.cost_models_raw.PlutusV3[0]
+ ]) {
+  const s=completeCapturedSnapshot();mutate(s);
+  assert.throws(()=>createScalusCapturedProtocolContext(s,api()));
+ }
+});

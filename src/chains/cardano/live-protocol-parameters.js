@@ -160,6 +160,25 @@ function assertAgreement(ogmios, blockfrost) {
   }
 }
 
+export function verifyCapturedBlockfrostAgreement(snapshot, document) {
+  const provider = normalizedBlockfrost(document);
+  if (provider.epoch !== snapshot.parameters.epoch) throw new Error('Captured Blockfrost epoch differs from the snapshot.');
+  assertAgreement(snapshot.parameters, provider);
+  return true;
+}
+
+function immutableCapture(value) {
+  const copy = structuredClone(value);
+  const freeze = item => {
+    if (item && typeof item === 'object') {
+      for (const child of Object.values(item)) freeze(child);
+      Object.freeze(item);
+    }
+    return item;
+  };
+  return freeze(copy);
+}
+
 function digestCostModel(model) {
   return createHash('sha256').update(JSON.stringify(model)).digest('hex');
 }
@@ -196,6 +215,7 @@ export function createCardanoPreprodLiveProtocolSnapshot({
     network: 'preprod',
     networkId: 0,
     capturedAt,
+    capturedBlockfrostParameters: immutableCapture(blockfrostParameters),
     source: Object.freeze({
       provider: 'Ogmios + Blockfrost',
       independentSourceCount: 2,

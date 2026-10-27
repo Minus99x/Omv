@@ -212,3 +212,13 @@ test('live Cardano provider integers reject oversized decimal strings before Big
     ogmiosParameters: changedOgmios, blockfrostParameters: blockfrost(), epoch: 400, tip
   }), /integer precision exceeds the supported limit/);
 });
+
+test('live protocol capture preserves complete provider document without caller aliasing', () => {
+  const provider=blockfrost();provider.key_deposit='2000000';
+  const snapshot=createCardanoPreprodLiveProtocolSnapshot({ogmiosParameters:ogmios(),blockfrostParameters:provider,epoch:400,tip,capturedAt:'2026-10-06T00:00:00.000Z'});
+  assert.deepEqual(snapshot.capturedBlockfrostParameters,provider);
+  provider.key_deposit='1';provider.cost_models_raw.PlutusV3=[0];
+  assert.equal(snapshot.capturedBlockfrostParameters.key_deposit,'2000000');
+  assert.equal(snapshot.capturedBlockfrostParameters.cost_models_raw.PlutusV3.length,350);
+  assert.throws(()=>{snapshot.capturedBlockfrostParameters.cost_models_raw.PlutusV3[0]=99;},TypeError);
+});

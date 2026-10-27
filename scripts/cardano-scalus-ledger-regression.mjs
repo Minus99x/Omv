@@ -978,3 +978,21 @@ test('real Scalus applies captured fee and size overrides instead of bundled def
   assert.equal(sizeDenied.isSuccess,false);
   assert.match(String(sizeDenied.errorRule)+' '+String(sizeDenied.error),/size/i);
 });
+
+test('real Scalus consumes the captured provider document without default parameter merging', () => {
+  const snapshot = JSON.parse(readFileSync(new URL('../docs/evidence/CARDANO_PREPROD_PROTOCOL_PARAMETERS_EPOCH_316.json',import.meta.url),'utf8'));
+  snapshot.parameters.maxValueSize=5000;
+  const api={CardanoInfo,ProtocolParams};
+  const baseline=createScalusCapturedProtocolContext(snapshot,api);
+  const document=JSON.parse(baseline.cardanoInfo.protocolParams.toBlockfrostJson());
+  document.epoch=snapshot.parameters.epoch;
+  document.key_deposit='7654321';
+  snapshot.capturedBlockfrostParameters=document;
+  const captured=createScalusCapturedProtocolContext(snapshot,api);
+  assert.equal(captured.cardanoInfo.protocolParams.stakeAddressDeposit,7654321n);
+  assert.deepEqual(captured.context.bundledFields,[]);
+  const result=Emulator.create(captured.cardanoInfo,{slot:SLOT,utxos:[new Utxo(TEST_TXID,0,address,new Value(COIN))]}).submitTx(signedPayment());
+  assert.equal(result.isSuccess,true);
+  delete document.gov_action_deposit;
+  assert.throws(()=>createScalusCapturedProtocolContext(snapshot,api),/missing gov_action_deposit/);
+});

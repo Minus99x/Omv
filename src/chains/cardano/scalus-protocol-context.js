@@ -1,3 +1,4 @@
+import { verifyCapturedBlockfrostAgreement } from './live-protocol-parameters.js';
 import { normalizeCardanoProtocolParameterSnapshot } from './protocol-parameters.js';
 import { hashCardanoEvidence } from './evidence-binding.js';
 
@@ -23,7 +24,36 @@ export function createScalusCapturedProtocolContext(snapshot, api) {
   const base = api.CardanoInfo.preprod();
   if (typeof base.withProtocolParams !== 'function' || typeof base.protocolParams?.toBlockfrostJson !== 'function' ||
       typeof api.ProtocolParams?.fromBlockfrostJson !== 'function') throw new Error('Scalus captured protocol parameter API is unavailable.');
-  const document = JSON.parse(base.protocolParams.toBlockfrostJson());
+  const bundled = JSON.parse(base.protocolParams.toBlockfrostJson());
+  if (snapshot.capturedBlockfrostParameters != null) {
+    const document = structuredClone(snapshot.capturedBlockfrostParameters);
+    verifyCapturedBlockfrostAgreement(snapshot, document);
+    // Require every field emitted by the installed engine. Never fill a
+    // partial provider document with bundled values and label it captured.
+    for (const key of Object.keys(bundled)) {
+      if (key === 'pvtpp_security_group') continue; // upstream alias of pvt_p_p_security_group
+      if (!Object.hasOwn(document, key) || document[key] == null) throw new Error(`Captured Blockfrost parameters missing ${key}.`);
+    }
+    for (const language of Object.keys(bundled.cost_models_raw)) {
+      const model = document.cost_models_raw?.[language];
+      if (!Array.isArray(model) || model.length !== bundled.cost_models_raw[language].length ||
+          !Array.from({length:model.length},(_,i)=>Object.hasOwn(model,i) && Number.isSafeInteger(model[i])).every(Boolean)) {
+        throw new Error(`Captured Blockfrost cost model incomplete: ${language}.`);
+      }
+    }
+    const params = api.ProtocolParams.fromBlockfrostJson(JSON.stringify(document));
+    return {cardanoInfo:base.withProtocolParams(params),context:Object.freeze({
+      mode:'captured-blockfrost-document',
+      snapshotSha256:hashCardanoEvidence(snapshot),
+      appliedParameterDocumentSha256:hashCardanoEvidence(document),
+      capturedFields:Object.freeze(Object.keys(document)),bundledFields:Object.freeze([]),
+      // Additional provider fields are retained, but only the existing subset
+      // has been independently compared with Ogmios.
+      completeCurrentProtocolContext:false,
+      additionalFieldsIndependentlyConfirmed:false
+    })};
+  }
+  const document = bundled;
   const [major, minor] = p.protocolVersion.split('.').map(v => safeNumber(v, 'protocol version'));
   const overrides = {
     min_fee_a: safeNumber(p.minFeeA, 'minFeeA'), min_fee_b: safeNumber(p.minFeeB, 'minFeeB'),
