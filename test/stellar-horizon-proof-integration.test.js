@@ -46,7 +46,8 @@ function response(data, { ok = true, status = 200 } = {}) {
 
 function accountState(inputs, {
   sequence, recovered = false, vault = true,
-  sellingLiabilities = '0.0000000', buyingLiabilities = '0.0000000'
+  sellingLiabilities = '0.0000000', buyingLiabilities = '0.0000000',
+  nativeSellingLiabilities = '0.0000000', nativeBalance = null
 }) {
   return {
     account_id:vault ? inputs.recoveryPlan.sourceAccount : inputs.recoveryPlan.rescueDestination,
@@ -55,13 +56,14 @@ function accountState(inputs, {
     sequence_time:String(Date.parse('2026-10-03T00:02:00Z') / 1000),
     last_modified_ledger:recovered ? 501 : 500,
     last_modified_time:recovered ? '2026-10-03T00:04:00Z' : '2026-10-03T00:02:00Z',
+    subentry_count:2, num_sponsoring:0, num_sponsored:0,
     thresholds:{ low_threshold:1, med_threshold:1, high_threshold:1 },
     signers:recovered ? [{ key:inputs.recoveryPlan.sourceAccount, weight:1, type:'ed25519_public_key' }] : [
       { key:inputs.recoveryPlan.sourceAccount, weight:1, type:'ed25519_public_key' },
       { key:inputs.recoveryArtifact.preAuthTxSigner, weight:1, type:'preauth_tx' }
     ],
     balances:[
-      { asset_type:'native', balance:vault ? (recovered ? '90.0000000' : '100.0000000') : (recovered ? '15.0000000' : '5.0000000') },
+      { asset_type:'native', balance:nativeBalance ?? (vault ? (recovered ? '90.0000000' : '100.0000000') : (recovered ? '15.0000000' : '5.0000000')),selling_liabilities:nativeSellingLiabilities },
       { asset_type:'credit_alphanum4', asset_code:'USDC', asset_issuer:G(6),
         is_authorized:true, limit:'1000.0000000', selling_liabilities:sellingLiabilities,
         buying_liabilities:buyingLiabilities,
@@ -71,7 +73,8 @@ function accountState(inputs, {
 }
 
 function scriptedHorizon(inputs, {
-  vaultSellingLiabilities='0.0000000', rescueBuyingLiabilities='0.0000000'
+  vaultSellingLiabilities='0.0000000', rescueBuyingLiabilities='0.0000000',
+  vaultNativeSellingLiabilities='0.0000000', vaultNativeBalance=null
 }={}) {
   const calls = [];
   let vaultReads = 0;
@@ -81,9 +84,9 @@ function scriptedHorizon(inputs, {
     calls.push({ url, method:options.method, body:options.body ?? null });
     if (url.endsWith(`/accounts/${inputs.recoveryPlan.sourceAccount}`)) {
       vaultReads += 1;
-      if (vaultReads === 1) return response(accountState(inputs, { sequence:'1001', sellingLiabilities:vaultSellingLiabilities }));
-      if (vaultReads <= 6) return response(accountState(inputs, { sequence:'1003', sellingLiabilities:vaultSellingLiabilities }));
-      return response(accountState(inputs, { sequence:inputs.recoveryPlan.sequence.recoverySequence, recovered:true, sellingLiabilities:vaultSellingLiabilities }));
+      if (vaultReads === 1) return response(accountState(inputs, { sequence:'1001', sellingLiabilities:vaultSellingLiabilities, nativeSellingLiabilities:vaultNativeSellingLiabilities,nativeBalance:vaultNativeBalance }));
+      if (vaultReads <= 6) return response(accountState(inputs, { sequence:'1003', sellingLiabilities:vaultSellingLiabilities, nativeSellingLiabilities:vaultNativeSellingLiabilities,nativeBalance:vaultNativeBalance }));
+      return response(accountState(inputs, { sequence:inputs.recoveryPlan.sequence.recoverySequence, recovered:true, sellingLiabilities:vaultSellingLiabilities, nativeSellingLiabilities:vaultNativeSellingLiabilities,nativeBalance:vaultNativeBalance }));
     }
     if (url.endsWith(`/accounts/${inputs.recoveryPlan.rescueDestination}`)) {
       rescueReads += 1;
@@ -93,7 +96,7 @@ function scriptedHorizon(inputs, {
       }));
     }
     if (url.endsWith('/ledgers?order=desc&limit=1')) {
-      return response({ _embedded:{ records:[{ sequence:600, hash:'cc'.repeat(32), closed_at:'2026-10-03T00:03:00Z' }] } });
+      return response({ _embedded:{ records:[{ sequence:600, hash:'cc'.repeat(32), closed_at:'2026-10-03T00:03:00Z',base_reserve_in_stroops:'5000000' }] } });
     }
     if (url.endsWith('/transactions') && options.method === 'POST') {
       submissions += 1;
@@ -179,4 +182,20 @@ test('composed Horizon recovery refuses locked vault assets and insufficient rec
     assert.equal(horizon.counts().submissions,3,
       'only the two expected early rejections and owner heartbeat should reach Horizon');
   }
+});
+
+test('Horizon native recovery refuses insufficient reserve or XLM selling liabilities before final POST',async()=>{
+ for(const state of [
+  {vaultNativeBalance:'11.0000000',vaultNativeSellingLiabilities:'0.0000000'},
+  {vaultNativeBalance:'14.0000000',vaultNativeSellingLiabilities:'3.0000000'}
+ ]){
+  const inputs=executionInputs(),horizon=scriptedHorizon(inputs,state);
+  const clockTimes=['2026-10-03T00:00:00Z','2026-10-03T00:02:00Z'];
+  const driver=createStellarTestnetHorizonProofDriver({
+   fetchImpl:horizon.fetchImpl,sleep:async()=>{},pollIntervalMs:0,
+   maxEligibilityAttempts:1,clock:()=>clockTimes.shift()
+  });
+  await assert.rejects(runStellarTestnetRecoveryProof({...inputs,driver}),/net of account reserve/);
+  assert.equal(horizon.counts().submissions,3,'ineligible native recovery never reaches final POST');
+ }
 });

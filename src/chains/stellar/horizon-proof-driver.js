@@ -213,6 +213,36 @@ export function extractHorizonBalanceUnits({
   return recordedBalance;
 }
 
+export function assertHorizonNativeSpendableUnits({
+  accountResponse, latestLedger, expectedAccount, requiredTransferUnits
+}) {
+  const recorded = BigInt(extractHorizonBalanceUnits({
+    accountResponse, expectedAccount, asset:{type:'native'}
+  }));
+  const required = BigInt(integerString(requiredTransferUnits, 'requiredTransferUnits'));
+  if (required === 0n) throw new TypeError('Native recovery amount must be greater than zero.');
+  if (required > 0x7fffffffffffffffn) throw new RangeError('Native recovery amount exceeds Stellar int64.');
+  const reserve = BigInt(integerString(latestLedger?.base_reserve_in_stroops, 'latestLedger.base_reserve_in_stroops'));
+  if (reserve === 0n || reserve > 0x7fffffffffffffffn) throw new RangeError('Horizon base reserve must be positive Stellar int64.');
+  const subentries = BigInt(integerString(accountResponse?.subentry_count, 'accountResponse.subentry_count'));
+  const sponsoring = BigInt(integerString(accountResponse?.num_sponsoring, 'accountResponse.num_sponsoring'));
+  const sponsored = BigInt(integerString(accountResponse?.num_sponsored, 'accountResponse.num_sponsored'));
+  const reserveEntries = 2n + subentries + sponsoring - sponsored;
+  if (reserveEntries < 0n) throw new Error('Horizon account sponsorship count exceeds reserve entries.');
+  const minimumBalance = reserveEntries * reserve;
+  if (minimumBalance > 0x7fffffffffffffffn) throw new RangeError('Horizon minimum account reserve exceeds Stellar int64.');
+  const latestSequence = optionalLedger(latestLedger?.sequence, 'latestLedger.sequence');
+  const lastModified = optionalLedger(accountResponse?.last_modified_ledger, 'accountResponse.last_modified_ledger');
+  const sequenceLedger = optionalLedger(accountResponse?.sequence_ledger, 'accountResponse.sequence_ledger');
+  if (latestSequence === null || lastModified === null || sequenceLedger === null) throw new Error('Native recovery needs current ledger and account provenance.');
+  if (latestSequence < lastModified || latestSequence < sequenceLedger) throw new Error('Horizon reserve ledger predates the native account snapshot.');
+  const line = matchingBalanceLine(accountResponse, {type:'native'});
+  const selling = BigInt(decimalToUnits(line.selling_liabilities, 'Horizon native selling liabilities'));
+  if (recorded < minimumBalance || selling > recorded - minimumBalance) throw new Error('Horizon native reserve and liabilities exceed the available XLM balance.');
+  if (required > recorded - minimumBalance - selling) throw new Error('Native XLM recovery exceeds spendable balance net of account reserve and selling liabilities.');
+  return recorded.toString(); // Preserve nominal before/after ledger evidence.
+}
+
 export function normalizeHorizonSubmissionSuccess({ response, expectedTransactionHashHex }) {
   if (!response || typeof response !== 'object') throw new TypeError('Horizon submission response is required.');
   const hash = hashHex(response.hash, 'submission.hash');
@@ -304,11 +334,16 @@ function createHorizonDriver({
     },
 
     async readBalanceUnits({ account, asset, requiredTransferUnits, incomingTransferUnits }) {
+      if (asset?.type === 'native' && requiredTransferUnits !== undefined) {
+        if (incomingTransferUnits !== undefined) throw new TypeError('Native balance preflight requires one transfer direction.');
+        if (typeof transport.loadLatestLedger !== 'function') throw new Error('Native recovery needs fresh Horizon reserve evidence.');
+        const [accountResponse, latestLedger] = await Promise.all([
+          transport.loadAccount(account), transport.loadLatestLedger()
+        ]);
+        return assertHorizonNativeSpendableUnits({accountResponse,latestLedger,expectedAccount:account,requiredTransferUnits});
+      }
       const response = await transport.loadAccount(account);
-      return extractHorizonBalanceUnits({
-        accountResponse: response, expectedAccount: account, asset,
-        requiredTransferUnits, incomingTransferUnits
-      });
+      return extractHorizonBalanceUnits({accountResponse:response,expectedAccount:account,asset,requiredTransferUnits,incomingTransferUnits});
     },
 
     async submitEnvelope({ transactionXdr, expectedTransactionHashHex }) {

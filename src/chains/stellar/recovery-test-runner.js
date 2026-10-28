@@ -178,9 +178,11 @@ async function readBalances(actions, driver, account, operations, phase) {
     // Preserve nominal before/after accounting; require spendable and receiving
     // capacity separately at the last eligible pre-submit read. Injected test
     // drivers may ignore hints but cannot confer public-network authority.
-    const capacity = phase === 'before' && operation.asset.type === 'credit_alphanum'
+    const capacity = phase === 'before'
       ? (account === operation.destination
-        ? { incomingTransferUnits:amountUnits(operation.amount, `recovery amount for ${key}`) }
+        ? (operation.asset.type === 'credit_alphanum'
+          ? { incomingTransferUnits:amountUnits(operation.amount, `recovery amount for ${key}`) }
+          : {})
         : { requiredTransferUnits:amountUnits(operation.amount, `recovery amount for ${key}`) })
       : {};
     const value = await action(actions, `balance.${phase}.${account === operation.destination ? 'rescue' : 'vault'}.${key}`, () =>

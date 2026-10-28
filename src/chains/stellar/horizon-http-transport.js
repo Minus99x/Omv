@@ -129,6 +129,8 @@ export function createStellarTestnetHorizonHttpTransport({
   }
 
   const transport = {
+    // Fresh bounded ledger snapshot for native-XLM reserve checks.
+    loadLatestLedger,
     async loadAccount(account) {
       const id = accountId(account, 'account');
       return request(`/accounts/${encodeURIComponent(id)}`, {
