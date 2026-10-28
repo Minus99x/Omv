@@ -782,7 +782,7 @@ test('Horizon classic-asset recovery capacity subtracts selling and buying liabi
   assert.throws(()=>read({}, {incomingTransferUnits:'75000001'}),/net of buying liabilities/);
   assert.equal(read({},{}),'205000000','nominal evidence remains unchanged');
   assert.throws(()=>read({selling_liabilities:'20.5000001'},{requiredTransferUnits:'1'}),/selling liabilities exceed/);
-  assert.throws(()=>read({buying_liabilities:'8.0000000'},{incomingTransferUnits:'1'}),/contradicted by balance/);
+  assert.throws(()=>read({buying_liabilities:'9.5000001'},{incomingTransferUnits:'1'}),/contradicted by balance/);
   for(const field of ['selling_liabilities','buying_liabilities','limit']) {
     const capacity=field==='selling_liabilities'?{requiredTransferUnits:'1'}:{incomingTransferUnits:'1'};
     assert.throws(()=>read({[field]:undefined},capacity),/canonical Stellar amount/);
@@ -792,6 +792,9 @@ test('Horizon classic-asset recovery capacity subtracts selling and buying liabi
   assert.throws(()=>read({}, {requiredTransferUnits:'0'}),/greater than zero/);
   assert.throws(()=>read({}, {incomingTransferUnits:'001'}),/canonical non-negative integer/);
   assert.throws(()=>read({}, {requiredTransferUnits:2n**63n}),/exceeds Stellar int64/);
+  assert.throws(()=>read({}, {requiredTransferUnits:2n**64n}),/exceeds uint64/);
+  assert.throws(()=>read({}, {requiredTransferUnits:'4294967296'}),/net of selling liabilities/,
+    'Valid int64 amounts above uint32 must reach the spendable-balance comparison, not fail integer parsing.');
   assert.throws(()=>extractHorizonBalanceUnits({
     accountResponse:accountResponse(),asset:{type:'native'},requiredTransferUnits:'1'
   }),/reserve-aware preflight/);

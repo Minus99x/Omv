@@ -188,9 +188,9 @@ export function extractHorizonBalanceUnits({
     const outgoing = requiredTransferUnits !== undefined;
     const required = BigInt(integerString(
       outgoing ? requiredTransferUnits : incomingTransferUnits,
-      outgoing ? 'requiredTransferUnits' : 'incomingTransferUnits',
-      { positive: true }
+      outgoing ? 'requiredTransferUnits' : 'incomingTransferUnits'
     ));
+    if (required === 0n) throw new TypeError('Recovery capacity transfer amount must be greater than zero.');
     if (required > 0x7fffffffffffffffn) throw new RangeError('Recovery amount exceeds Stellar int64.');
     const balance = BigInt(recordedBalance);
     if (outgoing) {
