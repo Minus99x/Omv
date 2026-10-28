@@ -819,11 +819,11 @@ test('native XLM recovery derives reserve and liabilities from ledger/account ra
  assert.throws(()=>read({balances:[{asset_type:'native',balance:'1.0000000',selling_liabilities:'0.0000000'}]}),/reserve and liabilities exceed/);
  assert.throws(()=>read({balances:[{asset_type:'native',balance:'3.0000000',selling_liabilities:'1.0000001'}]}),/reserve and liabilities exceed/);
  for(const key of ['subentry_count','num_sponsoring','num_sponsored']){
-  assert.throws(()=>read({[key]:undefined}),/canonical non-negative integer/);
+  assert.throws(()=>read({[key]:undefined}),/primitive integer value/);
   assert.throws(()=>read({[key]:'01'}),/canonical non-negative integer/);
  }
  assert.throws(()=>read({balances:[{asset_type:'native',balance:'10.0000000'}]}),/canonical Stellar amount/);
- assert.throws(()=>read({}, {base_reserve_in_stroops:undefined}),/canonical non-negative integer/);
+ assert.throws(()=>read({}, {base_reserve_in_stroops:undefined}),/primitive integer value/);
  assert.throws(()=>read({}, {base_reserve_in_stroops:'0'}),/positive Stellar int64/);
  assert.throws(()=>read({}, {sequence:499}),/predates the native account snapshot/);
  assert.throws(()=>read({last_modified_ledger:502}),/predates the native account snapshot/);
