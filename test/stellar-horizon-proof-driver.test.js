@@ -767,3 +767,32 @@ test('Horizon submission rejects swapped, invalid and wrong-network XDR before a
   assert.equal(result.transactionHashHex,good.hash);
   assert.equal(submissions,1);
 });
+
+test('Horizon classic-asset recovery capacity subtracts selling and buying liabilities without altering recorded balances', () => {
+  const asset={type:'credit_alphanum',code:'USDC',issuer:G(6)};
+  const line={...accountResponse().balances[1], balance:'20.5000000', selling_liabilities:'1.0000000',
+    buying_liabilities:'2.0000000',limit:'30.0000000'};
+  const read=(override={},capacity={})=>extractHorizonBalanceUnits({
+    accountResponse:accountResponse({balances:[{...line,...override}]}),
+    asset,expectedAccount:G(1),...capacity
+  });
+  assert.equal(read({}, {requiredTransferUnits:'195000000'}),'205000000');
+  assert.equal(read({}, {incomingTransferUnits:'75000000'}),'205000000');
+  assert.throws(()=>read({}, {requiredTransferUnits:'195000001'}),/net of selling liabilities/);
+  assert.throws(()=>read({}, {incomingTransferUnits:'75000001'}),/net of buying liabilities/);
+  assert.equal(read({},{}),'205000000','nominal evidence remains unchanged');
+  assert.throws(()=>read({selling_liabilities:'20.5000001'},{requiredTransferUnits:'1'}),/selling liabilities exceed/);
+  assert.throws(()=>read({buying_liabilities:'8.0000000'},{incomingTransferUnits:'1'}),/contradicted by balance/);
+  for(const field of ['selling_liabilities','buying_liabilities','limit']) {
+    const capacity=field==='selling_liabilities'?{requiredTransferUnits:'1'}:{incomingTransferUnits:'1'};
+    assert.throws(()=>read({[field]:undefined},capacity),/canonical Stellar amount/);
+    assert.throws(()=>read({[field]:'0.1'},capacity),/canonical Stellar amount/);
+  }
+  assert.throws(()=>read({}, {requiredTransferUnits:'1',incomingTransferUnits:'1'}),/one transfer direction/);
+  assert.throws(()=>read({}, {requiredTransferUnits:'0'}),/greater than zero/);
+  assert.throws(()=>read({}, {incomingTransferUnits:'001'}),/canonical non-negative integer/);
+  assert.throws(()=>read({}, {requiredTransferUnits:2n**63n}),/exceeds Stellar int64/);
+  assert.throws(()=>extractHorizonBalanceUnits({
+    accountResponse:accountResponse(),asset:{type:'native'},requiredTransferUnits:'1'
+  }),/reserve-aware preflight/);
+});

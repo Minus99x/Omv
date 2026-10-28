@@ -44,7 +44,10 @@ function response(data, { ok = true, status = 200 } = {}) {
   return { ok, status, async json() { return structuredClone(data); } };
 }
 
-function accountState(inputs, { sequence, recovered = false, vault = true }) {
+function accountState(inputs, {
+  sequence, recovered = false, vault = true,
+  sellingLiabilities = '0.0000000', buyingLiabilities = '0.0000000'
+}) {
   return {
     account_id:vault ? inputs.recoveryPlan.sourceAccount : inputs.recoveryPlan.rescueDestination,
     sequence:String(sequence),
@@ -59,12 +62,17 @@ function accountState(inputs, { sequence, recovered = false, vault = true }) {
     ],
     balances:[
       { asset_type:'native', balance:vault ? (recovered ? '90.0000000' : '100.0000000') : (recovered ? '15.0000000' : '5.0000000') },
-      { asset_type:'credit_alphanum4', asset_code:'USDC', asset_issuer:G(6), is_authorized:true, balance:vault ? (recovered ? '29.5000000' : '50.0000000') : (recovered ? '21.5000000' : '1.0000000') }
+      { asset_type:'credit_alphanum4', asset_code:'USDC', asset_issuer:G(6),
+        is_authorized:true, limit:'1000.0000000', selling_liabilities:sellingLiabilities,
+        buying_liabilities:buyingLiabilities,
+        balance:vault ? (recovered ? '29.5000000' : '50.0000000') : (recovered ? '21.5000000' : '1.0000000') }
     ]
   };
 }
 
-function scriptedHorizon(inputs) {
+function scriptedHorizon(inputs, {
+  vaultSellingLiabilities='0.0000000', rescueBuyingLiabilities='0.0000000'
+}={}) {
   const calls = [];
   let vaultReads = 0;
   let rescueReads = 0;
@@ -73,13 +81,16 @@ function scriptedHorizon(inputs) {
     calls.push({ url, method:options.method, body:options.body ?? null });
     if (url.endsWith(`/accounts/${inputs.recoveryPlan.sourceAccount}`)) {
       vaultReads += 1;
-      if (vaultReads === 1) return response(accountState(inputs, { sequence:'1001' }));
-      if (vaultReads <= 6) return response(accountState(inputs, { sequence:'1003' }));
-      return response(accountState(inputs, { sequence:inputs.recoveryPlan.sequence.recoverySequence, recovered:true }));
+      if (vaultReads === 1) return response(accountState(inputs, { sequence:'1001', sellingLiabilities:vaultSellingLiabilities }));
+      if (vaultReads <= 6) return response(accountState(inputs, { sequence:'1003', sellingLiabilities:vaultSellingLiabilities }));
+      return response(accountState(inputs, { sequence:inputs.recoveryPlan.sequence.recoverySequence, recovered:true, sellingLiabilities:vaultSellingLiabilities }));
     }
     if (url.endsWith(`/accounts/${inputs.recoveryPlan.rescueDestination}`)) {
       rescueReads += 1;
-      return response(accountState(inputs, { sequence:'77', recovered:rescueReads > 2, vault:false }));
+      return response(accountState(inputs, {
+        sequence:'77', recovered:rescueReads > 2, vault:false,
+        buyingLiabilities:rescueBuyingLiabilities
+      }));
     }
     if (url.endsWith('/ledgers?order=desc&limit=1')) {
       return response({ _embedded:{ records:[{ sequence:600, hash:'cc'.repeat(32), closed_at:'2026-10-03T00:03:00Z' }] } });
@@ -149,4 +160,23 @@ test('composed driver propagates malformed Horizon proof data and cannot silentl
     clock:() => '2026-10-03T00:00:00Z'
   });
   await assert.rejects(() => runStellarTestnetRecoveryProof({ ...inputs, driver }), /unsupported proof result code: txBAD_SEQ/);
+});
+
+test('composed Horizon recovery refuses locked vault assets and insufficient receiving trustline before final POST', async () => {
+  for(const [state,expected] of [
+    [{vaultSellingLiabilities:'40.0000000'},/net of selling liabilities/],
+    [{rescueBuyingLiabilities:'980.0000000'},/net of buying liabilities/]
+  ]) {
+    const inputs=executionInputs(), horizon=scriptedHorizon(inputs,state);
+    const rejectionTimes=['2026-10-03T00:00:00Z','2026-10-03T00:02:00Z'];
+    const driver=createStellarTestnetHorizonProofDriver({
+      fetchImpl:horizon.fetchImpl,sleep:async()=>{},pollIntervalMs:0,
+      maxEligibilityAttempts:1,clock:()=>rejectionTimes.shift()
+    });
+    await assert.rejects(
+      runStellarTestnetRecoveryProof({...inputs,driver}),expected
+    );
+    assert.equal(horizon.counts().submissions,3,
+      'only the two expected early rejections and owner heartbeat should reach Horizon');
+  }
 });

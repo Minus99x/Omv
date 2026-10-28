@@ -166,13 +166,51 @@ function matchingBalanceLine(accountResponse, asset) {
   return line;
 }
 
-export function extractHorizonBalanceUnits({ accountResponse, expectedAccount, asset }) {
+export function extractHorizonBalanceUnits({
+  accountResponse, expectedAccount, asset, requiredTransferUnits, incomingTransferUnits
+}) {
   const account = requiredText(accountResponse?.account_id, 'accountResponse.account_id');
   if (!StrKey.isValidEd25519PublicKey(account)) throw new TypeError('Horizon balance account must be a valid G-address.');
   if (expectedAccount != null && account !== expectedAccount) throw new Error('Horizon balance response is for a different account.');
   const line = matchingBalanceLine(accountResponse, asset);
   if (!line) throw new Error('Requested Stellar asset balance is absent from Horizon account state.');
-  return decimalToUnits(line.balance, 'Horizon balance');
+  const recordedBalance = decimalToUnits(line.balance, 'Horizon balance');
+  // This function returns the *recorded* balance for before/after evidence.
+  // Optional one-sided capacity gates are applied only before an eligible
+  // classic-asset recovery, never substituted for the recorded balance.
+  if (requiredTransferUnits !== undefined || incomingTransferUnits !== undefined) {
+    if (requiredTransferUnits !== undefined && incomingTransferUnits !== undefined) {
+      throw new TypeError('Recovery capacity must specify one transfer direction.');
+    }
+    if (asset.type !== 'credit_alphanum') {
+      throw new TypeError('Native XLM spendability needs a separate reserve-aware preflight.');
+    }
+    const outgoing = requiredTransferUnits !== undefined;
+    const required = BigInt(integerString(
+      outgoing ? requiredTransferUnits : incomingTransferUnits,
+      outgoing ? 'requiredTransferUnits' : 'incomingTransferUnits',
+      { positive: true }
+    ));
+    if (required > 0x7fffffffffffffffn) throw new RangeError('Recovery amount exceeds Stellar int64.');
+    const balance = BigInt(recordedBalance);
+    if (outgoing) {
+      const selling = BigInt(decimalToUnits(line.selling_liabilities, 'Horizon selling liabilities'));
+      if (selling > balance) throw new Error('Horizon selling liabilities exceed the recorded balance.');
+      if (required > balance - selling) {
+        throw new Error('Stellar classic-asset outgoing recovery exceeds balance net of selling liabilities.');
+      }
+    } else {
+      const limit = BigInt(decimalToUnits(line.limit, 'Horizon trustline limit'));
+      const buying = BigInt(decimalToUnits(line.buying_liabilities, 'Horizon buying liabilities'));
+      if (balance > limit || buying > limit - balance) {
+        throw new Error('Horizon trustline limit is contradicted by balance and buying liabilities.');
+      }
+      if (required > limit - balance - buying) {
+        throw new Error('Stellar classic-asset receiving recovery exceeds trustline capacity net of buying liabilities.');
+      }
+    }
+  }
+  return recordedBalance;
 }
 
 export function normalizeHorizonSubmissionSuccess({ response, expectedTransactionHashHex }) {
@@ -265,9 +303,12 @@ function createHorizonDriver({
       return normalizeHorizonAccountSnapshot({ accountResponse: response, expectedAccount: account });
     },
 
-    async readBalanceUnits({ account, asset }) {
+    async readBalanceUnits({ account, asset, requiredTransferUnits, incomingTransferUnits }) {
       const response = await transport.loadAccount(account);
-      return extractHorizonBalanceUnits({ accountResponse: response, expectedAccount: account, asset });
+      return extractHorizonBalanceUnits({
+        accountResponse: response, expectedAccount: account, asset,
+        requiredTransferUnits, incomingTransferUnits
+      });
     },
 
     async submitEnvelope({ transactionXdr, expectedTransactionHashHex }) {
