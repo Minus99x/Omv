@@ -160,10 +160,51 @@ function assertAgreement(ogmios, blockfrost) {
   }
 }
 
+// Ogmios local-state-query names mapped to Blockfrost epoch parameters.
+// Compare only fields present in at least one response; a one-sided value is
+// incomplete evidence, not permission to substitute a bundled default.
+const extendedFields = [
+  ['key_deposit', 'stakeCredentialDeposit', adaLovelace],
+  ['pool_deposit', 'stakePoolDeposit', adaLovelace],
+  ['min_pool_cost', 'minStakePoolCost', adaLovelace],
+  ['max_block_size', 'maxBlockBodySize', bytesSize],
+  ['max_block_header_size', 'maxBlockHeaderSize', bytesSize],
+  ['e_max', 'stakePoolRetirementEpochBound', integer],
+  ['n_opt', 'desiredNumberOfStakePools', integer],
+  ['a0', 'stakePoolPledgeInfluence', rational],
+  ['rho', 'monetaryExpansion', rational],
+  ['tau', 'treasuryExpansion', rational],
+  ['max_block_ex_mem', 'maxExecutionUnitsPerBlock.memory', integer],
+  ['max_block_ex_steps', 'maxExecutionUnitsPerBlock.cpu', integer]
+];
+
+export function verifyExtendedProtocolAgreement(ogmiosParameters, blockfrost) {
+  const ogmios = ogmiosParameters?.protocolParameters ?? ogmiosParameters;
+  if (!ogmios || typeof ogmios !== 'object' || !blockfrost || typeof blockfrost !== 'object') {
+    throw new TypeError('Both protocol parameter documents are required.');
+  }
+  const confirmed = [];
+  for (const [field, path, normalize] of extendedFields) {
+    const value = path.split('.').reduce((parent, key) => parent?.[key], ogmios);
+    if (value === undefined && blockfrost[field] === undefined) continue;
+    const left = normalize(value, `Ogmios ${path}`);
+    const right = normalize(blockfrost[field], `Blockfrost ${field}`);
+    if (JSON.stringify(left) !== JSON.stringify(right)) {
+      throw new Error(`Ogmios/Blockfrost protocol-parameter disagreement: ${field}.`);
+    }
+    confirmed.push(field);
+  }
+  return Object.freeze(confirmed);
+}
+
 export function verifyCapturedBlockfrostAgreement(snapshot, document) {
   const provider = normalizedBlockfrost(document);
   if (provider.epoch !== snapshot.parameters.epoch) throw new Error('Captured Blockfrost epoch differs from the snapshot.');
   assertAgreement(snapshot.parameters, provider);
+  if (snapshot.capturedOgmiosParameters != null) {
+    assertAgreement(normalizedOgmios(snapshot.capturedOgmiosParameters), provider);
+    verifyExtendedProtocolAgreement(snapshot.capturedOgmiosParameters, document);
+  }
   return true;
 }
 
@@ -209,12 +250,15 @@ export function createCardanoPreprodLiveProtocolSnapshot({
   const blockfrost = normalizedBlockfrost(blockfrostParameters);
   if (blockfrost.epoch !== currentEpoch) throw new Error('Ogmios and Blockfrost do not agree on the current Preprod epoch.');
   assertAgreement(ogmios, blockfrost);
+  const confirmedAdditionalFields = verifyExtendedProtocolAgreement(ogmiosParameters, blockfrostParameters);
 
   return Object.freeze({
     schemaVersion: 2,
     network: 'preprod',
     networkId: 0,
     capturedAt,
+    capturedOgmiosParameters: immutableCapture(ogmiosParameters),
+    confirmedAdditionalFields,
     capturedBlockfrostParameters: immutableCapture(blockfrostParameters),
     source: Object.freeze({
       provider: 'Ogmios + Blockfrost',

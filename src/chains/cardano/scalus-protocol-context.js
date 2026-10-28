@@ -1,4 +1,4 @@
-import { verifyCapturedBlockfrostAgreement } from './live-protocol-parameters.js';
+import { verifyCapturedBlockfrostAgreement, verifyExtendedProtocolAgreement } from './live-protocol-parameters.js';
 import { normalizeCardanoProtocolParameterSnapshot } from './protocol-parameters.js';
 import { hashCardanoEvidence } from './evidence-binding.js';
 
@@ -47,6 +47,8 @@ export function createScalusCapturedProtocolContext(snapshot, api) {
       snapshotSha256:hashCardanoEvidence(snapshot),
       appliedParameterDocumentSha256:hashCardanoEvidence(document),
       capturedFields:Object.freeze(Object.keys(document)),bundledFields:Object.freeze([]),
+      confirmedAdditionalFields: snapshot.capturedOgmiosParameters == null ? Object.freeze([]) :
+        verifyExtendedProtocolAgreement(snapshot.capturedOgmiosParameters, document),
       // Additional provider fields are retained, but only the existing subset
       // has been independently compared with Ogmios.
       completeCurrentProtocolContext:false,

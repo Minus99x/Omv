@@ -237,20 +237,21 @@ test('provider protocol-parameter disagreement blocks live recheck',async()=>{
   });
 });
 
-test('reuses existing reads to report partial Conway overlap and a governance mismatch',async()=>{
+test('reuses existing reads to report independently agreed partial Conway overlap',async()=>{
   await withinCapture(async({raw,root})=>{
     // Supplemental fields are intentionally NOT enough for full Conway validation.
     raw.ogmios.maxBlockBodySize={bytes:90112};
     raw.blockfrost.max_block_size=90112;
     raw.ogmios.desiredNumberOfStakePools=500;
-    raw.blockfrost.n_opt=501;
+    raw.blockfrost.n_opt=500;
     const reads=mockedReads(raw);
     const report=await recheckCardanoPreprodCapturedLedger({
       capture:root,client:reads.client,fetchImpl:reads.fetchImpl,
       blockfrostProjectId:'fixture-provider-id'
     });
     assert.ok(report.conwayPrerequisites.agreedFieldNames.includes('maxBlockBodySize'));
-    assert.deepEqual(report.conwayPrerequisites.mismatchedFieldNames,['desiredNumberOfStakePools']);
+    assert.deepEqual(report.conwayPrerequisites.mismatchedFieldNames,[]);
+    assert.ok(report.conwayPrerequisites.agreedFieldNames.includes('desiredNumberOfStakePools'));
     assert.equal(report.conwayPrerequisites.completeConwayParametersEstablished,false);
     assert.equal(report.completePhaseOneValidated,false);
     assert.equal(report.transactionSubmissionAuthorized,false);
@@ -311,5 +312,18 @@ test('opt-in era reconciliation stops if node start time conflicts with verified
       blockfrostProjectId:'fixture-provider-id',verifyEraTiming:true,
       genesisCheck:async()=>fakeVerifiedPublishedGenesis()
     }),/network start time disagrees/);
+  });
+});
+
+
+test('ledger recheck rejects extended parameter disagreement before creating replay evidence',async()=>{
+  await withinCapture(async({raw,root})=>{
+    raw.ogmios.desiredNumberOfStakePools=500;
+    raw.blockfrost.n_opt=501;
+    const reads=mockedReads(raw);
+    await assert.rejects(()=>recheckCardanoPreprodCapturedLedger({
+      capture:root,client:reads.client,fetchImpl:reads.fetchImpl,
+      blockfrostProjectId:'fixture-provider-id'
+    }),/disagreement: n_opt/);
   });
 });

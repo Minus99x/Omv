@@ -214,11 +214,63 @@ test('live Cardano provider integers reject oversized decimal strings before Big
 });
 
 test('live protocol capture preserves complete provider document without caller aliasing', () => {
-  const provider=blockfrost();provider.key_deposit='2000000';
+  const provider=blockfrost();provider.extra_provider_field='2000000';
   const snapshot=createCardanoPreprodLiveProtocolSnapshot({ogmiosParameters:ogmios(),blockfrostParameters:provider,epoch:400,tip,capturedAt:'2026-10-06T00:00:00.000Z'});
   assert.deepEqual(snapshot.capturedBlockfrostParameters,provider);
-  provider.key_deposit='1';provider.cost_models_raw.PlutusV3=[0];
-  assert.equal(snapshot.capturedBlockfrostParameters.key_deposit,'2000000');
+  provider.extra_provider_field='1';provider.cost_models_raw.PlutusV3=[0];
+  assert.equal(snapshot.capturedBlockfrostParameters.extra_provider_field,'2000000');
   assert.equal(snapshot.capturedBlockfrostParameters.cost_models_raw.PlutusV3.length,350);
   assert.throws(()=>{snapshot.capturedBlockfrostParameters.cost_models_raw.PlutusV3[0]=99;},TypeError);
+});
+
+const extendedPairs = [
+  ['key_deposit', 'stakeCredentialDeposit', {ada:{lovelace:2000000}}, '2000000'],
+  ['pool_deposit', 'stakePoolDeposit', {lovelace:500000000}, '500000000'],
+  ['min_pool_cost', 'minStakePoolCost', {ada:{lovelace:170000000}}, '170000000'],
+  ['max_block_size', 'maxBlockBodySize', {bytes:90112}, 90112],
+  ['max_block_header_size', 'maxBlockHeaderSize', {bytes:1100}, 1100],
+  ['e_max', 'stakePoolRetirementEpochBound', 18, 18],
+  ['n_opt', 'desiredNumberOfStakePools', 500, 500],
+  ['a0', 'stakePoolPledgeInfluence', '3/10', 0.3],
+  ['rho', 'monetaryExpansion', '3/1000', 0.003],
+  ['tau', 'treasuryExpansion', '1/5', 0.2],
+  ['max_block_ex_mem', 'maxExecutionUnitsPerBlock.memory', 62000000, '62000000'],
+  ['max_block_ex_steps', 'maxExecutionUnitsPerBlock.cpu', 20000000000, '20000000000']
+];
+function extendedFixture() {
+  const o=ogmios(), b=blockfrost();
+  for(const [field,path,value,raw] of extendedPairs) {
+    const keys=path.split('.');
+    if(keys.length===2) (o[keys[0]]??={})[keys[1]]=structuredClone(value);
+    else o[path]=structuredClone(value);
+    b[field]=raw;
+  }
+  return {ogmiosParameters:o,blockfrostParameters:b,epoch:400,tip};
+}
+test('extended parameters compare exact amounts, sizes and equivalent rationals and retain frozen Ogmios evidence',()=>{
+  const input=extendedFixture();const snapshot=createCardanoPreprodLiveProtocolSnapshot(input);
+  assert.deepEqual(snapshot.confirmedAdditionalFields,extendedPairs.map(x=>x[0]));
+  input.ogmiosParameters.stakeCredentialDeposit.ada.lovelace=1;
+  assert.equal(snapshot.capturedOgmiosParameters.stakeCredentialDeposit.ada.lovelace,2000000);
+  assert.throws(()=>{snapshot.capturedOgmiosParameters.stakeCredentialDeposit.ada.lovelace=1;},TypeError);
+});
+for(const [field,path] of extendedPairs) {
+  test(`extended ${field} rejects disagreement, missing and invalid provider evidence`,()=>{
+    for(const bad of ['1',null,undefined,-1,Number.MAX_SAFE_INTEGER+1]) {
+      const input=extendedFixture();input.blockfrostParameters[field]=bad;
+      assert.throws(()=>createCardanoPreprodLiveProtocolSnapshot(input));
+    }
+    const input=extendedFixture(),keys=path.split('.');
+    if(keys.length===2) delete input.ogmiosParameters[keys[0]][keys[1]];
+    else delete input.ogmiosParameters[path];
+    assert.throws(()=>createCardanoPreprodLiveProtocolSnapshot(input));
+  });
+}
+test('replay agreement recomputes additional checks instead of trusting a stored field list',async()=>{
+  const {verifyCapturedBlockfrostAgreement}=await import('../src/chains/cardano/live-protocol-parameters.js');
+  const snapshot=structuredClone(createCardanoPreprodLiveProtocolSnapshot(extendedFixture()));
+  assert.equal(verifyCapturedBlockfrostAgreement(snapshot,snapshot.capturedBlockfrostParameters),true);
+  snapshot.confirmedAdditionalFields=[];
+  snapshot.capturedBlockfrostParameters.key_deposit='1';
+  assert.throws(()=>verifyCapturedBlockfrostAgreement(snapshot,snapshot.capturedBlockfrostParameters),/disagreement: key_deposit/);
 });
