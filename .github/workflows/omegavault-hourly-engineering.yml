@@ -70,14 +70,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: e7c6ffc49ffdb95715be58fe2e4a766de5a8c7b3
+          ref: 50a12acb183e6b2ea83bf4c2eaab46b89fa3fd59
           persist-credentials: false
       - run: python3 .github/tests/test_worker_controls.py
 
   autonomous-engineering:
     name: Trigger isolated AI worker on scheduler-only branch
     needs: verify-worker-controls
-    uses: Minus99x/Omv/.github/workflows/omegavault-hourly-engineering.yml@e7c6ffc49ffdb95715be58fe2e4a766de5a8c7b3
+    uses: Minus99x/Omv/.github/workflows/omegavault-hourly-engineering.yml@50a12acb183e6b2ea83bf4c2eaab46b89fa3fd59
     permissions:
       contents: write
       copilot-requests: write
