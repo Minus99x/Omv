@@ -1,3 +1,4 @@
+import { compareCardanoConwayProtocolParameters } from './conway-provider-readiness.js';
 import { createHash } from 'node:crypto';
 
 function integer(value, label) {
@@ -194,11 +195,32 @@ export function verifyExtendedProtocolAgreement(ogmiosParameters, blockfrost) {
     }
     confirmed.push(field);
   }
+  const comparison = compareCardanoConwayProtocolParameters(ogmios, blockfrost);
+  // Existing scalar gates above retain historical input aliases. Reuse the
+  // Conway comparison for governance groups and both older Plutus languages.
+  for (const name of ['minCommitteeSize', 'committeeTermLimit',
+    'governanceActionValidityPeriod', 'governanceActionDeposit', 'drepDeposit',
+    'drepInactivityPeriod', 'poolVotingThresholds', 'drepVotingThresholds',
+    'plutusV1CostModel', 'plutusV2CostModel', 'minFeeRefScriptCostPerByte']) {
+    if (!comparison.supplied[name]) continue;
+    if (comparison.mismatched[name]) {
+      throw new Error(`Ogmios/Blockfrost protocol-parameter disagreement: ${name}.`);
+    }
+    if (!Object.hasOwn(comparison.agreed, name)) {
+      throw new Error(`Incomplete or invalid Ogmios/Blockfrost protocol parameter: ${name}.`);
+    }
+    confirmed.push(...comparison.parameterPaths[name]);
+  }
   return Object.freeze(confirmed);
 }
 
 export function verifyCapturedBlockfrostAgreement(snapshot, document) {
   const provider = normalizedBlockfrost(document);
+  if (Object.hasOwn(document, 'pvtpp_security_group')) {
+    const alias = rational(document.pvtpp_security_group, 'Blockfrost security threshold alias');
+    const canonical = rational(document.pvt_p_p_security_group, 'Blockfrost security threshold');
+    if (!equalRational(alias, canonical)) throw new Error('Captured Blockfrost security threshold aliases disagree.');
+  }
   if (provider.epoch !== snapshot.parameters.epoch) throw new Error('Captured Blockfrost epoch differs from the snapshot.');
   assertAgreement(snapshot.parameters, provider);
   if (snapshot.capturedOgmiosParameters != null) {

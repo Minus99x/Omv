@@ -996,3 +996,29 @@ test('real Scalus consumes the captured provider document without default parame
   delete document.gov_action_deposit;
   assert.throws(()=>createScalusCapturedProtocolContext(snapshot,api),/missing gov_action_deposit/);
 });
+
+import {createCardanoPreprodLiveProtocolSnapshot} from '../src/chains/cardano/live-protocol-parameters.js';
+import {ogmiosProtocolFixture} from '../test/fixtures/cardano-provider-protocol.js';
+test('real Scalus replays mutually confirmed governance and full PV11 cost models',()=>{
+  const document=JSON.parse(CardanoInfo.preprod().protocolParams.toBlockfrostJson());
+  document.epoch=400;
+  const snapshot=createCardanoPreprodLiveProtocolSnapshot({
+    ogmiosParameters:ogmiosProtocolFixture(document),blockfrostParameters:document,
+    epoch:400,tip:{hash:'ab'.repeat(32),slot:SLOT}
+  });
+  const api={CardanoInfo,ProtocolParams};
+  const {cardanoInfo,context}=createScalusCapturedProtocolContext(snapshot,api);
+  assert.ok(context.confirmedAdditionalFields.includes('dvt_p_p_gov_group'));
+  assert.ok(context.confirmedAdditionalFields.includes('cost_models_raw.PlutusV1'));
+  assert.deepEqual(context.unconfirmedFields,[]);
+  assert.equal(context.additionalFieldsIndependentlyConfirmed,true);
+  assert.equal(context.completeCurrentProtocolContext,false);
+  const imported=JSON.parse(cardanoInfo.protocolParams.toBlockfrostJson());
+  assert.deepEqual(imported.cost_models_raw.PlutusV1,document.cost_models_raw.PlutusV1);
+  assert.deepEqual(imported.cost_models_raw.PlutusV2,document.cost_models_raw.PlutusV2);
+  const result=Emulator.create(cardanoInfo,{slot:SLOT,utxos:[new Utxo(TEST_TXID,0,address,new Value(COIN))]}).submitTx(signedPayment());
+  assert.equal(result.isSuccess,true);
+  const changed=structuredClone(snapshot);
+  changed.capturedOgmiosParameters.delegateRepresentativeVotingThresholds.protocolParametersUpdate.governance='1/10';
+  assert.throws(()=>createScalusCapturedProtocolContext(changed,api),/disagreement: drepVotingThresholds/);
+});

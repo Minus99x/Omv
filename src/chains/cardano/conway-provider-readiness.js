@@ -104,16 +104,19 @@ function rational(value, label) {
   a /= x; b /= x;
   return Object.freeze({ numerator: a.toString(), denominator: b.toString() });
 }
-function normalize(value, kind, label) {
+function normalize(value, kind, label, protocolMajor) {
   if (kind === 'integer') return parseUnsigned(value, label);
   if (kind === 'rational') return rational(value, label);
   if (kind === 'cost166' || kind === 'cost175') {
-    const size = Number(kind.slice(4));
-    if (!Array.isArray(value) || value.length !== size ||
-        value.some(v => !Number.isSafeInteger(v))) {
-      throw new TypeError(label + ' must contain exactly ' + size + ' safe signed integers.');
+    // PV11 expands both older-language models to 332 coefficients. Do not
+    // truncate them to the historical V1=166 / V2=175 layouts.
+    const sizes = protocolMajor >= 11 ? [332] : [Number(kind.slice(4)), 332];
+    if (!Array.isArray(value) || !sizes.includes(value.length) ||
+        !Array.from({length:value.length}, (_, i) =>
+          Object.hasOwn(value, i) && Number.isSafeInteger(value[i])).every(Boolean)) {
+      throw new TypeError(label + ' must contain ' + sizes.join(' or ') + ' own safe signed integers.');
     }
-    return [...value];
+    return Object.freeze([...value]);
   }
   throw new TypeError('Unsupported parameter kind.');
 }
@@ -147,6 +150,87 @@ function same(a, b) {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+// Shared normalized comparison for diagnostics AND enforcing capture/replay gates.
+// Provider authentication and ledger timing are established by the collector.
+export function compareCardanoConwayProtocolParameters(ogmiosParameters, blockfrostParameters) {
+  const ogmios = ogmiosParameters?.protocolParameters ?? ogmiosParameters;
+  const blockfrost = blockfrostParameters;
+  if (!ogmios || !blockfrost) throw new TypeError('Both live Conway protocol-parameter responses are required.');
+  const agreed = {};
+  const unresolved = {};
+  const mismatched = {};
+  const supplied = {};
+  const parameterPaths = {};
+  const protocolMajor = Number(ogmios.version?.major ?? blockfrost.protocol_major_ver);
+  for (const [name, [ogmiosPath, blockfrostPath, kind]] of Object.entries(MAPPING)) {
+    supplied[name] = getPath(ogmios, ogmiosPath) !== undefined || getPath(blockfrost, blockfrostPath) !== undefined;
+    parameterPaths[name] = Object.freeze([blockfrostPath]);
+    let a, b, errorA = null, errorB = null;
+    try { a = normalize(getPath(ogmios, ogmiosPath), kind, 'Ogmios ' + name, protocolMajor); }
+    catch (error) { errorA = error.message; }
+    try { b = normalize(getPath(blockfrost, blockfrostPath), kind, 'Blockfrost ' + name, protocolMajor); }
+    catch (error) { errorB = error.message; }
+    if (errorA || errorB) unresolved[name] = Object.freeze({ ogmios: errorA, blockfrost: errorB });
+    else if (!same(a, b)) mismatched[name] = Object.freeze({ ogmios: a, blockfrost: b });
+    else agreed[name] = a;
+  }
+  supplied.maxBlockExUnits = ogmios.maxExecutionUnitsPerBlock !== undefined ||
+    blockfrost.max_block_ex_mem !== undefined || blockfrost.max_block_ex_steps !== undefined;
+  parameterPaths.maxBlockExUnits = Object.freeze(['max_block_ex_mem', 'max_block_ex_steps']);
+  try {
+    const a = normalizeBudget(ogmios.maxExecutionUnitsPerBlock, 'Ogmios max block execution');
+    const b = normalizeBudget({
+      memory: blockfrost.max_block_ex_mem, steps: blockfrost.max_block_ex_steps
+    }, 'Blockfrost max block execution');
+    if (same(a,b)) agreed.maxBlockExUnits = a;
+    else mismatched.maxBlockExUnits = Object.freeze({ogmios:a,blockfrost:b});
+  } catch(error) { unresolved.maxBlockExUnits = error.message; }
+
+  for (const [name,fields] of Object.entries(VOTING_THRESHOLD_FIELDS)) {
+    const root = name === 'poolVotingThresholds' ? 'stakePoolVotingThresholds' : 'delegateRepresentativeVotingThresholds';
+    parameterPaths[name] = Object.freeze(Object.values(fields).map(([, path]) => path));
+    supplied[name] = ogmios[root] !== undefined || parameterPaths[name].some(path => blockfrost[path] !== undefined);
+    let a,b,errorA=null,errorB=null;
+    try { a=normalizeVotingGroup(ogmios,name,fields,'Ogmios'); }
+    catch(error) {errorA=error.message;}
+    try { b=normalizeVotingGroup(blockfrost,name,fields,'Blockfrost'); }
+    catch(error) {errorB=error.message;}
+    if (errorA || errorB) unresolved[name]=Object.freeze({ogmios:errorA,blockfrost:errorB});
+    else if (!same(a,b)) mismatched[name]=Object.freeze({ogmios:a,blockfrost:b});
+    else agreed[name]=a;
+  }
+
+  // Scalus 1.3.0 RefScriptFee.scala uses Conway's 25,600-byte strides
+  // and exact 6/5 multiplier. Blockfrost exposes only the base price, so
+  // corroborate that price and explicitly check the other provider's tiers
+  // against the implemented ledger formula rather than silently discarding them.
+  supplied.minFeeRefScriptCostPerByte = ogmios.minFeeReferenceScripts !== undefined ||
+    blockfrost.min_fee_ref_script_cost_per_byte !== undefined;
+  parameterPaths.minFeeRefScriptCostPerByte = Object.freeze(['min_fee_ref_script_cost_per_byte']);
+  let referenceScriptFeeSchedule = null;
+  try {
+    const fees = ogmios.minFeeReferenceScripts;
+    const range = parseUnsigned(fees?.range, 'Ogmios reference-script range');
+    const multiplier = rational(fees?.multiplier, 'Ogmios reference-script multiplier');
+    const a = rational(fees?.base, 'Ogmios reference-script base price');
+    const b = rational(blockfrost.min_fee_ref_script_cost_per_byte, 'Blockfrost reference-script base price');
+    if (range !== '25600' || multiplier.numerator !== '6' || multiplier.denominator !== '5') {
+      throw new Error('Reference-script tiers are incompatible with the supported Conway fee formula.');
+    }
+    if (!same(a, b)) mismatched.minFeeRefScriptCostPerByte = Object.freeze({ogmios:a, blockfrost:b});
+    else {
+      agreed.minFeeRefScriptCostPerByte = a;
+      referenceScriptFeeSchedule = Object.freeze({range, multiplier, base:a});
+    }
+  } catch (error) { unresolved.minFeeRefScriptCostPerByte = error.message; }
+
+  return Object.freeze({
+    agreed: Object.freeze(agreed), unresolved: Object.freeze(unresolved),
+    mismatched: Object.freeze(mismatched), supplied: Object.freeze(supplied),
+    parameterPaths: Object.freeze(parameterPaths), referenceScriptFeeSchedule
+  });
+}
+
 /**
  * Read-only two-source Conway field coverage report. No provider call is made.
  * Missing genesis fields, unsupported nested fee pricing or disagreement must
@@ -163,48 +247,17 @@ export function createCardanoPreprodConwayReadinessReport({
       tip.slot !== tipBefore?.slot || tip.slot !== tipAfter?.slot) {
     throw new Error('Conway readiness requires two provider sources at one unchanged, independently agreed Preprod tip.');
   }
-  const ogmios = ogmiosParameters?.protocolParameters ?? ogmiosParameters;
-  const blockfrost = blockfrostParameters;
-  if (!ogmios || !blockfrost) throw new TypeError('Both live Conway protocol-parameter responses are required.');
-  const agreed = {};
-  const unresolved = {};
-  const mismatched = {};
-  for (const [name, [ogmiosPath, blockfrostPath, kind]] of Object.entries(MAPPING)) {
-    let a, b, errorA = null, errorB = null;
-    try { a = normalize(getPath(ogmios, ogmiosPath), kind, 'Ogmios ' + name); }
-    catch (error) { errorA = error.message; }
-    try { b = normalize(getPath(blockfrost, blockfrostPath), kind, 'Blockfrost ' + name); }
-    catch (error) { errorB = error.message; }
-    if (errorA || errorB) unresolved[name] = Object.freeze({ ogmios: errorA, blockfrost: errorB });
-    else if (!same(a, b)) mismatched[name] = Object.freeze({ ogmios: a, blockfrost: b });
-    else agreed[name] = a;
-  }
-  try {
-    const a = normalizeBudget(ogmios.maxExecutionUnitsPerBlock, 'Ogmios max block execution');
-    const b = normalizeBudget({
-      memory: blockfrost.max_block_ex_mem, steps: blockfrost.max_block_ex_steps
-    }, 'Blockfrost max block execution');
-    if (same(a,b)) agreed.maxBlockExUnits = a;
-    else mismatched.maxBlockExUnits = Object.freeze({ogmios:a,blockfrost:b});
-  } catch(error) { unresolved.maxBlockExUnits = error.message; }
-
-  for (const [name,fields] of Object.entries(VOTING_THRESHOLD_FIELDS)) {
-    let a,b,errorA=null,errorB=null;
-    try { a=normalizeVotingGroup(ogmios,name,fields,'Ogmios'); }
-    catch(error) {errorA=error.message;}
-    try { b=normalizeVotingGroup(blockfrost,name,fields,'Blockfrost'); }
-    catch(error) {errorB=error.message;}
-    if (errorA || errorB) unresolved[name]=Object.freeze({ogmios:errorA,blockfrost:errorB});
-    else if (!same(a,b)) mismatched[name]=Object.freeze({ogmios:a,blockfrost:b});
-    else agreed[name]=a;
-  }
+  const comparison = compareCardanoConwayProtocolParameters(ogmiosParameters, blockfrostParameters);
+  const agreed = {...comparison.agreed};
+  const unresolved = {...comparison.unresolved};
+  const mismatched = {...comparison.mismatched};
 
   for (const name of REQUIRED) {
     if (!(name in agreed) && !(name in unresolved) && !(name in mismatched)) {
       unresolved[name] = name === 'systemStart' || name === 'epochLength' || name === 'slotLength'
         ? 'Requires separately verified Cardano Preprod genesis/era-timing evidence.'
         : name === 'minFeeRefScriptCostPerByte'
-          ? 'Ogmios tiered reference-script fees need explicit compatible transformation; no inferred scalar.'
+          ? 'Complete compatible reference-script fee evidence is required.'
           : 'Provider governance parameter normalization not yet implemented or source unavailable.';
     }
   }

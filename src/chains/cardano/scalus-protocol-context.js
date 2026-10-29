@@ -1,3 +1,4 @@
+import { compareCardanoConwayProtocolParameters } from './conway-provider-readiness.js';
 import { verifyCapturedBlockfrostAgreement, verifyExtendedProtocolAgreement } from './live-protocol-parameters.js';
 import { normalizeCardanoProtocolParameterSnapshot } from './protocol-parameters.js';
 import { hashCardanoEvidence } from './evidence-binding.js';
@@ -41,18 +42,38 @@ export function createScalusCapturedProtocolContext(snapshot, api) {
         throw new Error(`Captured Blockfrost cost model incomplete: ${language}.`);
       }
     }
+    const confirmedAdditionalFields = snapshot.capturedOgmiosParameters == null ? Object.freeze([]) :
+      verifyExtendedProtocolAgreement(snapshot.capturedOgmiosParameters, document);
+    const confirmedFields = new Set(snapshot.capturedOgmiosParameters == null ? [] : [
+      'min_fee_a', 'min_fee_b', 'max_tx_size', 'max_val_size', 'coins_per_utxo_size',
+      'price_mem', 'price_step', 'max_tx_ex_mem', 'max_tx_ex_steps', 'collateral_percent',
+      'max_collateral_inputs', 'protocol_major_ver', 'protocol_minor_ver',
+      'cost_models_raw.PlutusV3', ...confirmedAdditionalFields
+    ]);
+    const unconfirmedFields = Object.freeze(Object.keys(bundled)
+      .filter(key => key !== 'pvtpp_security_group')
+      .flatMap(key => key === 'cost_models_raw'
+        ? Object.keys(bundled.cost_models_raw).map(language => `cost_models_raw.${language}`) : [key])
+      .filter(key => !confirmedFields.has(key)));
+    // The pinned Scalus importer consumes this fee as an integer. Reject
+    // fractional/unsafe JSON numbers before its Long conversion can truncate.
+    if (Object.hasOwn(document, 'min_fee_ref_script_cost_per_byte') &&
+        (!Number.isSafeInteger(document.min_fee_ref_script_cost_per_byte) || document.min_fee_ref_script_cost_per_byte < 0)) {
+      throw new Error('Captured reference-script base price exceeds the Scalus exact integer interface.');
+    }
+    const referenceScriptFeeSchedule = snapshot.capturedOgmiosParameters == null ? null :
+      compareCardanoConwayProtocolParameters(snapshot.capturedOgmiosParameters, document).referenceScriptFeeSchedule;
     const params = api.ProtocolParams.fromBlockfrostJson(JSON.stringify(document));
     return {cardanoInfo:base.withProtocolParams(params),context:Object.freeze({
       mode:'captured-blockfrost-document',
       snapshotSha256:hashCardanoEvidence(snapshot),
       appliedParameterDocumentSha256:hashCardanoEvidence(document),
       capturedFields:Object.freeze(Object.keys(document)),bundledFields:Object.freeze([]),
-      confirmedAdditionalFields: snapshot.capturedOgmiosParameters == null ? Object.freeze([]) :
-        verifyExtendedProtocolAgreement(snapshot.capturedOgmiosParameters, document),
+      confirmedAdditionalFields, unconfirmedFields, referenceScriptFeeSchedule,
       // Additional provider fields are retained, but only the existing subset
       // has been independently compared with Ogmios.
       completeCurrentProtocolContext:false,
-      additionalFieldsIndependentlyConfirmed:false
+      additionalFieldsIndependentlyConfirmed:unconfirmedFields.length === 0
     })};
   }
   const document = bundled;

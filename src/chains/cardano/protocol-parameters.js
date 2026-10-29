@@ -1,3 +1,4 @@
+import { verifyCapturedBlockfrostAgreement } from './live-protocol-parameters.js';
 import { createHash } from 'node:crypto';
 
 const UINT = /^\d+$/;
@@ -78,6 +79,14 @@ export function normalizeCardanoProtocolParameterSnapshot(snapshot) {
     eligibleForLiveTransactionConstruction: snapshot.promotion?.eligibleForLiveTransactionConstruction === true,
     connectorLiveProof: snapshot.promotion?.connectorLiveProof === true
   };
+  // Recheck raw captured evidence on every consumer path, including unsigned
+  // construction and pre-submit packages that do not invoke the local emulator.
+  if (snapshot.capturedOgmiosParameters != null && snapshot.capturedBlockfrostParameters == null) {
+    throw new Error('Captured Ogmios protocol evidence requires the paired Blockfrost document.');
+  }
+  if (snapshot.capturedBlockfrostParameters != null) {
+    verifyCapturedBlockfrostAgreement(snapshot, snapshot.capturedBlockfrostParameters);
+  }
   return Object.freeze(normalized);
 }
 
