@@ -344,3 +344,94 @@ test('XDC rejects missing provider slots before checksum validation for both rec
     }
   }
 });
+
+
+test('XDC source claims reject accessor-backed fields without executing accessors', () => {
+  const attacks = [
+    {label:'top-level transaction identity',target:o=>o,key:'transactionHash',value:TX},
+    {label:'receipt success status',target:o=>o.receipt,key:'status',value:'0x1'},
+    {label:'receipt block timestamp',target:o=>o.receiptBlock,key:'timestamp',value:STAMP},
+    {label:'finalized block hash',target:o=>o.finalizedBlock,key:'hash',value:FINALIZED},
+    {label:'digest field',target:o=>o,key:'observationSha256',value:null}
+  ];
+  for (const attack of attacks) {
+    const o = observation();
+    let reads = 0;
+    const value = attack.value === null ? o.observationSha256 : attack.value;
+    Object.defineProperty(attack.target(o), attack.key, {
+      enumerable:true, configurable:true,
+      get() { reads++; return value; }
+    });
+    assert.throws(() => validateXdcFinalityRpcObservation(o),
+      /missing or unexpected fields/, attack.label);
+    assert.equal(reads, 0, attack.label + ' getter must not execute');
+    for (const kind of ['native-recovery','erc20-recovery']) {
+      assert.throws(() => createXdcProvenanceBoundFinality({
+        observation:o,proof:proof(kind),kind
+      }), /missing or unexpected fields/);
+    }
+    assert.equal(reads, 0, attack.label + ' getter must not execute during package creation');
+  }
+});
+
+test('XDC provider arrays reject accessor slots and hidden fields without invoking them', () => {
+  for (const field of ['endpoints','latestHeadHeights']) {
+    for (const index of [0,1]) {
+      const o = observation();
+      const value = o[field][index];
+      let reads = 0;
+      Object.defineProperty(o[field], String(index), {
+        enumerable:true, configurable:true,
+        get() { reads++; return value; }
+      });
+      assert.throws(() => validateXdcFinalityRpcObservation(o),
+        /ordered fixed endpoints|two latest head heights/);
+      assert.equal(reads,0, field + '[' + index + ']');
+    }
+    const o = observation();
+    Object.defineProperty(o[field], 'hiddenAuthority', {value:true,enumerable:false});
+    assert.throws(() => validateXdcFinalityRpcObservation(o),
+      /ordered fixed endpoints|two latest head heights/);
+  }
+});
+
+test('XDC checksum-bound records reject nonenumerable and symbol authority additions', () => {
+  for (const target of [o=>o,o=>o.receipt,o=>o.receiptBlock,o=>o.finalizedBlock]) {
+    const o = observation();
+    Object.defineProperty(target(o),'hiddenAuthority',{value:true,enumerable:false});
+    assert.throws(() => validateXdcFinalityRpcObservation(o),/missing or unexpected fields/);
+    const s = observation();
+    target(s)[Symbol('hiddenAuthority')] = true;
+    assert.throws(() => validateXdcFinalityRpcObservation(s),/missing or unexpected fields/);
+  }
+});
+
+test('XDC valid JSON and frozen own-data observations remain accepted', () => {
+  const o = JSON.parse(JSON.stringify(observation()));
+  Object.freeze(o.receipt);
+  Object.freeze(o.receiptBlock);
+  Object.freeze(o.finalizedBlock);
+  Object.freeze(o.endpoints);
+  Object.freeze(o.latestHeadHeights);
+  Object.freeze(o);
+  assert.equal(validateXdcFinalityRpcObservation(o).claimsConsistent,true);
+  for (const kind of ['native-recovery','erc20-recovery']) {
+    const p=proof(kind);
+    const bundle=createXdcProvenanceBoundFinality({observation:o,proof:p,kind});
+    assert.equal(xdcProvenancePackageMatchesProof(bundle,o,p,kind),true);
+    assert.equal(bundle.rpcAuthenticated,false);
+    assert.equal(bundle.readyForLiveProofPromotion,false);
+  }
+});
+
+test('XDC package comparison rejects accessor-backed claims without executing getters', () => {
+  const o=observation(),p=proof();
+  const valid=createXdcProvenanceBoundFinality({observation:o,proof:p,kind:'native-recovery'});
+  const bundle={...valid};
+  let reads=0;
+  Object.defineProperty(bundle,'rpcAuthenticated',{
+    enumerable:true,configurable:true,get(){reads++;return false;}
+  });
+  assert.equal(xdcProvenancePackageMatchesProof(bundle,o,p,'native-recovery'),false);
+  assert.equal(reads,0);
+});

@@ -26,11 +26,32 @@ const REPORT_KEYS = [
 function sha256(input) {
   return createHash('sha256').update(JSON.stringify(input)).digest('hex');
 }
+// A checksum is not proof of provenance, but the material it covers must
+// still be a stable JSON data record. Accessors can return different values
+// during validation and serialization, and hidden keys evade JSON.stringify.
 function keysMatch(value, keys) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value) &&
-    Object.keys(value).length === keys.length &&
-    keys.every(key => Object.hasOwn(value,key)) &&
-    Object.keys(value).every(key => keys.includes(key));
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const ownKeys = Reflect.ownKeys(value);
+  return ownKeys.length === keys.length &&
+    ownKeys.every(key => typeof key === 'string' && keys.includes(key)) &&
+    keys.every(key => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      return descriptor !== undefined && Object.hasOwn(descriptor, 'value') &&
+        descriptor.enumerable === true;
+    });
+}
+function dataArrayMatches(value, expectedLength) {
+  if (!Array.isArray(value)) return false;
+  const length = Object.getOwnPropertyDescriptor(value, 'length');
+  if (!length || length.value !== expectedLength) return false;
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.length !== expectedLength + 1) return false;
+  for (let i = 0; i < expectedLength; i++) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(i));
+    if (!descriptor || !Object.hasOwn(descriptor, 'value') ||
+        descriptor.enumerable !== true) return false;
+  }
+  return true;
 }
 function assertKeys(value, keys, label) {
   if (!keysMatch(value,keys)) throw new Error(label + ' has missing or unexpected fields');
@@ -72,13 +93,10 @@ export function validateXdcFinalityRpcObservation(observation) {
       observation.networkRef !== 'xdc:apothem' ||
       observation.chainIdDecimal !== 51 || observation.observedChainIdHex !== '0x33')
     throw new Error('XDC finality observation network identity mismatch');
-  if (!Array.isArray(observation.endpoints) ||
-      observation.endpoints.length !== 2 ||
-      ENDPOINTS.some((endpoint,i)=>!Object.hasOwn(observation.endpoints,i) || observation.endpoints[i]!==endpoint))
+  if (!dataArrayMatches(observation.endpoints, 2) ||
+      ENDPOINTS.some((endpoint,i)=>observation.endpoints[i]!==endpoint))
     throw new Error('XDC finality observation requires both ordered fixed endpoints');
-  if (!Array.isArray(observation.latestHeadHeights) ||
-      observation.latestHeadHeights.length !== 2 ||
-      ![0,1].every(i=>Object.hasOwn(observation.latestHeadHeights,i)))
+  if (!dataArrayMatches(observation.latestHeadHeights, 2))
     throw new Error('XDC finality observation requires two latest head heights');
   const heads = observation.latestHeadHeights.map((height,i)=>decimal(height,'latestHeadHeights['+i+']'));
   if (heads.some(height=>height<=0n)) throw new Error('XDC latest heads must be non-genesis');
