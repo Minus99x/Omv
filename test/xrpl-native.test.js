@@ -327,3 +327,70 @@ test('XRPL shared fee parser preserves caller-visible canonical primitive valida
     assert.throws(()=>buildXrplSignerListSet({owner,contacts:[a,b],quorum:2,sequence:12,feeDrops:input}),/canonical non-negative primitive integer/);
   }
 });
+
+
+test('XRPL token escrow rejects shadow fields and mixed MPT/trust-line authority', () => {
+  const enabled = evaluateXrplFeature({featureResponse:{result:{
+    [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',supported:true,enabled:true}
+  }}});
+  const base = {owner,rescueDestination:rescue,finishAfterRippleTime:900000000,
+    cancelAfterRippleTime:900000600,tokenEscrowFeature:enabled};
+  const trust = {currency:'USD',issuer:a,value:'12.5'};
+  const mpt = {mpt_issuance_id:'AB'.repeat(24),value:'42'};
+  assert.deepEqual(createXrplEscrowRecoveryPlan({...base,amount:trust}).transaction.Amount,trust);
+  assert.deepEqual(createXrplEscrowRecoveryPlan({...base,amount:mpt}).transaction.Amount,mpt);
+  for (const amount of [
+    {...trust,Destination:b},
+    {...trust,extraAuthority:'allow-all'},
+    {...trust,[Symbol('hidden')]:'alternate-value'},
+    {...mpt,issuer:a},
+    {...mpt,currency:'USD'},
+    {...mpt,Destination:b},
+    {currency:'USD',issuer:a},
+    {mpt_issuance_id:'AB'.repeat(24),value:'42',currency:'USD',issuer:a}
+  ]) {
+    assert.throws(()=>createXrplEscrowRecoveryPlan({...base,amount}),
+      /exactly its canonical asset and value fields/);
+  }
+});
+
+test('XRPL token escrow accepts null-prototype own data but refuses inherited asset identities', () => {
+  const enabled = evaluateXrplFeature({featureResponse:{result:{
+    [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',supported:true,enabled:true}
+  }}});
+  const base = {owner,rescueDestination:rescue,finishAfterRippleTime:900000000,
+    cancelAfterRippleTime:900000600,tokenEscrowFeature:enabled};
+  const clean = Object.assign(Object.create(null),{currency:'EUR',issuer:a,value:'1'});
+  assert.deepEqual(createXrplEscrowRecoveryPlan({...base,amount:clean}).transaction.Amount,
+    {currency:'EUR',issuer:a,value:'1'});
+  const inherited = Object.assign(Object.create({issuer:a}),{currency:'EUR',value:'1'});
+  assert.throws(()=>createXrplEscrowRecoveryPlan({...base,amount:inherited}),
+    /plain own-field object/);
+  const inheritedMpt = Object.assign(Object.create({mpt_issuance_id:'AB'.repeat(24)}),{value:'42'});
+  assert.throws(()=>createXrplEscrowRecoveryPlan({...base,amount:inheritedMpt}),
+    /plain own-field object/);
+});
+
+test('XRPL token escrow rejects getter-backed amount fields without executing them', () => {
+  const enabled = evaluateXrplFeature({featureResponse:{result:{
+    [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',supported:true,enabled:true}
+  }}});
+  const base = {owner,rescueDestination:rescue,finishAfterRippleTime:900000000,
+    cancelAfterRippleTime:900000600,tokenEscrowFeature:enabled};
+  let invoked=0;
+  for (const field of ['currency','issuer','value']) {
+    const amount={currency:'USD',issuer:a,value:'1'};
+    Object.defineProperty(amount,field,{enumerable:true,configurable:true,
+      get(){invoked++;return field==='issuer'?a:'USD';}
+    });
+    assert.throws(()=>createXrplEscrowRecoveryPlan({...base,amount}),
+      /own data values, not accessors/);
+  }
+  const mpt={mpt_issuance_id:'AB'.repeat(24),value:'42'};
+  Object.defineProperty(mpt,'mpt_issuance_id',{enumerable:true,
+    get(){invoked++;return 'AB'.repeat(24);}
+  });
+  assert.throws(()=>createXrplEscrowRecoveryPlan({...base,amount:mpt}),
+    /own data values, not accessors/);
+  assert.equal(invoked,0);
+});

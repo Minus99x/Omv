@@ -13,6 +13,30 @@ function positiveDecimalString(value, label) {
   return text;
 }
 
+// XRPL issued-asset Amount objects are transaction authority, not bags of
+// optional metadata. Never ignore extra, inherited or accessor-backed fields.
+function exactTokenAmountFields(amount) {
+  const prototype = Object.getPrototypeOf(amount);
+  if (prototype !== Object.prototype && prototype !== null) {
+    throw new TypeError('XRPL token escrow Amount must be a plain own-field object.');
+  }
+  const mpt = Object.hasOwn(amount, 'mpt_issuance_id');
+  const required = mpt ? ['mpt_issuance_id', 'value'] : ['currency', 'issuer', 'value'];
+  if (Reflect.ownKeys(amount).length !== required.length ||
+      !required.every(key => Object.hasOwn(amount, key))) {
+    throw new TypeError('XRPL token escrow Amount must have exactly its canonical asset and value fields.');
+  }
+  const fields = Object.create(null);
+  for (const key of required) {
+    const descriptor = Object.getOwnPropertyDescriptor(amount, key);
+    if (!descriptor || !Object.hasOwn(descriptor, 'value')) {
+      throw new TypeError('XRPL token escrow Amount fields must be own data values, not accessors.');
+    }
+    fields[key] = descriptor.value;
+  }
+  return fields;
+}
+
 function normalizeAmount(amount) {
   if (typeof amount === 'string' || typeof amount === 'number' || typeof amount === 'bigint') {
     const drops = String(amount);
@@ -25,17 +49,18 @@ function normalizeAmount(amount) {
     return Object.freeze({ kind: 'xrp', amount: drops, requiresTokenEscrow: false });
   }
   if (!amount || typeof amount !== 'object' || Array.isArray(amount)) throw new TypeError('XRPL escrow amount must be XRP drops or a fungible-token amount object.');
-  if ('mpt_issuance_id' in amount) {
-    if (typeof amount.mpt_issuance_id !== 'string' || !/^[A-Fa-f0-9]{48}$/.test(amount.mpt_issuance_id)) throw new TypeError('mpt_issuance_id must be a 192-bit hex identifier.');
-    const value = positiveDecimalString(amount.value, 'MPT amount value');
+  const fields = exactTokenAmountFields(amount);
+  if (Object.hasOwn(fields, 'mpt_issuance_id')) {
+    if (typeof fields.mpt_issuance_id !== 'string' || !/^[A-Fa-f0-9]{48}$/.test(fields.mpt_issuance_id)) throw new TypeError('mpt_issuance_id must be a 192-bit hex identifier.');
+    const value = positiveDecimalString(fields.value, 'MPT amount value');
     if (value.includes('.')) throw new TypeError('MPT escrow value must be an integer string; AssetScale determines display precision.');
     if (BigInt(value)>0x7fffffffffffffffn) {
       throw new RangeError('MPT escrow amount exceeds the XRPL signed-int64 token amount range.');
     }
-    return Object.freeze({ kind: 'mpt', amount: Object.freeze({ mpt_issuance_id: amount.mpt_issuance_id.toUpperCase(), value }), requiresTokenEscrow: true });
+    return Object.freeze({ kind: 'mpt', amount: Object.freeze({ mpt_issuance_id: fields.mpt_issuance_id.toUpperCase(), value }), requiresTokenEscrow: true });
   }
-  assertClassicAddress(amount.issuer, 'token issuer');
-  const currency=amount.currency;
+  assertClassicAddress(fields.issuer, 'token issuer');
+  const currency=fields.currency;
   // XRPL accepts a 3-character standard code or a 160-bit hexadecimal code;
   // XRP's reserved currency identity cannot denote an issued trust-line asset.
   const standard=typeof currency==='string' && /^[A-Za-z0-9?!@#$%^&*<>(){}\[\]|]{3}$/.test(currency);
@@ -44,8 +69,8 @@ function normalizeAmount(amount) {
       (hex && (/^0{40}$/.test(currency) || currency.toUpperCase()==='0000000000000000000000005852500000000000'))) {
     throw new TypeError('Trust-line token currency must be a valid non-XRP 3-character code or 160-bit hex code.');
   }
-  const value = positiveDecimalString(amount.value, 'trust-line token amount value');
-  return Object.freeze({ kind: 'trustline-token', amount: Object.freeze({ currency: amount.currency, issuer: amount.issuer, value }), requiresTokenEscrow: true });
+  const value = positiveDecimalString(fields.value, 'trust-line token amount value');
+  return Object.freeze({ kind: 'trustline-token', amount: Object.freeze({ currency: fields.currency, issuer: fields.issuer, value }), requiresTokenEscrow: true });
 }
 
 export function evaluateXrplFeature({ featureResponse, featureName = 'TokenEscrow', amendmentId = TOKEN_ESCROW_AMENDMENT_ID }) {
