@@ -25,6 +25,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Install locked dependencies
+        run: npm ci
       - name: Syntax check
         run: node --check src/chains/cardano/protocol-parameters.js && node --check src/chains/cardano/live-protocol-parameters.js && node --check test/cardano-protocol-parameters.test.js && node --check test/cardano-live-protocol-parameters.test.js
       - name: Focused regression tests
