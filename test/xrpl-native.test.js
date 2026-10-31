@@ -454,3 +454,29 @@ test('XRPL trust-line escrow requires exact 16-digit mantissa and bounded expone
  // Trailing zeroes do not create false precision when the actual value is exact.
  assert.equal(create('12.5000000000000000000'),'12.5000000000000000000');
 });
+
+test('XRPL escrow creation refuses forged accessor-backed feature claims without executing them',()=>{
+  const base={owner,rescueDestination:rescue,
+    amount:{currency:'USD',issuer:a,value:'2'},finishAfterRippleTime:900000000,
+    cancelAfterRippleTime:900000600};
+  const feature=evaluateXrplFeature({featureResponse:{result:{
+    [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',supported:true,enabled:true}
+  }}});
+  assert.equal(createXrplEscrowRecoveryPlan({...base,tokenEscrowFeature:feature}).assetKind,'trustline-token');
+  for(const field of ['known','enabled','supported','featureName','amendmentId']){
+    let reads=0;
+    const impostor={...feature};
+    Object.defineProperty(impostor,field,{enumerable:true,
+      get(){reads++;return feature[field];}});
+    assert.throws(()=>createXrplEscrowRecoveryPlan({...base,tokenEscrowFeature:impostor}),
+      /TokenEscrow amendment to be supported and enabled/);
+    assert.equal(reads,0,'Capability getter may not execute: '+field);
+  }
+  const hidden={...feature};
+  Object.defineProperty(hidden,'invisible',{enumerable:false,value:'override'});
+  assert.throws(()=>createXrplEscrowRecoveryPlan({...base,tokenEscrowFeature:hidden}),
+    /TokenEscrow amendment to be supported and enabled/);
+  const inherited=Object.create(feature);
+  assert.throws(()=>createXrplEscrowRecoveryPlan({...base,tokenEscrowFeature:inherited}),
+    /TokenEscrow amendment to be supported and enabled/);
+});

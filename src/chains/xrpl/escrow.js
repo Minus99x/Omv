@@ -128,17 +128,32 @@ export function evaluateXrplFeature({ featureResponse, featureName = 'TokenEscro
   });
 }
 
+// Only immutable-looking, direct data snapshots may enable a token escrow.
+// A getter can advertise true during the capability gate and false later.
+function validTokenEscrowCapability(snapshot) {
+  if(snapshot===null || typeof snapshot!=='object' || Array.isArray(snapshot)) return false;
+  const proto=Object.getPrototypeOf(snapshot);
+  if(proto!==Object.prototype && proto!==null) return false;
+  const names=['known','enabled','supported','featureName','amendmentId'];
+  const keys=Reflect.ownKeys(snapshot);
+  if(keys.length!==names.length || keys.some(key=>typeof key!=='string'||!names.includes(key))) return false;
+  const result=Object.create(null);
+  for(const name of names){
+    const field=Object.getOwnPropertyDescriptor(snapshot,name);
+    if(!field || !field.enumerable || !Object.hasOwn(field,'value')) return false;
+    result[name]=field.value;
+  }
+  return result.known===true && result.enabled===true && result.supported===true &&
+    result.featureName==='TokenEscrow' && result.amendmentId===TOKEN_ESCROW_AMENDMENT_ID;
+}
+
 export function createXrplEscrowRecoveryPlan({ owner, rescueDestination, amount = null, amountDrops = null, finishAfterRippleTime, cancelAfterRippleTime = null, tokenEscrowFeature = null }) {
   assertClassicAddress(owner, 'owner');
   assertClassicAddress(rescueDestination, 'rescueDestination');
   if (!Number.isInteger(finishAfterRippleTime) || finishAfterRippleTime <= 0 || finishAfterRippleTime > 0xffffffff) throw new TypeError('finishAfterRippleTime must be a positive Ripple-epoch timestamp.');
   const normalized = normalizeAmount(amount ?? amountDrops);
   if (normalized.requiresTokenEscrow) {
-    if (tokenEscrowFeature?.known !== true ||
-        tokenEscrowFeature?.enabled !== true ||
-        tokenEscrowFeature?.supported !== true ||
-        tokenEscrowFeature?.featureName !== 'TokenEscrow' ||
-        tokenEscrowFeature?.amendmentId !== TOKEN_ESCROW_AMENDMENT_ID) {
+    if (!validTokenEscrowCapability(tokenEscrowFeature)) {
       throw new TypeError('Fungible-token escrow requires the TokenEscrow amendment to be supported and enabled on the target XRPL network.');
     }
     if (!Number.isInteger(cancelAfterRippleTime) || cancelAfterRippleTime > 0xffffffff || cancelAfterRippleTime <= finishAfterRippleTime) {
