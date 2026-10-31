@@ -13,6 +13,25 @@ function positiveDecimalString(value, label) {
   return text;
 }
 
+// XRPL non-XRP issued amounts encode a 16-digit mantissa and an exponent
+// from -96 through +80. Never silently round the owner's recovery amount.
+// This validator handles our explicitly supported non-scientific decimal form.
+function exactIssuedCurrencyValue(value){
+  const validated=positiveDecimalString(value,'trust-line token amount value');
+  const [whole,fraction='']=validated.split('.');
+  const significantRaw=(whole+fraction).replace(/^0+/,'');
+  const significant=significantRaw.replace(/0+$/,'');
+  if(significant.length>16){
+    throw new RangeError('XRPL trust-line token amount exceeds exact 16-significant-digit precision.');
+  }
+  const trailingZeroCount=significantRaw.length-significant.length;
+  const normalizedExponent=trailingZeroCount-fraction.length-(16-significant.length);
+  if(normalizedExponent < -96 || normalizedExponent > 80){
+    throw new RangeError('XRPL trust-line token amount is outside its exact issued-currency exponent range.');
+  }
+  return validated;
+}
+
 // XRPL issued-asset Amount objects are transaction authority, not bags of
 // optional metadata. Never ignore extra, inherited or accessor-backed fields.
 function exactTokenAmountFields(amount) {
@@ -69,7 +88,7 @@ function normalizeAmount(amount) {
       (hex && (/^0{40}$/.test(currency) || currency.toUpperCase()==='0000000000000000000000005852500000000000'))) {
     throw new TypeError('Trust-line token currency must be a valid non-XRP 3-character code or 160-bit hex code.');
   }
-  const value = positiveDecimalString(fields.value, 'trust-line token amount value');
+  const value = exactIssuedCurrencyValue(fields.value);
   return Object.freeze({ kind: 'trustline-token', amount: Object.freeze({ currency: fields.currency, issuer: fields.issuer, value }), requiresTokenEscrow: true });
 }
 

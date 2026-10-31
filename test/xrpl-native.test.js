@@ -431,3 +431,26 @@ test('XRPL TokenEscrow capability requires explicit own fields and unambiguous a
   }}});
   assert.equal(unverified.supported,false);
 });
+
+test('XRPL trust-line escrow requires exact 16-digit mantissa and bounded exponent, never rounded token intent',()=>{
+ const enabled=evaluateXrplFeature({featureResponse:{result:{
+  [TOKEN_ESCROW_AMENDMENT_ID]:{name:'TokenEscrow',supported:true,enabled:true}
+ }}});
+ const base={owner,rescueDestination:rescue,finishAfterRippleTime:900000000,
+  cancelAfterRippleTime:900000600,tokenEscrowFeature:enabled};
+ const create=value=>createXrplEscrowRecoveryPlan({
+  ...base,amount:{currency:'USD',issuer:a,value}
+ }).transaction.Amount.value;
+ for(const valid of [
+  '1.234567890123456','1.234567890123456000','10000000000000000',
+  '1'+'0'.repeat(95),
+  '0.'+'0'.repeat(80)+'1'
+ ]) assert.equal(create(valid),valid,'owner-specified exact decimal must survive unchanged');
+ for(const invalid of ['1.2345678901234567','12345678901234567.89']){
+  assert.throws(()=>create(invalid),/16-significant-digit precision/);
+ }
+ assert.throws(()=>create('1'+'0'.repeat(96)),/issued-currency exponent range/);
+ assert.throws(()=>create('0.'+'0'.repeat(81)+'1'),/issued-currency exponent range/);
+ // Trailing zeroes do not create false precision when the actual value is exact.
+ assert.equal(create('12.5000000000000000000'),'12.5000000000000000000');
+});
