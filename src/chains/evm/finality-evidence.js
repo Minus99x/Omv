@@ -169,9 +169,42 @@ export function createEvmBlockFinalityEvidence({
   return Object.freeze({ ...core, sha256: digest(core) });
 }
 
+// Evidence supplied to the matcher is untrusted, even when its SHA-256 is
+// internally self-consistent. Data accessors can change values between the
+// policy checks and JSON canonicalization, while hidden fields evade hashing.
+function exactOwnDataFields(value, fields) {
+  if(value===null || typeof value!=='object' || Array.isArray(value) ||
+     (Object.getPrototypeOf(value)!==Object.prototype && Object.getPrototypeOf(value)!==null)) return false;
+  const keys=Reflect.ownKeys(value);
+  if(keys.length!==fields.length || keys.some(key=>typeof key!=='string' || !fields.includes(key))) return false;
+  return fields.every(key=>{
+    const descriptor=Object.getOwnPropertyDescriptor(value,key);
+    return descriptor!==undefined && descriptor.enumerable===true &&
+      Object.hasOwn(descriptor,'value');
+  });
+}
+
+function exactFinalityEvidenceShape(evidence){
+  return exactOwnDataFields(evidence,[
+    'schema','chainId','networkRef','chainIdHex','model','method',
+    'transactionRef','proofBindingSha256','proofContextSha256',
+    'deploymentVerificationSha256','receipt','finality','observedAt',
+    'status','sha256'
+  ]) && exactOwnDataFields(evidence.receipt,[
+    'blockNumber','blockHash','canonicalBlockNumber','canonicalBlockHash','status'
+  ]) && exactOwnDataFields(evidence.finality,[
+    'finalizedBlockNumber','finalizedBlockHash','headBlockNumber',
+    'confirmations','requiredConfirmations'
+  ]);
+}
+
 export function evmFinalityMatchesProof(evidence, proof, { networkId, kind }) {
   const network = getNetwork(networkId);
-  if (!network || !evidence || !proof || proof?.success !== true) return false;
+  if (!network || !evidence || !proof) return false;
+  // Fail before reading any untrusted evidence field, and before the canonical
+  // digest walks the record. Neither getters nor hidden metadata are proof.
+  if (!exactFinalityEvidenceShape(evidence)) return false;
+  if (proof?.success !== true) return false;
   if (proof.networkRef !== network.id || proof.chainId !== network.chainId) return false;
   if (typeof proof.transactionRef !== 'string' || !HASH_32.test(proof.transactionRef)) return false;
   if (proof?.binding?.kind !== kind) return false;
@@ -219,5 +252,6 @@ export function evmFinalityMatchesProof(evidence, proof, { networkId, kind }) {
   if (!canonicalUtcObservation(evidence.observedAt)) return false;
   if (typeof evidence.sha256 !== 'string' || !/^[0-9a-f]{64}$/i.test(evidence.sha256)) return false;
   const { sha256, ...unsigned } = evidence;
-  return digest(unsigned) === sha256;
+  try { return digest(unsigned) === sha256; }
+  catch { return false; }
 }

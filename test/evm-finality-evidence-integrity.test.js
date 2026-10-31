@@ -199,3 +199,38 @@ test('EVM finality preserves canonical extended-year ISO timestamps at supported
     networkId:a.networkId,kind:'native-recovery'
   }),true);
 });
+
+test('EVM finality matcher accepts canonical JSON transport while rejecting hidden proof metadata',()=>{
+ const a=args();
+ const original=createEvmBlockFinalityEvidence(a);
+ const plain=JSON.parse(JSON.stringify(original));
+ assert.equal(evmFinalityMatchesProof(plain,a.proof,{networkId:a.networkId,kind:'native-recovery'}),true);
+ const extra={...plain,unverifiedRpcClaim:'trusted'};
+ assert.equal(evmFinalityMatchesProof(extra,a.proof,{networkId:a.networkId,kind:'native-recovery'}),false);
+ const hidden={...plain};
+ Object.defineProperty(hidden,'invisible',{enumerable:false,value:'RPC-provider-override'});
+ assert.equal(evmFinalityMatchesProof(hidden,a.proof,{networkId:a.networkId,kind:'native-recovery'}),false);
+ const nested={...plain,receipt:{...plain.receipt}};
+ Object.defineProperty(nested.receipt,Symbol('hidden'),{enumerable:false,value:true});
+ assert.equal(evmFinalityMatchesProof(nested,a.proof,{networkId:a.networkId,kind:'native-recovery'}),false);
+});
+
+test('EVM finality matcher never runs accessor-backed values during integrity checks or checksum verification',()=>{
+ const a=args(),original=createEvmBlockFinalityEvidence(a);
+ let reads=0;
+ const attacks=[
+  ['top-level transaction identity',record=>record,'transactionRef'],
+  ['receipt hash',record=>record.receipt,'blockHash'],
+  ['finality head',record=>record.finality,'finalizedBlockHash'],
+  ['top-level checksum',record=>record,'sha256']
+ ];
+ for(const [label,target,key] of attacks){
+  const proof={...original,receipt:{...original.receipt},finality:{...original.finality}};
+  const holder=target(proof), value=holder[key];
+  Object.defineProperty(holder,key,{enumerable:true,get(){reads++;return value;}});
+  assert.equal(evmFinalityMatchesProof(proof,a.proof,{
+   networkId:a.networkId,kind:'native-recovery'
+  }),false,label);
+ }
+ assert.equal(reads,0,'none of the untrusted accessors may be invoked');
+});
