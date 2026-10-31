@@ -313,13 +313,18 @@ test('shared EVM XDC finality rejects coercible chain IDs and receipt statuses w
         ...args, receipt: { ...o.receipt, status: value }
       }), /receipt does not report success/, 'non-primitive success must fail closed');
     }
-    for (const value of [true, 1, 1n, '1', '0x1', '0X1']) {
-      const evidence = createEvmBlockFinalityEvidence({
+    // Only canonical EIP-658 JSON-RPC 0x1 is successful; old coercible
+    // compatibility forms must not establish finality or authorization.
+    for (const value of [true, 1, 1n, '1', '0X1', '0x01']) {
+      assert.throws(() => createEvmBlockFinalityEvidence({
         ...args, receipt: { ...o.receipt, status: value }
-      });
-      assert.equal(evidence.receipt.status, 'success');
-      assert.equal(evmFinalityMatchesProof(evidence, p, { networkId: 'xdc:apothem', kind }), true);
+      }), /receipt does not report success/, 'noncanonical status must fail closed');
     }
+    const evidence = createEvmBlockFinalityEvidence({
+      ...args, receipt: { ...o.receipt, status: '0x1' }
+    });
+    assert.equal(evidence.receipt.status, 'success');
+    assert.equal(evmFinalityMatchesProof(evidence, p, { networkId: 'xdc:apothem', kind }), true);
   }
   assert.equal(coercions, 0, 'untrusted identity and status coercion hooks must not execute');
 });
