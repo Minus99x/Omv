@@ -36,7 +36,11 @@ function normalizeReference(value, label) {
       ? Number(rawIndex)
       : NaN;
   if (!HEX_32.test(txId)) throw new TypeError(`${label}.transaction.id must be 32-byte hex.`);
-  if (!Number.isSafeInteger(index) || index < 0) throw new TypeError(`${label}.index must be a non-negative safe integer.`);
+  // Cardano TxIn output indices are uint32, not arbitrary JS safe integers.
+  // Reject impossible UTxO references before querying Ogmios or signing.
+  if (!Number.isSafeInteger(index) || index < 0 || index > 0xffffffff) {
+    throw new TypeError(`${label}.index must be a non-negative safe integer within uint32.`);
+  }
   return Object.freeze({ transaction: Object.freeze({ id: txId }), index });
 }
 

@@ -473,3 +473,25 @@ test('state beacon quantity must be an exact primitive unit, not a coercible obj
     assert.equal(createCardanoPreprodRealUtxoBindingEvidence(args).exactRoleReferenceBinding,true);
   }
 });
+
+test('Cardano UTxO references reject uint32 overflow before building an Ogmios query or evidence',()=>{
+  const identity=appliedIdentity();
+  const seed={transaction:{id:fixtureEvidence.parameters.seedTxId},index:fixtureEvidence.parameters.seedOutputIndex};
+  for(const index of [4294967296,4294967296n,'4294967296',Number.MAX_SAFE_INTEGER]){
+    assert.throws(()=>createCardanoPreprodRealUtxoBindingPlan({
+      action:'initialize',roles:{seed,collateral:ref('cc',index)},appliedValidatorIdentity:identity
+    }),/uint32|non-negative safe integer/,String(index));
+  }
+  const valid=createCardanoPreprodRealUtxoBindingPlan({
+    action:'initialize',roles:{seed,collateral:ref('cc','4294967295')},appliedValidatorIdentity:identity
+  });
+  assert.equal(valid.roles.collateral.index,4294967295);
+  assert.equal(verifyCardanoPreprodRealUtxoBindingPlan(valid).valid,true);
+  const plan=initializePlan();
+  const tip={hash:'dd'.repeat(32),slot:135700000};
+  const utxos=[walletUtxo(plan.roles.seed,10000000),walletUtxo(plan.roles.collateral,5000000)];
+  utxos[1].index=4294967296;
+  assert.throws(()=>createCardanoPreprodRealUtxoBindingEvidence({
+    plan,tipBefore:tip,tipAfter:tip,queriedUtxo:utxos
+  }),/uint32/);
+});
