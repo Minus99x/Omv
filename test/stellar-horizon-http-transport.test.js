@@ -484,3 +484,35 @@ test('Horizon eligibility rejects uint64 overflow in sequence time plus age',asy
  const transport=createStellarTestnetHorizonHttpTransport({maxEligibilityAttempts:1,fetchImpl:async url=>jsonResponse(url.includes('/accounts/')?{account_id:G(1),sequence:'1001',sequence_time:'1760000000',sequence_ledger:599}:{_embedded:{records:[{sequence:600,closed_at:'2025-10-09T10:13:20Z'}]}})});
  await assert.rejects(transport.waitUntilEligible({...eligibilityArguments(),minAccountSequenceAge:'18446744073709551615'}),/eligibility timestamp exceeds uint64/);
 });
+
+test('Horizon eligibility rejects same-height same-time ledger hash substitution', async () => {
+  let reads = 0;
+  const transport = createStellarTestnetHorizonHttpTransport({
+    maxEligibilityAttempts: 2, sleep: async () => {},
+    fetchImpl: async url => jsonResponse(url.includes('/accounts/')
+      ? { account_id: G(1), sequence: '1001', sequence_time: '1760000000', sequence_ledger: 599 }
+      : { _embedded: { records: [{ sequence: 600, closed_at: '2025-10-09T10:13:19Z',
+        hash: ++reads === 1 ? 'ab'.repeat(32) : 'cd'.repeat(32) }] } })
+  });
+  await assert.rejects(transport.waitUntilEligible({
+    sourceAccount: G(1), minAccountSequenceAge: '4800',
+    currentSequence: '1001', recoverySequence: '5000'
+  }), /regressed or conflicted/);
+  assert.equal(reads, 2);
+});
+
+test('Horizon eligibility accepts valid ledger hash and rejects malformed hash claims', async () => {
+  const makeTransport = ledgerHash => createStellarTestnetHorizonHttpTransport({
+    maxEligibilityAttempts: 1,
+    fetchImpl: async url => jsonResponse(url.includes('/accounts/')
+      ? { account_id: G(1), sequence: '1001', sequence_time: '1760000000', sequence_ledger: 599 }
+      : { _embedded: { records: [{ sequence: 600, closed_at: '2025-10-09T10:13:20Z',
+        hash: ledgerHash }] } })
+  });
+  const args = { sourceAccount: G(1), minAccountSequenceAge: '4800',
+    currentSequence: '1001', recoverySequence: '5000' };
+  assert.equal((await makeTransport('ab'.repeat(32)).waitUntilEligible(args)).eligible, true);
+  for (const bad of ['0'.repeat(64), 'gg'.repeat(32), 'abc', 42, []]) {
+    await assert.rejects(makeTransport(bad).waitUntilEligible(args), /ledger hash/);
+  }
+});
