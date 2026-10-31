@@ -52,9 +52,11 @@ function canonicalUtcObservation(value) {
 }
 
 function receiptSucceeded(status) {
-  // Never invoke untrusted object coercion while deciding whether a receipt succeeded.
-  return status === true || status === 1 || status === 1n || status === '1' ||
-    (typeof status === 'string' && status.toLowerCase() === '0x1');
+  // eth_getTransactionReceipt encodes EIP-658 success as the JSON-RPC quantity
+  // 0x1. A JS boolean, number or decimal string is not an RPC success proof.
+  // Reject alternate representations before they can be silently promoted
+  // into a finalized receipt.
+  return status === '0x1';
 }
 
 function policyForNetwork(networkRef) {

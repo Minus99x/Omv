@@ -234,3 +234,13 @@ test('EVM finality matcher never runs accessor-backed values during integrity ch
  }
  assert.equal(reads,0,'none of the untrusted accessors may be invoked');
 });
+
+test('EVM receipt finality requires the canonical JSON-RPC status quantity, not truthy synthetic claims',()=>{
+ const a=args();
+ assert.equal(createEvmBlockFinalityEvidence(a).receipt.status,'success');
+ for(const status of [true,1,1n,'1','0x01','0X1','0x0','0x2',false,{},null]){
+  assert.throws(()=>createEvmBlockFinalityEvidence({
+   ...a,receipt:{...a.receipt,status}
+  }),/does not report success/,String(status));
+ }
+});
