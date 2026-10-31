@@ -204,6 +204,12 @@ export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
   if(plan.rescueScriptPubKey!=null && rebuilt.rescueOutputPresent!==true) {
     throw new Error('Bitcoin recovery signature collection requires the caller-confirmed rescue output.');
   }
+  // Merely including one rescue output is not sufficient: the remaining
+  // outputs could drain funds to an attacker. Match the finalizer's
+  // single-destination recovery policy before even counting partial bytes.
+  if(plan.rescueScriptPubKey!=null && rebuilt.unsignedIntent.outputs.length!==1){
+    throw new Error('Bitcoin recovery signature collection requires exactly one rescue output; split destinations are forbidden.');
+  }
   if (!Array.isArray(signatures) || Object.getPrototypeOf(signatures)!==Array.prototype) {
     throw new TypeError('signatures must be an array with standard prototype.');
   }

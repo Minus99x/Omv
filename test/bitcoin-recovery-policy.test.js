@@ -404,3 +404,38 @@ test('Bitcoin signature coordinator rejects accessor-backed, inherited and spars
  assert.equal(accepted.cryptographicSignaturesVerified,false);
  assert.equal(accepted.safeToBroadcast,false);
 });
+
+test('Bitcoin signer coordination blocks split-output recovery even when one rescue output matches',()=>{
+ const rescue='0014'+'11'.repeat(20),different='0014'+'22'.repeat(20);
+ const args={
+  inputs:[{txid,vout:0,sequence:144,amountSats:'100000'}],
+  outputs:[
+   {amountSats:'80000',scriptPubKey:rescue},
+   {amountSats:'19000',scriptPubKey:different}
+  ],
+  requiredContactKeys:[a,b],threshold:2,feeSats:'1000',rescueScriptPubKey:rescue
+ };
+ const split=createBitcoinPsbtV2RecoveryPlan(args);
+ assert.equal(split.feeBalanceVerified,true);
+ assert.equal(split.rescueOutputPresent,true,'presence alone is insufficient to prevent destination substitution');
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({
+  plan:split,signatures:[{publicKey:a,signature:'AABB',intentDigest:split.intentDigest}]
+ }),/exactly one rescue output/);
+ const duplicate=createBitcoinPsbtV2RecoveryPlan({
+  ...args,outputs:[
+   {amountSats:'80000',scriptPubKey:rescue},
+   {amountSats:'19000',scriptPubKey:rescue}
+  ]
+ });
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({plan:duplicate,signatures:[]}),
+  /exactly one rescue output/);
+ const authorized=createBitcoinPsbtV2RecoveryPlan({
+  ...args,outputs:[{amountSats:'99000',scriptPubKey:rescue}]
+ });
+ const counted=coordinateBitcoinRecoverySignatures({
+  plan:authorized,signatures:[{publicKey:a,signature:'AABB',intentDigest:authorized.intentDigest}]
+ });
+ assert.equal(counted.signatureCount,1);
+ assert.equal(counted.rescueOutputPresent,true);
+ assert.equal(counted.safeToBroadcast,false);
+});
