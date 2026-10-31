@@ -95,8 +95,9 @@ function validateConwaySource(source,label) {
   checkedUnsigned(units.memory,label+'.maxBlockExUnits.memory',U64_MAX,true);
   checkedUnsigned(units.steps,label+'.maxBlockExUnits.steps',U64_MAX,true);
   checkedFraction(source.poolPledgeInfluence,label+'.poolPledgeInfluence');
-  for (const name of ['expansionRate','treasuryGrowthRate','minFeeRefScriptCostPerByte'])
+  for (const name of ['expansionRate','treasuryGrowthRate'])
     checkedFraction(source[name],label+'.'+name,true);
+  checkedFraction(source.minFeeRefScriptCostPerByte,label+'.minFeeRefScriptCostPerByte');
   for (const [name,fields] of [['poolVotingThresholds',POOL_THRESHOLDS],['drepVotingThresholds',DREP_THRESHOLDS]]) {
     const thresholds=source[name];
     if (!thresholds||typeof thresholds!=='object'||Array.isArray(thresholds))
@@ -105,16 +106,17 @@ function validateConwaySource(source,label) {
   }
 }
 
-function checkedSource(source, label) {
+function checkedSource(source, label, protocolMajor) {
   if (!source || typeof source !== 'object' || Array.isArray(source)) {
     throw new TypeError(label + ' must be independently collected normalized Conway parameters.');
   }
   for (const field of REQUIRED_CONWAY_FIELDS) {
     if (source[field] == null) throw new Error(label + ' missing complete Conway parameter: ' + field);
   }
-  for (const [key, count] of [['plutusV1CostModel', 166], ['plutusV2CostModel', 175]]) {
+  for (const [key, count] of [['plutusV1CostModel', protocolMajor >= 11 ? 332 : 166], ['plutusV2CostModel', protocolMajor >= 11 ? 332 : 175]]) {
     if (!Array.isArray(source[key]) || source[key].length !== count ||
-        source[key].some(value => !Number.isSafeInteger(value))) {
+        Array.from({length:count}, (_, i) => !Object.hasOwn(source[key], i) ||
+          !Number.isSafeInteger(source[key][i])).some(Boolean)) {
       throw new Error(label + ' must include exactly ' + count + ' ordered coefficients for ' + key);
     }
   }
@@ -150,8 +152,9 @@ export function createCardanoPreprodExtendedConwaySnapshot({
   boundTip(observedTipBefore, expected, 'Prior verified ledger tip');
   boundTip(observedTipAfter, expected, 'Subsequent verified ledger tip');
 
-  const ogmios = checkedSource(ogmiosCompleteConway, 'Ogmios');
-  const blockfrost = checkedSource(blockfrostCompleteConway, 'Blockfrost');
+  const protocolMajor = BigInt(baseSnapshot.parameters.protocolVersion.split('.')[0]);
+  const ogmios = checkedSource(ogmiosCompleteConway, 'Ogmios', protocolMajor);
+  const blockfrost = checkedSource(blockfrostCompleteConway, 'Blockfrost', protocolMajor);
   const ogmiosSha256 = hashCardanoEvidence(ogmios);
   const blockfrostSha256 = hashCardanoEvidence(blockfrost);
   if (ogmiosSha256 !== blockfrostSha256) {

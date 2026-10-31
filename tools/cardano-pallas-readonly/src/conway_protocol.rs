@@ -178,8 +178,8 @@ pub fn conway_params_from_verified_snapshot(snapshot: &Value) -> Result<ConwayPr
         step_price:rat(params,"priceSteps",true)?,
     };
     let models = CostModels {
-        plutus_v1:Some(cost_model(extra,"plutusV1CostModel",166)?),
-        plutus_v2:Some(cost_model(extra,"plutusV2CostModel",175)?),
+        plutus_v1:Some(cost_model(extra,"plutusV1CostModel",if major >= 11 {332} else {166})?),
+        plutus_v2:Some(cost_model(extra,"plutusV2CostModel",if major >= 11 {332} else {175})?),
         plutus_v3:Some(cost_model(params,"plutusV3CostModel",350)?),
         unknown:BTreeMap::new()
     };
@@ -217,7 +217,7 @@ pub fn conway_params_from_verified_snapshot(snapshot: &Value) -> Result<ConwayPr
         governance_action_deposit:uint(extra,"governanceActionDeposit")?,
         drep_deposit:uint(extra,"drepDeposit")?,
         drep_inactivity_period:uint(extra,"drepInactivityPeriod")?,
-        minfee_refscript_cost_per_byte:rat(extra,"minFeeRefScriptCostPerByte",true)?
+        minfee_refscript_cost_per_byte:rat(extra,"minFeeRefScriptCostPerByte",false)?
     })
 }
 
@@ -352,6 +352,71 @@ mod tests{
         source["parameters"]["completeConwayAgreement"]["acquiredStableTipSlot"] = json!(80000001);
         assert!(conway_params_from_verified_snapshot(&source)
             .unwrap_err().contains("bound stable tip"));
+    }
+
+    fn rebind_test_agreement(source: &mut Value) {
+        let digest=hex::encode(Sha256::digest(serde_json::to_vec(
+            &source["parameters"]["completeConway"]).unwrap()));
+        for provider in ["ogmiosSha256","blockfrostSha256"] {
+            source["parameters"]["completeConwayAgreement"][provider]=json!(digest);
+        }
+    }
+    fn pv11_test_snapshot() -> Value {
+        let mut source=complete_test_snapshot();
+        source["parameters"]["protocolVersion"]=json!("11.0");
+        for key in ["plutusV1CostModel","plutusV2CostModel"] {
+            source["parameters"]["completeConway"][key]=json!((0..332).map(|i| i-166).collect::<Vec<i64>>());
+        }
+        source["parameters"]["completeConway"]["minFeeRefScriptCostPerByte"]=json!({"numerator":"15","denominator":"1"});
+        rebind_test_agreement(&mut source);
+        source
+    }
+    #[test]
+    fn pv11_retains_complete_cost_models_and_non_unit_reference_price() {
+        let params=conway_params_from_verified_snapshot(&pv11_test_snapshot()).unwrap();
+        for model in [params.cost_models_for_script_languages.plutus_v1,
+                      params.cost_models_for_script_languages.plutus_v2] {
+            let values=model.unwrap();
+            assert_eq!(values.len(),332);
+            assert_eq!(values[331],165);
+        }
+        assert_eq!(params.minfee_refscript_cost_per_byte.numerator,15);
+        assert_eq!(params.minfee_refscript_cost_per_byte.denominator,1);
+    }
+    #[test]
+    fn pv11_rejects_truncated_and_noninteger_models_even_with_matching_digests() {
+        for key in ["plutusV1CostModel","plutusV2CostModel"] {
+            for invalid in [json!(vec![0;331]),json!(vec![0;166]),json!(vec![0;175])] {
+                let mut source=pv11_test_snapshot();
+                source["parameters"]["completeConway"][key]=invalid;
+                rebind_test_agreement(&mut source);
+                assert!(conway_params_from_verified_snapshot(&source).unwrap_err().contains("332"));
+            }
+            let mut source=pv11_test_snapshot();
+            source["parameters"]["completeConway"][key][331]=json!(null);
+            rebind_test_agreement(&mut source);
+            assert!(conway_params_from_verified_snapshot(&source).unwrap_err().contains("signed 64-bit"));
+        }
+    }
+    #[test]
+    fn pv10_rejects_pv11_layout_without_protocol_upgrade() {
+        let mut source=pv11_test_snapshot();
+        source["parameters"]["protocolVersion"]=json!("10.0");
+        assert!(conway_params_from_verified_snapshot(&source).unwrap_err().contains("166"));
+    }
+    #[test]
+    fn reference_price_fraction_is_not_a_voting_threshold() {
+        for (numerator,denominator) in [(31,2),(0,1)] {
+            let mut source=pv11_test_snapshot();
+            source["parameters"]["completeConway"]["minFeeRefScriptCostPerByte"]=json!({"numerator":numerator,"denominator":denominator});
+            rebind_test_agreement(&mut source);
+            let params=conway_params_from_verified_snapshot(&source).unwrap();
+            assert_eq!(params.minfee_refscript_cost_per_byte.numerator,numerator);
+        }
+        let mut source=pv11_test_snapshot();
+        source["parameters"]["completeConway"]["minFeeRefScriptCostPerByte"]=json!({"numerator":15,"denominator":0});
+        rebind_test_agreement(&mut source);
+        assert!(conway_params_from_verified_snapshot(&source).unwrap_err().contains("valid rational"));
     }
 
 }

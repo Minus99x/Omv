@@ -184,3 +184,51 @@ test('matching oversized Conway rational components are rejected before BigInt p
     /treasuryWithdrawal.numerator.*supported ledger integer range/
   );
 });
+
+function pv11Fixture() {
+  const args=fixture();
+  args.baseSnapshot.parameters.protocolVersion='11.0';
+  for (const source of [args.ogmiosCompleteConway,args.blockfrostCompleteConway]) {
+    source.plutusV1CostModel=Array.from({length:332},(_,i)=>i-166);
+    source.plutusV2CostModel=Array.from({length:332},(_,i)=>i-175);
+    source.minFeeRefScriptCostPerByte={numerator:'15',denominator:'1'};
+  }
+  return args;
+}
+test('PV11 binds every expanded V1/V2 coefficient and a reference fee above one',()=>{
+  const args=pv11Fixture();
+  const out=createCardanoPreprodExtendedConwaySnapshot(args);
+  for (const name of ['plutusV1CostModel','plutusV2CostModel'])
+    assert.deepEqual(out.parameters.completeConway[name],args.ogmiosCompleteConway[name]);
+  assert.deepEqual(out.parameters.completeConway.minFeeRefScriptCostPerByte,{numerator:'15',denominator:'1'});
+  assert.equal(out.parameters.completeConwayAgreement.submissionAuthorized,false);
+});
+for (const key of ['plutusV1CostModel','plutusV2CostModel']) {
+  test(`PV11 rejects truncated, sparse, unsafe and mismatched ${key}`,()=>{
+    for (const alter of [a=>a.pop(),a=>delete a[331],a=>{a[331]=Number.MAX_SAFE_INTEGER+1;}]) {
+      const args=pv11Fixture();
+      for (const source of [args.ogmiosCompleteConway,args.blockfrostCompleteConway]) alter(source[key]);
+      assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/exactly 332 ordered coefficients/);
+    }
+    const args=pv11Fixture();
+    args.blockfrostCompleteConway[key][331]++;
+    assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/sources disagree/);
+  });
+  test(`PV10 rejects expanded ${key} rather than guessing a protocol upgrade`,()=>{
+    const args=pv11Fixture();
+    args.baseSnapshot.parameters.protocolVersion='10.0';
+    assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/ordered coefficients/);
+  });
+}
+test('reference-script prices allow non-unit fractions but reject negative, zero denominator and overflow',()=>{
+  for (const price of [{numerator:'31',denominator:'2'},{numerator:'0',denominator:'1'}]) {
+    const args=pv11Fixture();
+    for (const source of [args.ogmiosCompleteConway,args.blockfrostCompleteConway]) source.minFeeRefScriptCostPerByte=price;
+    assert.deepEqual(createCardanoPreprodExtendedConwaySnapshot(args).parameters.completeConway.minFeeRefScriptCostPerByte,price);
+  }
+  for (const price of [{numerator:'-1',denominator:'1'},{numerator:'15',denominator:'0'},{numerator:'18446744073709551616',denominator:'1'}]) {
+    const args=pv11Fixture();
+    for (const source of [args.ogmiosCompleteConway,args.blockfrostCompleteConway]) source.minFeeRefScriptCostPerByte=price;
+    assert.throws(()=>createCardanoPreprodExtendedConwaySnapshot(args),/minFeeRefScriptCostPerByte/);
+  }
+});
