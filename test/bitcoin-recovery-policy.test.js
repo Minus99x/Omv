@@ -342,3 +342,36 @@ test('Bitcoin PSBT signature coordination rejects accessor-backed and sparse int
  assert.equal(valid.cryptographicSignaturesVerified,false);
  assert.equal(valid.safeToBroadcast,false);
 });
+
+test('Bitcoin signature collection binds explicitly requested rescue output before accepting signer counts',()=>{
+ const rescue='0014'+'11'.repeat(20), alternate='0014'+'22'.repeat(20);
+ const args={
+  inputs:[{txid,vout:0,sequence:144,amountSats:'100000'}],
+  outputs:[{amountSats:'99000',scriptPubKey:alternate}],
+  requiredContactKeys:[a,b],threshold:2,feeSats:'1000',
+  rescueScriptPubKey:rescue
+ };
+ const redirected=createBitcoinPsbtV2RecoveryPlan(args);
+ assert.equal(redirected.rescueOutputPresent,false);
+ assert.equal(redirected.rescueScriptPubKey,rescue);
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({
+  plan:redirected,signatures:[]
+ }),/caller-confirmed rescue output/);
+ const valid=createBitcoinPsbtV2RecoveryPlan({...args,outputs:[
+  {amountSats:'99000',scriptPubKey:rescue}
+ ]});
+ const counted=coordinateBitcoinRecoverySignatures({
+  plan:valid,signatures:[{publicKey:a,signature:'aabb',intentDigest:valid.intentDigest}]
+ });
+ assert.equal(counted.rescueOutputPresent,true);
+ assert.equal(counted.cryptographicSignaturesVerified,false);
+ assert.equal(counted.safeToBroadcast,false);
+ const fake={...valid,rescueScriptPubKey:alternate};
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({
+  plan:fake,signatures:[]
+ }),/mismatched rescue output/);
+ const suppressed={...valid,rescueScriptPubKey:null};
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({
+  plan:suppressed,signatures:[]
+ }),/mismatched rescue output/);
+});

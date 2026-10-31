@@ -111,6 +111,7 @@ export function createBitcoinPsbtV2RecoveryPlan({ inputs, outputs, requiredConta
     format: 'PSBTv2', unsignedIntent, intentDigest: digest(unsignedIntent), requiredContactKeys: Object.freeze(keys), threshold,
     signerChecks: Object.freeze(['prevout matches expected UTXO', 'witness/redeem/miniscript matches policy', 'sighash policy accepted', 'all output amounts and scripts displayed/verified', 'fee and feerate policy accepted']),
     rescueOutputPresent,
+    rescueScriptPubKey: rescueScriptPubKey == null ? null : rescueScriptPubKey.toLowerCase(),
     feeBalanceVerified,
     warning: 'PSBT output verification protects a signer from signing the wrong destination, but the underlying delayed multisig script does not cryptographically force contacts to use this rescue output in every alternative spend.'
   });
@@ -192,11 +193,16 @@ export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
     outputs:plan.unsignedIntent.outputs,
     feeSats:plan.unsignedIntent.feeSats,
     requiredContactKeys:expectedKeys,
-    threshold:plan.threshold
+    threshold:plan.threshold,
+    rescueScriptPubKey:plan.rescueScriptPubKey ?? null
   });
   if(rebuilt.intentDigest!==plan.intentDigest ||
-     rebuilt.feeBalanceVerified!==plan.feeBalanceVerified) {
-    throw new TypeError('Bitcoin recovery intent was rehashed with noncanonical fields or invalid fee evidence.');
+     rebuilt.feeBalanceVerified!==plan.feeBalanceVerified ||
+     rebuilt.rescueOutputPresent!==plan.rescueOutputPresent) {
+    throw new TypeError('Bitcoin recovery intent was rehashed with noncanonical fields, invalid fee evidence or mismatched rescue output.');
+  }
+  if(plan.rescueScriptPubKey!=null && rebuilt.rescueOutputPresent!==true) {
+    throw new Error('Bitcoin recovery signature collection requires the caller-confirmed rescue output.');
   }
   if (!Array.isArray(signatures)) throw new TypeError('signatures must be an array.');
   const allowed = new Set(expectedKeys);
@@ -214,6 +220,7 @@ export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
     thresholdReached:seen.size>=plan.threshold,
     intentDigest:plan.intentDigest,
     feeBalanceVerified:rebuilt.feeBalanceVerified,
+    rescueOutputPresent:rebuilt.rescueOutputPresent,
     cryptographicSignaturesVerified:false,
     safeToBroadcast:false
   });
