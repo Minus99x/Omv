@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import assert from 'node:assert/strict';
 import {
   createBitcoinRecoveryPolicy, createBitcoinRolloverHeartbeatPlan, createBitcoinPsbtV2RecoveryPlan,
@@ -275,4 +276,69 @@ test('Bitcoin PSBTv2 SIGHASH_SINGLE remains unsafe even when input and output ma
   assert.equal(risky.modifiableFlags,4);
   assert.equal(risky.safeForOmegaVaultSignatureCollection,false);
   assert.equal(createBitcoinPsbtV2LockPlan({hasSighashSingle:false}).safeForOmegaVaultSignatureCollection,true);
+});
+
+test('Bitcoin PSBT signature coordinator rejects rehashed impossible transaction intents',()=>{
+ const plan=createBitcoinPsbtV2RecoveryPlan({
+  inputs:[{txid,vout:0,sequence:144,amountSats:'100000'}],
+  outputs:[{amountSats:'99000',scriptPubKey:'0014'+'11'.repeat(20)}],
+  requiredContactKeys:[a,b],threshold:2,feeSats:'1000'
+ });
+ const canonical=value=>Array.isArray(value)
+  ? '['+value.map(canonical).join(',')+']'
+  : value&&typeof value==='object'
+    ? '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+canonical(value[k])).join(',')+'}'
+    : JSON.stringify(value);
+ const forge=unsignedIntent=>({
+   ...plan,unsignedIntent,
+   intentDigest:createHash('sha256').update(canonical(unsignedIntent)).digest('hex')
+ });
+ const coordinated=signaturesPlan=>coordinateBitcoinRecoverySignatures({
+   plan:signaturesPlan,signatures:[{publicKey:a,signature:'aabb',intentDigest:signaturesPlan.intentDigest}]
+ });
+ const moreThanInputs={...plan.unsignedIntent,outputs:[
+  {...plan.unsignedIntent.outputs[0],amountSats:'101000'}
+ ]};
+ assert.throws(()=>coordinated(forge(moreThanInputs)),/do not balance/);
+ const duplicate={...plan.unsignedIntent,inputs:[
+  {...plan.unsignedIntent.inputs[0]},
+  {...plan.unsignedIntent.inputs[0]}
+ ]};
+ assert.throws(()=>coordinated(forge(duplicate)),/Duplicate Bitcoin recovery input outpoint/);
+ const invalidSequence={...plan.unsignedIntent,inputs:[
+  {...plan.unsignedIntent.inputs[0],sequence:0x100000000}
+ ]};
+ assert.throws(()=>coordinated(forge(invalidSequence)),/sequence must be uint32/);
+ const nonCanonical={...plan.unsignedIntent,feeSats:'01000'};
+ assert.throws(()=>coordinated(forge(nonCanonical)),/noncanonical fields/);
+ assert.throws(()=>coordinated({...plan,feeBalanceVerified:false}),/invalid fee evidence/);
+});
+
+test('Bitcoin PSBT signature coordination rejects accessor-backed and sparse intent records before evaluation',()=>{
+ const plan=createBitcoinPsbtV2RecoveryPlan({
+  inputs:[{txid,vout:0,amountSats:'100000'}],
+  outputs:[{amountSats:'99000',scriptPubKey:'0014'+'11'.repeat(20)}],
+  requiredContactKeys:[a,b],threshold:2,feeSats:'1000'
+ });
+ let reads=0;
+ const output={...plan.unsignedIntent.outputs[0]};
+ Object.defineProperty(output,'amountSats',{enumerable:true,get(){reads++;return '99000';}});
+ const crafted={...plan,unsignedIntent:{...plan.unsignedIntent,outputs:[output]}};
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({plan:crafted,signatures:[]}),/accessors are forbidden|data fields/);
+ assert.equal(reads,0,'unsigned intent getters must not execute');
+ const sparseInputs=[...plan.unsignedIntent.inputs,{}];
+ delete sparseInputs[1];
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({
+  plan:{...plan,unsignedIntent:{...plan.unsignedIntent,inputs:sparseInputs}},signatures:[]
+ }),/dense own-data/);
+ const valid=coordinateBitcoinRecoverySignatures({
+  plan,signatures:[
+   {publicKey:a,signature:'aabb',intentDigest:plan.intentDigest},
+   {publicKey:b,signature:'ccdd',intentDigest:plan.intentDigest}
+  ]
+ });
+ assert.equal(valid.thresholdReached,true);
+ assert.equal(valid.feeBalanceVerified,true);
+ assert.equal(valid.cryptographicSignaturesVerified,false);
+ assert.equal(valid.safeToBroadcast,false);
 });

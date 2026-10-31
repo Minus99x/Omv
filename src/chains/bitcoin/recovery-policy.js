@@ -116,9 +116,58 @@ export function createBitcoinPsbtV2RecoveryPlan({ inputs, outputs, requiredConta
   });
 }
 
+function assertOwnDataRecord(value, fields, label) {
+  if(!value || typeof value!=='object' || Array.isArray(value) ||
+     ![Object.prototype,null].includes(Object.getPrototypeOf(value))) {
+    throw new TypeError(`${label} must be an exact own-data record.`);
+  }
+  const keys=Reflect.ownKeys(value);
+  if(keys.length!==fields.length || keys.some(k=>typeof k!=='string' || !fields.includes(k))) {
+    throw new TypeError(`${label} must have exactly the canonical own-data fields.`);
+  }
+  for(const name of fields) {
+    const descriptor=Object.getOwnPropertyDescriptor(value,name);
+    if(!descriptor || !descriptor.enumerable || !Object.hasOwn(descriptor,'value')){
+      throw new TypeError(`${label} must have canonical enumerable data fields; accessors are forbidden.`);
+    }
+  }
+}
+
+function assertDenseDataArray(value, recordFields, label){
+  if(!Array.isArray(value) || Object.getPrototypeOf(value)!==Array.prototype || value.length<1) {
+    throw new TypeError(`${label} must be a nonempty standard array.`);
+  }
+  const allowed=new Set(['length']);
+  for(let i=0;i<value.length;i++){
+    const name=String(i);
+    const descriptor=Object.getOwnPropertyDescriptor(value,name);
+    if(!descriptor || !Object.hasOwn(descriptor,'value')){
+      throw new TypeError(`${label} must contain dense own-data entries without getters.`);
+    }
+    allowed.add(name);
+    assertOwnDataRecord(descriptor.value,recordFields,`${label}[${i}]`);
+  }
+  if(Reflect.ownKeys(value).some(k=>typeof k!=='string' || !allowed.has(k))) {
+    throw new TypeError(`${label} contains unexpected own metadata.`);
+  }
+}
+
+function assertCanonicalRecoveryIntentShape(intent){
+  assertOwnDataRecord(intent,
+    ['version','inputs','outputs','feeSats','sighashPolicy','inputsModifiable','outputsModifiable'],
+    'Bitcoin PSBT unsigned intent');
+  assertDenseDataArray(intent.inputs,['txid','vout','sequence','amountSats'],'Bitcoin PSBT inputs');
+  assertDenseDataArray(intent.outputs,['amountSats','scriptPubKey'],'Bitcoin PSBT outputs');
+}
+
 export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
   if (!plan || plan.format !== 'PSBTv2') throw new TypeError('PSBTv2 recovery plan is required.');
-  if (!plan.unsignedIntent || plan.intentDigest !== digest(plan.unsignedIntent) ||
+  if (!plan.unsignedIntent) throw new TypeError('Bitcoin recovery plan unsigned intent or digest is invalid or was modified.');
+  // An attacker can recompute a matching digest over impossible PSBT fields.
+  // Validate data descriptors before digesting, so getters cannot alter the
+  // transaction between validation and signing-intent accounting.
+  assertCanonicalRecoveryIntentShape(plan.unsignedIntent);
+  if (plan.intentDigest !== digest(plan.unsignedIntent) ||
       plan.unsignedIntent.version !== 2 ||
       plan.unsignedIntent.inputsModifiable !== false ||
       plan.unsignedIntent.outputsModifiable !== false ||
@@ -135,6 +184,20 @@ export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
       expectedKeys.some((key, index) => key !== plan.requiredContactKeys[index])) {
     throw new TypeError('Bitcoin recovery signer set must contain distinct canonical contact keys.');
   }
+  // Verify the entire frozen recovery intent independently, not just its hash.
+  // Reusing the builder enforces outpoint uniqueness, canonical scripts,
+  // uint32 sequence bounds, MAX_MONEY and exact fee/value conservation.
+  const rebuilt=createBitcoinPsbtV2RecoveryPlan({
+    inputs:plan.unsignedIntent.inputs,
+    outputs:plan.unsignedIntent.outputs,
+    feeSats:plan.unsignedIntent.feeSats,
+    requiredContactKeys:expectedKeys,
+    threshold:plan.threshold
+  });
+  if(rebuilt.intentDigest!==plan.intentDigest ||
+     rebuilt.feeBalanceVerified!==plan.feeBalanceVerified) {
+    throw new TypeError('Bitcoin recovery intent was rehashed with noncanonical fields or invalid fee evidence.');
+  }
   if (!Array.isArray(signatures)) throw new TypeError('signatures must be an array.');
   const allowed = new Set(expectedKeys);
   const seen = new Set();
@@ -146,7 +209,14 @@ export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
     if (signature.intentDigest !== plan.intentDigest) throw new TypeError('Signature was produced for a different recovery transaction intent.');
     seen.add(key);
   }
-  return Object.freeze({ signatureCount: seen.size, threshold: plan.threshold, thresholdReached: seen.size >= plan.threshold, intentDigest: plan.intentDigest });
+  return Object.freeze({
+    signatureCount:seen.size, threshold:plan.threshold,
+    thresholdReached:seen.size>=plan.threshold,
+    intentDigest:plan.intentDigest,
+    feeBalanceVerified:rebuilt.feeBalanceVerified,
+    cryptographicSignaturesVerified:false,
+    safeToBroadcast:false
+  });
 }
 
 export function assessBitcoinImmutableRescue({ covenantActive = false, recoveryPathUsesContactKeys = true } = {}) {
