@@ -3,16 +3,27 @@ import { hashCardanoEvidence } from './evidence-binding.js';
 const HEX_32=/^[0-9a-f]{64}$/i;
 
 function hex32(value,label){
-  const normalized=String(value ?? '').toLowerCase();
-  if(!HEX_32.test(normalized)) throw new TypeError(`${label} must be 32-byte hex.`);
-  return normalized;
+  if(typeof value!=='string' || !HEX_32.test(value)) throw new TypeError(`${label} must be 32-byte hex.`);
+  return value.toLowerCase();
+}
+
+function safeSlot(value,label,{positive=false}={}){
+  if(!['number','string','bigint'].includes(typeof value) ||
+     (typeof value==='number' && !Number.isSafeInteger(value)) ||
+     (typeof value==='string' && !/^(0|[1-9][0-9]*)$/.test(value))) {
+    throw new TypeError(`${label} must be a canonical non-negative safe integer.`);
+  }
+  const n=Number(value);
+  if(!Number.isSafeInteger(n) || n<(positive?1:0)) {
+    throw new TypeError(`${label} must be a canonical ${positive?'positive':'non-negative'} safe integer.`);
+  }
+  return n;
 }
 
 function observation(value,label){
   if(!value || typeof value!=='object' || Array.isArray(value)) throw new TypeError(`${label} is required.`);
   const tipHash=hex32(value.tipHash,`${label}.tipHash`);
-  const tipSlot=Number(value.tipSlot);
-  if(!Number.isSafeInteger(tipSlot) || tipSlot<0) throw new TypeError(`${label}.tipSlot must be a non-negative safe integer.`);
+  const tipSlot=safeSlot(value.tipSlot,`${label}.tipSlot`);
   return Object.freeze({
     tipHash,
     tipSlot,
@@ -36,10 +47,15 @@ export function createCardanoPreprodInclusionFinalityEvidence({
   const inclusion=observation(inclusionObservation,'inclusionObservation');
   const later=observation(laterObservation,'laterObservation');
 
-  const minimumDepthSlots=Number(policy?.minimumDepthSlots);
-  if(!Number.isSafeInteger(minimumDepthSlots) || minimumDepthSlots<1) throw new TypeError('policy.minimumDepthSlots must be a positive safe integer.');
+  const minimumDepthSlots=safeSlot(policy?.minimumDepthSlots,'policy.minimumDepthSlots',{positive:true});
   if(policy?.requireCanonicalAncestry!==true) throw new Error('Cardano finality evidence policy must require canonical ancestry.');
   if(inclusion.transactionSeen!==true) throw new Error('Inclusion observation must see the exact transaction.');
+  if(inclusion.sourceBlockStillCanonical!==true || inclusion.tipDescendsFromSourceBlock!==true){
+    throw new Error('Inclusion observation must bind the transaction to the canonical source block.');
+  }
+  if(inclusion.tipHash===later.tipHash && inclusion.tipSlot!==later.tipSlot){
+    throw new Error('Distinct Cardano tip slots cannot reuse the same tip block hash.');
+  }
   if(later.transactionSeen!==true) throw new Error('Later observation must still see the exact transaction.');
   if(later.sourceBlockStillCanonical!==true || later.tipDescendsFromSourceBlock!==true) {
     throw new Error('Later observation must confirm the inclusion block remains canonical and ancestral to the later tip.');

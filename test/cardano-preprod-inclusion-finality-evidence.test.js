@@ -87,3 +87,42 @@ test('Cardano finality evidence requires an explicit operator policy rather than
     /must require canonical ancestry/
   );
 });
+
+test('Cardano finality rejects coercible slot and depth observations rather than fabricating settlement distance',()=>{
+ const base=input();
+ for(const wrong of [true,[],[1000],{valueOf(){return 1000;}},'01000','1000.0',1.5,Number.MAX_SAFE_INTEGER+1]){
+  assert.throws(()=>createCardanoPreprodInclusionFinalityEvidence({
+   ...base,inclusionObservation:{...base.inclusionObservation,tipSlot:wrong}
+  }),/canonical non-negative safe integer/);
+ }
+ for(const wrong of [true,[300],{},'0300',0,Number.MAX_SAFE_INTEGER+1]){
+  assert.throws(()=>createCardanoPreprodInclusionFinalityEvidence({
+   ...base,policy:{...base.policy,minimumDepthSlots:wrong}
+  }),/canonical|positive safe integer/);
+ }
+ const allowed=createCardanoPreprodInclusionFinalityEvidence({
+  ...base,inclusionObservation:{...base.inclusionObservation,tipSlot:'1000'},
+  laterObservation:{...base.laterObservation,tipSlot:1400n},
+  policy:{...base.policy,minimumDepthSlots:'300'}
+ });
+ assert.equal(allowed.finalityPolicy.minimumDepthSlots,300);
+ assert.equal(allowed.inclusionObservation.tipSlot,1000);
+});
+
+test('Cardano finality refuses impossible identical hashes at distinct tip slots or noncanonical inclusion ancestry',()=>{
+ const base=input();
+ assert.throws(()=>createCardanoPreprodInclusionFinalityEvidence({
+  ...base,laterObservation:{...base.laterObservation,tipHash:base.inclusionObservation.tipHash}
+ }),/cannot reuse the same tip block hash/);
+ for(const flag of ['sourceBlockStillCanonical','tipDescendsFromSourceBlock']){
+  assert.throws(()=>createCardanoPreprodInclusionFinalityEvidence({
+   ...base,inclusionObservation:{...base.inclusionObservation,[flag]:false}
+  }),/canonical source block/);
+ }
+ let casts=0;
+ const forged={toString(){casts++;return 'ab'.repeat(32);}};
+ assert.throws(()=>createCardanoPreprodInclusionFinalityEvidence({
+  ...base,transactionBodyHash:forged
+ }),/32-byte hex/);
+ assert.equal(casts,0,'identity coercion hooks must never run');
+});
