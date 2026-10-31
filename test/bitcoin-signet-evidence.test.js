@@ -730,3 +730,25 @@ test('Signet block observations reject zero hash sentinels',()=>{const {finalize
   assert.throws(()=>createBitcoinSignetObservationEvidence(changed),/zero/);
  }
 });
+
+test('Bitcoin Signet evidence rejects impossible overflow heights while accepting exact maximum uint32 inclusion',()=>{
+  const {finalizer,finalTransaction}=finalizerArtifacts();
+  const base={finalizerEvidence:finalizer,finalTransactionEvidence:finalTransaction};
+  for(const [key,change] of [
+    ['transaction',{transaction:{blockHeight:'4294967296'}}],
+    ['chainTip',{chainTip:{blockHeight:'4294967296'}}],
+    ['transaction',{transaction:{blockHeight:4294967296n}}],
+    ['chainTip',{chainTip:{blockHeight:4294967296}}]
+  ]){
+    const obs=observations(finalizer,change);
+    assert.throws(()=>createBitcoinSignetObservationEvidence({...base,...obs}),/uint32 Bitcoin block height/,key);
+  }
+  const exact=observations(finalizer,{
+    transaction:{blockHeight:'4294967295',confirmations:'1'},
+    chainTip:{blockHeight:'4294967295',blockHash:'ef'.repeat(32)}
+  });
+  const valid=createBitcoinSignetObservationEvidence({...base,...exact,minimumConfirmations:1});
+  assert.equal(valid.transaction.blockHeight,'4294967295');
+  assert.equal(valid.chainTip.blockHeight,'4294967295');
+  assert.equal(valid.publicSignetObservationProven,false);
+});

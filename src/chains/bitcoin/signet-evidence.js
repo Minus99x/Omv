@@ -42,6 +42,14 @@ function integer(value, label, { positive = false } = {}) {
   return text;
 }
 
+function blockHeightValue(value,label){
+  const height=BigInt(integer(value,label,{positive:true}));
+  // Bitcoin Core's block-height observation is a bounded ledger index, not
+  // an arbitrary-precision counter. A self-hashed huge height is not proof.
+  if(height>0xffffffffn) throw new RangeError(`${label} exceeds uint32 Bitcoin block height.`);
+  return height.toString();
+}
+
 function iso(value, label) {
   return parseBitcoinIsoTimestamp(value, label).text;
 }
@@ -110,14 +118,14 @@ export function createBitcoinSignetObservationEvidence({
   const confirmations = integer(transaction?.confirmations, 'transaction.confirmations');
   if (BigInt(confirmations) < BigInt(minimumConfirmations)) throw new Error('Bitcoin Signet transaction has not reached the required confirmation depth.');
   const blockHash = sha256Hex(transaction?.blockHash, 'transaction.blockHash');
-  const blockHeight = integer(transaction?.blockHeight, 'transaction.blockHeight', { positive:true });
+  const blockHeight = blockHeightValue(transaction?.blockHeight, 'transaction.blockHeight');
   const observedAt = iso(transaction?.observedAt, 'transaction.observedAt');
   if (transaction?.networkRef !== 'bitcoin:signet') throw new Error('Bitcoin transaction observation is not bound to Signet.');
 
   if (chainTip?.networkRef !== 'bitcoin:signet') throw new Error('Bitcoin chain-tip observation is not bound to Signet.');
   const tipHash = sha256Hex(chainTip?.blockHash, 'chainTip.blockHash');
   if (/^0{64}$/.test(blockHash) || /^0{64}$/.test(tipHash)) throw new Error('Bitcoin observed block hashes cannot be all-zero.');
-  const tipHeight = integer(chainTip?.blockHeight, 'chainTip.blockHeight', { positive:true });
+  const tipHeight = blockHeightValue(chainTip?.blockHeight, 'chainTip.blockHeight');
   const tipObservedAt = iso(chainTip?.observedAt, 'chainTip.observedAt');
   if (BigInt(tipHeight) < BigInt(blockHeight)) throw new Error('Bitcoin chain tip predates the observed transaction block.');
   if (tipHeight === blockHeight && tipHash !== blockHash) {
