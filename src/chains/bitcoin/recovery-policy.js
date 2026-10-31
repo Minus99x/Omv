@@ -204,7 +204,25 @@ export function coordinateBitcoinRecoverySignatures({ plan, signatures }) {
   if(plan.rescueScriptPubKey!=null && rebuilt.rescueOutputPresent!==true) {
     throw new Error('Bitcoin recovery signature collection requires the caller-confirmed rescue output.');
   }
-  if (!Array.isArray(signatures)) throw new TypeError('signatures must be an array.');
+  if (!Array.isArray(signatures) || Object.getPrototypeOf(signatures)!==Array.prototype) {
+    throw new TypeError('signatures must be an array with standard prototype.');
+  }
+  // Partial bytes are unverified authorization claims; reject sparse, inherited
+  // and accessor-backed evidence before reading any signer identity.
+  const allowedIndexes=new Set(['length']);
+  for(let index=0;index<signatures.length;index++){
+    const name=String(index);
+    const slot=Object.getOwnPropertyDescriptor(signatures,name);
+    if(!slot || !Object.hasOwn(slot,'value')) {
+      throw new TypeError('Bitcoin signature claims require dense own-data entries.');
+    }
+    allowedIndexes.add(name);
+    assertOwnDataRecord(slot.value,['publicKey','signature','intentDigest'],
+      `Bitcoin signature claim ${index}`);
+  }
+  if(Reflect.ownKeys(signatures).some(key=>typeof key!=='string'||!allowedIndexes.has(key))){
+    throw new TypeError('Bitcoin signature claims contain unexpected array metadata.');
+  }
   const allowed = new Set(expectedKeys);
   const seen = new Set();
   for (const [index, signature] of signatures.entries()) {

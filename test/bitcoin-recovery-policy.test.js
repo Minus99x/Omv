@@ -375,3 +375,32 @@ test('Bitcoin signature collection binds explicitly requested rescue output befo
   plan:suppressed,signatures:[]
  }),/mismatched rescue output/);
 });
+
+test('Bitcoin signature coordinator rejects accessor-backed, inherited and sparse signature claims without evaluating them',()=>{
+ const plan=createBitcoinPsbtV2RecoveryPlan({
+  inputs:[{txid,vout:0,sequence:144,amountSats:'100000'}],
+  outputs:[{amountSats:'99000',scriptPubKey:'0014'+'11'.repeat(20)}],
+  requiredContactKeys:[a,b],threshold:2,feeSats:'1000'
+ });
+ const valid={publicKey:a,signature:'AABB',intentDigest:plan.intentDigest};
+ let reads=0;
+ for(const field of ['publicKey','signature','intentDigest']){
+  const claim={...valid};
+  Object.defineProperty(claim,field,{enumerable:true,get(){reads++;return valid[field];}});
+  assert.throws(()=>coordinateBitcoinRecoverySignatures({plan,signatures:[claim]}),
+    /canonical enumerable data fields; accessors are forbidden/);
+ }
+ assert.equal(reads,0,'coordinator must never invoke signature claim getters');
+ const sparse=new Array(1);
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({plan,signatures:sparse}),/dense own-data entries/);
+ const metadata=[valid];
+ Object.defineProperty(metadata,'override',{enumerable:false,value:'redirect'});
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({plan,signatures:metadata}),/unexpected array metadata/);
+ const inherited=Object.create({intentDigest:plan.intentDigest});
+ Object.assign(inherited,{publicKey:a,signature:'AABB'});
+ assert.throws(()=>coordinateBitcoinRecoverySignatures({plan,signatures:[inherited]}),/exact own-data record/);
+ const accepted=coordinateBitcoinRecoverySignatures({plan,signatures:[valid]});
+ assert.equal(accepted.signatureCount,1);
+ assert.equal(accepted.cryptographicSignaturesVerified,false);
+ assert.equal(accepted.safeToBroadcast,false);
+});
