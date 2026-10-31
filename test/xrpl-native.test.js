@@ -394,3 +394,40 @@ test('XRPL token escrow rejects getter-backed amount fields without executing th
     /own data values, not accessors/);
   assert.equal(invoked,0);
 });
+
+test('XRPL TokenEscrow amendment state refuses accessor-backed status and response fields without invoking getters',()=>{
+  const id=TOKEN_ESCROW_AMENDMENT_ID;
+  const expected={name:'TokenEscrow',supported:true,enabled:true};
+  let reads=0;
+  const status={...expected};
+  Object.defineProperty(status,'enabled',{enumerable:true,get(){reads++;return true;}});
+  const statusResult=evaluateXrplFeature({featureResponse:{result:{[id]:status}}});
+  assert.equal(statusResult.known,false);
+  assert.equal(statusResult.enabled,false);
+  const outer={};
+  Object.defineProperty(outer,'result',{enumerable:true,get(){reads++;return {[id]:expected};}});
+  assert.equal(evaluateXrplFeature({featureResponse:outer}).enabled,false);
+  const entry={};
+  Object.defineProperty(entry,id,{enumerable:true,get(){reads++;return expected;}});
+  assert.equal(evaluateXrplFeature({featureResponse:{result:entry}}).known,false);
+  assert.equal(reads,0,'untrusted amendment status getters must never execute');
+});
+
+test('XRPL TokenEscrow capability requires explicit own fields and unambiguous amendment identity',()=>{
+  const id=TOKEN_ESCROW_AMENDMENT_ID;
+  const inherited=Object.create({enabled:true});
+  Object.assign(inherited,{name:'TokenEscrow',supported:true});
+  assert.equal(evaluateXrplFeature({featureResponse:{result:{[id]:inherited}}}).known,false);
+  const duplicate={ [id]:{name:'TokenEscrow',supported:true,enabled:true},
+    [id.toLowerCase()]:{name:'TokenEscrow',supported:true,enabled:true} };
+  assert.equal(evaluateXrplFeature({featureResponse:{result:duplicate}}).known,false);
+  const valid=evaluateXrplFeature({featureResponse:{result:{
+    [id]:{name:'TokenEscrow',supported:true,enabled:true,unusedHorizonMetadata:42}
+  }}});
+  assert.equal(valid.known,true);
+  assert.equal(valid.enabled,true);
+  const unverified=evaluateXrplFeature({featureResponse:{result:{
+    [id]:{name:'TokenEscrow',supported:'true',enabled:true}
+  }}});
+  assert.equal(unverified.supported,false);
+});

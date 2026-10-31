@@ -74,15 +74,39 @@ function normalizeAmount(amount) {
 }
 
 export function evaluateXrplFeature({ featureResponse, featureName = 'TokenEscrow', amendmentId = TOKEN_ESCROW_AMENDMENT_ID }) {
-  const result = featureResponse?.result ?? featureResponse ?? {};
-  // Do not trust a matching human-readable name when the amendment ID differs.
-  // The ID and name must identify the same unique protocol amendment.
-  const entries = Object.entries(result).filter(([id, feature]) =>
-    /^[a-fA-F0-9]{64}$/.test(id) && id.toUpperCase() === amendmentId && feature?.name === featureName
+  const unavailable=()=>Object.freeze({known:false,supported:false,enabled:false,amendmentId,featureName});
+  // Amendment activation controls whether token escrow plans are constructed.
+  // Only own-data snapshots can establish that capability. Object.entries()
+  // invokes getters and can observe inconsistent IDs/feature values.
+  let result=featureResponse;
+  if(result && typeof result==='object' && Object.hasOwn(result,'result')){
+    const descriptor=Object.getOwnPropertyDescriptor(result,'result');
+    if(!descriptor || !Object.hasOwn(descriptor,'value')) return unavailable();
+    result=descriptor.value;
+  }
+  if(!result || typeof result!=='object' || Array.isArray(result)) return unavailable();
+  const matching=Reflect.ownKeys(result).filter(id=>
+    typeof id==='string' && /^[a-fA-F0-9]{64}$/.test(id) &&
+    id.toUpperCase()===amendmentId
   );
-  if (entries.length !== 1) return Object.freeze({ known: false, supported: false, enabled: false, amendmentId, featureName });
-  const [id, feature] = entries[0];
-  return Object.freeze({ known: true, supported: feature?.supported === true, enabled: feature?.enabled === true, amendmentId: id.toUpperCase(), featureName });
+  if(matching.length!==1) return unavailable();
+  const id=matching[0];
+  const descriptor=Object.getOwnPropertyDescriptor(result,id);
+  if(!descriptor || !Object.hasOwn(descriptor,'value')) return unavailable();
+  const feature=descriptor.value;
+  if(!feature || typeof feature!=='object' || Array.isArray(feature) ||
+     (Object.getPrototypeOf(feature)!==Object.prototype && Object.getPrototypeOf(feature)!==null)) return unavailable();
+  const fields={};
+  for(const name of ['name','supported','enabled']){
+    const own=Object.getOwnPropertyDescriptor(feature,name);
+    if(!own || !Object.hasOwn(own,'value') || !own.enumerable) return unavailable();
+    fields[name]=own.value;
+  }
+  if(fields.name!==featureName) return unavailable();
+  return Object.freeze({
+    known:true,supported:fields.supported===true,enabled:fields.enabled===true,
+    amendmentId:id.toUpperCase(),featureName
+  });
 }
 
 export function createXrplEscrowRecoveryPlan({ owner, rescueDestination, amount = null, amountDrops = null, finishAfterRippleTime, cancelAfterRippleTime = null, tokenEscrowFeature = null }) {
