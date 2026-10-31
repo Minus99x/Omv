@@ -58,3 +58,32 @@ test('XRPL primitive evidence plans reject inherited Object property names and n
   }
   assert.equal(getXrplPrimitiveEvidenceSpec('escrow').id,'escrow');
 });
+
+test('XRPL Testnet evidence scope rejects sparse, inherited and accessor-backed primitive selections',()=>{
+  const sparse=['escrow',,'ticket'];
+  assert.throws(()=>createXrplTestnetPrimitiveEvidencePlan({primitives:sparse}),/dense own-data/);
+  const inherited=['escrow','ticket'];
+  delete inherited[1];
+  const proto=Object.create(Array.prototype);
+  proto[1]='ticket';
+  Object.setPrototypeOf(inherited,proto);
+  assert.throws(()=>createXrplTestnetPrimitiveEvidencePlan({primitives:inherited}),/dense own-data/);
+  let invoked=0;
+  const accessor=['escrow','ticket'];
+  Object.defineProperty(accessor,1,{enumerable:true,configurable:true,get(){invoked++;return 'ticket';}});
+  assert.throws(()=>createXrplTestnetPrimitiveEvidencePlan({primitives:accessor}),/dense own-data/);
+  assert.equal(invoked,0,'untrusted selection getter must never run');
+});
+
+test('XRPL Testnet evidence scope rejects undeclared own metadata while preserving canonical frozen inputs',()=>{
+  const hidden=['escrow'];
+  Object.defineProperty(hidden,'aux',{enumerable:false,value:'override'});
+  assert.throws(()=>createXrplTestnetPrimitiveEvidencePlan({primitives:hidden}),/hidden or unexpected/);
+  const symbol=['escrow'];
+  symbol[Symbol('proof')]=true;
+  assert.throws(()=>createXrplTestnetPrimitiveEvidencePlan({primitives:symbol}),/hidden or unexpected/);
+  const plan=createXrplTestnetPrimitiveEvidencePlan({primitives:Object.freeze(['escrow','ticket'])});
+  assert.deepEqual(plan.primitiveEvidence.map(x=>x.id),['escrow','ticket']);
+  assert.deepEqual(plan.requiredFeatures,['Escrow','TicketBatch']);
+  assert.equal(plan.claimBoundary.supportClaimAuthorized,false);
+});

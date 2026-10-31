@@ -87,9 +87,25 @@ export function createXrplTestnetPrimitiveEvidencePlan({
 }={}){
   if(networkRef!=='xrpl:testnet') throw new TypeError('Current XRPL primitive evidence plan is scoped to xrpl:testnet.');
   if(!Array.isArray(primitives) || primitives.length<1) throw new TypeError('primitives must be a non-empty array.');
-  if(new Set(primitives).size!==primitives.length) throw new TypeError('primitives must be unique.');
+  // This is an evidence-scope selection, not an arbitrary JavaScript array:
+  // holes, accessors and hidden own fields must never silently omit checks.
+  const names=[];
+  const allowedKeys=new Set(['length']);
+  for(let index=0;index<primitives.length;index++){
+    const key=String(index);
+    allowedKeys.add(key);
+    const descriptor=Object.getOwnPropertyDescriptor(primitives,key);
+    if(!descriptor || !Object.hasOwn(descriptor,'value')) {
+      throw new TypeError(`primitives[${index}] must be a dense own-data array entry.`);
+    }
+    names.push(descriptor.value);
+  }
+  if(Reflect.ownKeys(primitives).some(key=>typeof key!=='string' || !allowedKeys.has(key))){
+    throw new TypeError('primitives array must not contain hidden or unexpected own properties.');
+  }
+  if(new Set(names).size!==names.length) throw new TypeError('primitives must be unique.');
 
-  const selected=Object.freeze(primitives.map((name,index)=>{
+  const selected=Object.freeze(names.map((name,index)=>{
     const primitive=typeof name==='string' && Object.hasOwn(PRIMITIVES,name) ? PRIMITIVES[name] : null;
     if(!primitive) throw new TypeError(`primitives[${index}] is unknown: ${String(name)}`);
     return primitive;
