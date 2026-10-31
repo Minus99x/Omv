@@ -181,6 +181,7 @@ export function createStellarTestnetHorizonHttpTransport({
 
       let previousLedgerSequence = null;
       let previousLedgerClosedSeconds = null;
+      let previousLedgerHash = null;
       let previousAccountSequenceTime = null;
       let previousAccountSequenceLedger = null;
       for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -200,6 +201,15 @@ export function createStellarTestnetHorizonHttpTransport({
         const sequenceLedger = integerString(accountState.sequence_ledger, 'account.sequence_ledger', { positive: true });
         const closedAt = isoTime(latestLedger?.closed_at, 'latestLedger.closed_at');
         const latestLedgerSequence = integerString(latestLedger?.sequence, 'latestLedger.sequence', { positive: true });
+        // A ledger hash identifies the observed ledger independently of its height.
+        const rawLedgerHash = latestLedger?.hash;
+        if (rawLedgerHash != null &&
+            (typeof rawLedgerHash !== 'string' ||
+             !/^[a-f0-9]{64}$/i.test(rawLedgerHash) ||
+             /^0{64}$/.test(rawLedgerHash))) {
+          throw new TypeError('Horizon eligibility ledger hash must be a nonzero 32-byte hexadecimal hash.');
+        }
+        const ledgerHash = rawLedgerHash == null ? null : rawLedgerHash.toLowerCase();
         if (BigInt(sequenceLedger) > 0xffffffffn || BigInt(latestLedgerSequence) > 0xffffffffn) {
           throw new RangeError('Horizon eligibility ledger identifiers exceed uint32.');
         }
@@ -228,12 +238,15 @@ export function createStellarTestnetHorizonHttpTransport({
             (ledgerNumber < previousLedgerSequence ||
              ledgerClosedSeconds < previousLedgerClosedSeconds ||
              (ledgerNumber === previousLedgerSequence &&
-              ledgerClosedSeconds !== previousLedgerClosedSeconds))) {
+              (ledgerClosedSeconds !== previousLedgerClosedSeconds ||
+               (previousLedgerHash !== null && ledgerHash !== null &&
+                ledgerHash !== previousLedgerHash))))) {
           throw new Error('Horizon latest-ledger observations regressed or conflicted during eligibility polling.');
         }
         if (ledgerNumber === BigInt(sequenceLedger) && BigInt(sequenceTime) !== ledgerClosedSeconds) throw new Error('Horizon sequence timestamp contradicts the close time of the same ledger.');
         previousLedgerSequence = ledgerNumber;
         previousLedgerClosedSeconds = ledgerClosedSeconds;
+        previousLedgerHash = ledgerHash;
         if (ledgerClosedSeconds >= eligibleAtSeconds) {
           return Object.freeze({
             eligible: true,
